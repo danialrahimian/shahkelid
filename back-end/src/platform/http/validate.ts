@@ -20,3 +20,11 @@ export const parseBody = <T extends z.ZodTypeAny>(schema: T, body: unknown): z.i
     })),
   });
 };
+
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A route's id parameter; a malformed one is a 400, never a database error. */
+export const parseId = (value: unknown): string => {
+  if (typeof value === "string" && uuidPattern.test(value)) return value.toLowerCase();
+  throw new ApiError(400, "VALIDATION_FAILED", "Not a valid id");
+};

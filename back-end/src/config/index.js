@@ -139,6 +139,20 @@ const config = {
     origin: read("CLIENT_ORIGIN", { fallback: "http://localhost:5173" }),
   },
 
+  // VPN panels and subscriptions (src/modules/provisioning).
+  provisioning: {
+    // Where this API is reached from outside: customers' links are
+    // {publicUrl}/s/{token} unless a panel names its own subscription domain.
+    publicUrl: read("PUBLIC_API_URL", {
+      fallback: isProduction ? undefined : "http://localhost:5000",
+      required: true,
+    }).replace(/\/+$/, ""),
+    // A plan that starts on first use starts anyway after this many days.
+    firstUseDeadlineDays: readNumber("FIRST_USE_DEADLINE_DAYS", 30),
+    // How often usage is copied from the panels.
+    syncEveryMs: readNumber("USAGE_SYNC_EVERY_MS", 5 * 60 * 1000),
+  },
+
   uploads: {
     // Anchored to the package, not to the shell's working directory. Starting
     // the app from a parent folder used to point this somewhere else, so new

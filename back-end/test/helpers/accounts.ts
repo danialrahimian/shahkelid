@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 
 import config from "../../src/config";
@@ -9,6 +10,8 @@ import { users } from "../../src/modules/identity/schema";
 import { setEmailSender, type Email } from "../../src/modules/notifications/email";
 import { base32Decode, codeAt, generateSecret, stepAt } from "../../src/modules/identity/totp";
 import { eq, inArray } from "drizzle-orm";
+
+import { createClient } from "./api-client";
 
 /** Helpers for the account tests: emails, people, and authenticator codes. */
 
@@ -57,17 +60,20 @@ export const closeDatabase = async () => {
  * Every code works once, so a test that signs in twice needs two different
  * ones. The server accepts the step before, now and the step after, which
  * gives three distinct codes to hand out.
+ *
+ * The current step's code comes first. If a 30-second boundary passes before
+ * the server checks it, it becomes "the step before" and is still accepted;
+ * handing out the step before first would fail at every boundary.
  */
 export const authenticator = (secret: string) => {
   const key = base32Decode(secret);
-  let offset = -1;
+  const offsets = [0, 1, -1];
   return {
     secret,
     next: () => {
-      if (offset > 1) throw new Error("Only three distinct codes are valid at once");
-      const code = codeAt(key, stepAt(Date.now()) + offset);
-      offset += 1;
-      return code;
+      const offset = offsets.shift();
+      if (offset === undefined) throw new Error("Only three distinct codes are valid at once");
+      return codeAt(key, stepAt(Date.now()) + offset);
     },
   };
 };
@@ -116,4 +122,31 @@ export const aStaffMember = async ({
 
 export const suspend = async (email: string) => {
   await database().update(users).set({ status: "suspended" }).where(eq(users.email, email));
+};
+
+/** A member of staff, fully signed in (password, then authenticator code), with an HTTP client. */
+export const signedInStaff = async (roleKeys: string[]) => {
+  const staff = await aStaffMember({ roleKeys, withAuthenticator: true });
+  const client = createClient();
+  await client.post("/api/v1/auth/password", { email: staff.email, password: staff.password });
+  const verified = await client.post("/api/v1/auth/two-factor/verify", {
+    code: staff.authenticator!.next(),
+  });
+  assert.equal(verified.data.status, "signed_in");
+  return { ...staff, client };
+};
+
+/** A customer made directly in the database, the way signing in with a code makes one. */
+export const aCustomerAccount = async () => {
+  const email = uniqueEmail("customer");
+  const [user] = await database()
+    .insert(users)
+    .values({
+      email,
+      emailNormalized: email,
+      emailVerifiedAt: new Date(),
+      referralCode: randomBytes(5).toString("hex").toUpperCase(),
+    })
+    .returning();
+  return { id: user!.id, email };
 };

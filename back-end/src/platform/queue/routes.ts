@@ -6,8 +6,7 @@
  * in the outbox with the error "no queue for topic", where it shows up and
  * can be fixed, instead of disappearing.
  *
- * Routes are added by the milestone that introduces the topic; the first is
- * `subscription.provision` in M4.
+ * Routes are added by the milestone that introduces the topic.
  */
 
 export const QUEUES = {
@@ -19,4 +18,7 @@ export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 
 export type TopicRoutes = Readonly<Record<string, QueueName>>;
 
-export const TOPIC_ROUTES: TopicRoutes = {};
+export const TOPIC_ROUTES: TopicRoutes = {
+  // M3: put a subscription on its panel (src/modules/provisioning/worker.ts)
+  "subscription.provision_requested": QUEUES.provisioning,
+};

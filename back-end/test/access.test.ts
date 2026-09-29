@@ -6,7 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { appointOwner, OwnerExistsError } from "../src/modules/access/bootstrap";
 import { auditLogs, rolePermissions, roles, userRoles } from "../src/modules/access/schema";
 import { createClient } from "./helpers/api-client";
-import { aStaffMember, captureEmails, closeDatabase, database, uniqueEmail } from "./helpers/accounts";
+import { captureEmails, closeDatabase, database, signedInStaff, uniqueEmail } from "./helpers/accounts";
 import { resetTestDatabase } from "./helpers/postgres";
 import { startTestServer, stopTestServer } from "./helpers/test-server";
 
@@ -32,18 +32,6 @@ after(async () => {
   await closeDatabase();
   await stopTestServer();
 });
-
-/** A member of staff, fully signed in: password, then authenticator code. */
-const signedInStaff = async (roleKeys: string[]) => {
-  const staff = await aStaffMember({ roleKeys, withAuthenticator: true });
-  const client = createClient();
-  await client.post(`${V1}/auth/password`, { email: staff.email, password: staff.password });
-  const verified = await client.post(`${V1}/auth/two-factor/verify`, {
-    code: staff.authenticator!.next(),
-  });
-  assert.equal(verified.data.status, "signed_in");
-  return { ...staff, client };
-};
 
 const aCustomer = async () => {
   const client = createClient();

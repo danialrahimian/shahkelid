@@ -11,6 +11,7 @@
     "start": "tsx index.js",
     "dev": "tsx watch index.js",
     "test": "node --require ./test/setup-env.cjs --import tsx --test --test-concurrency=1 \"test/**/*.test.js\" \"test/**/*.test.ts\"",
+    "test:contract": "node --require ./test/setup-env.cjs --import tsx --test --test-concurrency=1 --require ./test/contract-env.cjs \"test/**/*.contract.test.ts\"",
     "test:watch": "node --require ./test/setup-env.cjs --import tsx --test --watch \"test/**/*.test.js\" \"test/**/*.test.ts\"",
     "seed:admin": "node scripts/seed-admin.js",
     "create-owner": "tsx scripts/create-owner.ts",

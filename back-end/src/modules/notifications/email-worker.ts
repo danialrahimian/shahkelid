@@ -34,17 +34,25 @@ const deliver = async (job: Job<Email>) => {
 };
 
 export const startEmailWorker = () => {
+  const connection = createConsumerConnection();
   const worker = new Worker<Email>(
     QUEUES.notifications,
     async (job) => {
       if (job.name === "email.send") await deliver(job);
     },
-    { connection: createConsumerConnection(), concurrency: 5 },
+    { connection, concurrency: 5 },
   );
 
   worker.on("failed", (job, error) =>
     logger.warn({ err: error, jobId: job?.id, attempts: job?.attemptsMade }, "Email job failed"),
   );
 
-  return worker;
+  return {
+    worker,
+    /** Finishes the emails in hand, then lets go of Redis (BullMQ leaves a given connection open). */
+    close: async () => {
+      await worker.close();
+      connection.disconnect();
+    },
+  };
 };

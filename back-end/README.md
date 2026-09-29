@@ -26,6 +26,7 @@ panels.
 | `npm run dev` | Runs it with Node's own watcher, restarting on change. |
 | `npm test` | Runs every suite against a real MongoDB. |
 | `npm run test:watch` | Reruns the suites on change. |
+| `npm run test:contract` | The PasarGuard driver and M3's acceptance, against the real panel in `.env`. Creates and deletes test users there. |
 | `npm run seed:admin` | Creates or promotes a privileged account (old MongoDB accounts). |
 | `npm run create-owner -- <email>` | Makes the first owner of the new PostgreSQL accounts. Refuses when one exists; `--another` adds one on purpose. |
 | `npm run seed:posts` | Fills the journal with ten sample articles. |
@@ -183,6 +184,28 @@ The new accounts live in PostgreSQL, with sessions in Redis (cookie `sk.sid`).
 - **Errors** carry a stable code (`{ "error": { "code": "ACCOUNT_LOCKED", ... } }`);
   the web app shows its own Persian sentence for each.
 - Requests that change something from a browser must come from `CLIENT_ORIGIN`.
+
+## Panels and subscriptions (/api/v1/staff, /s/:token)
+
+- **`PanelDriver`** (`src/modules/provisioning/driver.ts`) is what the system
+  needs from a VPN panel; `PasarGuardDriver` implements it (checked against
+  v5.4.1 by `npm run test:contract`). Panel credentials are stored encrypted
+  and never returned or logged.
+- **Making a subscription** is one transaction: a server is chosen (a panel
+  that sells the plan, taking customers, with room; highest priority, then
+  emptiest; the candidates are locked so two sales cannot take the last
+  place), the row, its history and an outbox event. The worker then puts it
+  on the panel. The panel username comes from the subscription id, so a
+  retry finds the user a lost attempt made. A panel that is down is retried
+  with backoff; a panel that refuses is not. Either way the subscription then
+  waits for staff (`retry`).
+- **Usage** is read from every active panel every 5 minutes (a BullMQ job
+  scheduler; no separate process). Status changes (on hold to active, active
+  to limited) go into the subscription's history.
+- **`/s/:token`** is the customer's link. It passes the VPN app's request
+  (User-Agent and the device headers the panel's device limit reads) to the
+  panel's own link and returns the body and the headers apps read, never the
+  panel's address. Revoking the link changes the token.
 
 ## Tests
 

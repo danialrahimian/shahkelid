@@ -6,15 +6,16 @@ import { createPublisher } from "../platform/queue/publisher";
 import { TOPIC_ROUTES } from "../platform/queue/routes";
 import { createProducerConnection } from "../platform/redis";
 import { startEmailWorker } from "../modules/notifications/email-worker";
+import { scheduleUsageSync, startProvisioningWorker } from "../modules/provisioning/worker";
 
 /**
  * The worker process: everything that happens off the request path.
  *
  *   npm run worker -w back-end
  *
- * It runs the outbox relay and delivers emails (M2). Other queue consumers
- * join it milestone by milestone (provisioning in M4), and so do recurring
- * jobs: BullMQ keeps their schedules in Redis and runs them on the workers,
+ * It runs the outbox relay, delivers emails (M2), puts subscriptions on their
+ * panels and copies usage back every few minutes (M3). Other consumers join
+ * it milestone by milestone, and so do recurring jobs: BullMQ keeps their schedules in Redis and runs them on the workers,
  * so they need no separate scheduler process.
  *
  * Several workers can run at once; the relay's row locks and the queue's job
@@ -35,6 +36,14 @@ const main = async () => {
   });
   const relay = startOutboxRelay({ db, publish: publisher.publish, logger });
   const emails = startEmailWorker();
+  const provisioning = startProvisioningWorker({ db });
+  // Redis may be down at start; the relay copes with that, and so does this.
+  const schedule = () =>
+    scheduleUsageSync().catch((error: unknown) => {
+      logger.warn({ err: error }, "Could not schedule the usage sync yet; trying again in 30 s");
+      setTimeout(schedule, 30_000).unref();
+    });
+  void schedule();
 
   logger.info({ env: config.env }, "Worker started");
 
@@ -47,6 +56,7 @@ const main = async () => {
     // Finish the pass in progress, then let go of everything.
     await relay.stop();
     await emails.close();
+    await provisioning.close();
     await publisher.close();
     connection.disconnect();
     await closeDb();

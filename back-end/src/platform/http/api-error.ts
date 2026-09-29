@@ -1,4 +1,4 @@
-import type { AuthErrorCode } from "@shah-kelid/contracts";
+import type { ApiErrorCode } from "@shah-kelid/contracts";
 
 /**
  * An error the v1 API answers with on purpose.
@@ -14,13 +14,13 @@ export type FieldIssue = { path: string; code: string };
 
 export class ApiError extends Error {
   readonly status: number;
-  readonly code: AuthErrorCode;
+  readonly code: ApiErrorCode;
   readonly fields: FieldIssue[] | undefined;
   readonly retryAfterSeconds: number | undefined;
 
   constructor(
     status: number,
-    code: AuthErrorCode,
+    code: ApiErrorCode,
     message: string,
     extra: { fields?: FieldIssue[]; retryAfterSeconds?: number } = {},
   ) {
