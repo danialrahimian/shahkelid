@@ -26,7 +26,8 @@ panels.
 | `npm run dev` | Runs it with Node's own watcher, restarting on change. |
 | `npm test` | Runs every suite against a real MongoDB. |
 | `npm run test:watch` | Reruns the suites on change. |
-| `npm run seed:admin` | Creates or promotes a privileged account. |
+| `npm run seed:admin` | Creates or promotes a privileged account (old MongoDB accounts). |
+| `npm run create-owner -- <email>` | Makes the first owner of the new PostgreSQL accounts. Refuses when one exists; `--another` adds one on purpose. |
 | `npm run seed:posts` | Fills the journal with ten sample articles. |
 | `npm run seed:plans` | Fills the catalogue with the three plans. |
 | `npm run migrate:periods` | Normalises legacy billing terms on products. |
@@ -160,6 +161,28 @@ unknown state.
   with random file names.
 - No credential lives in source. Everything is read in `src/config`, which
   refuses to start in production when a required value is missing.
+
+## Accounts and access (/api/v1)
+
+The new accounts live in PostgreSQL, with sessions in Redis (cookie `sk.sid`).
+
+- **Signing in**: a six-digit code by email, which also creates the account,
+  or a password once one is set. Codes are stored as HMACs in Redis for ten
+  minutes, allow five tries, and at most five are sent per address per hour.
+- **Passwords**: scrypt; an unknown address costs the same time as a known
+  one. Five wrong passwords close password sign-in for fifteen minutes; the
+  emailed code still works, so a stranger cannot lock the owner out.
+- **Two-step sign-in**: TOTP (RFC 6238), each code usable once; ten recovery
+  codes stored as hashes. Every staff role requires it: until it is set up the
+  session can do nothing but set it up.
+- **Roles**: permissions are defined in code (`src/modules/access/permissions.ts`)
+  and the built-in roles are synced on every migration. Nobody grants a role
+  with permissions they lack, only an owner touches the owner role, and the
+  last owner cannot be removed. Every change is written to the audit log in
+  the same transaction.
+- **Errors** carry a stable code (`{ "error": { "code": "ACCOUNT_LOCKED", ... } }`);
+  the web app shows its own Persian sentence for each.
+- Requests that change something from a browser must come from `CLIENT_ORIGIN`.
 
 ## Tests
 

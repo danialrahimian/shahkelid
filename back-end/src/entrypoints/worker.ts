@@ -5,14 +5,15 @@ import { startOutboxRelay } from "../platform/outbox/outbox";
 import { createPublisher } from "../platform/queue/publisher";
 import { TOPIC_ROUTES } from "../platform/queue/routes";
 import { createProducerConnection } from "../platform/redis";
+import { startEmailWorker } from "../modules/notifications/email-worker";
 
 /**
  * The worker process: everything that happens off the request path.
  *
  *   npm run worker -w back-end
  *
- * Today it runs the outbox relay. Queue consumers join it milestone by
- * milestone (provisioning in M4, notifications in M7), and so do recurring
+ * It runs the outbox relay and delivers emails (M2). Other queue consumers
+ * join it milestone by milestone (provisioning in M4), and so do recurring
  * jobs: BullMQ keeps their schedules in Redis and runs them on the workers,
  * so they need no separate scheduler process.
  *
@@ -33,6 +34,7 @@ const main = async () => {
     onError: (error) => logger.debug({ err: error }, "Queue connection error"),
   });
   const relay = startOutboxRelay({ db, publish: publisher.publish, logger });
+  const emails = startEmailWorker();
 
   logger.info({ env: config.env }, "Worker started");
 
@@ -44,6 +46,7 @@ const main = async () => {
 
     // Finish the pass in progress, then let go of everything.
     await relay.stop();
+    await emails.close();
     await publisher.close();
     connection.disconnect();
     await closeDb();

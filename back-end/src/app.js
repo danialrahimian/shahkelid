@@ -27,6 +27,7 @@ const {
   analyticsRouter,
 } = require("./components/analytics/analytics.routes");
 const { crmRouter } = require("./components/crm/crm.routes");
+const { createV1Router } = require("./http/v1");
 
 /**
  * Builds the express application.
@@ -81,6 +82,10 @@ const createApp = () => {
   app.use(
     express.urlencoded({ extended: true, limit: config.server.bodyLimit }),
   );
+
+  // The rebuilt API, on PostgreSQL. Mounted before the old session below, so
+  // its requests never touch MongoDB: it has its own session in Redis.
+  app.use("/api/v1", createV1Router());
 
   app.use(config.uploads.publicPath, express.static(config.uploads.directory));
 

@@ -92,6 +92,37 @@ const config = {
       required: true,
       fallback: isTest ? "redis://127.0.0.1:6379/1" : "redis://127.0.0.1:6379/0",
     }),
+    // Every key the app writes starts with this. Each test process gets its
+    // own, so counters such as rate limits never leak from one test file, or
+    // one run, into the next.
+    keyPrefix: isTest ? `test:${process.pid}:` : "",
+  },
+
+  // The new PostgreSQL accounts (src/modules/identity). The old session above
+  // serves the MongoDB routes until each is replaced.
+  account: {
+    sessionName: read("ACCOUNT_SESSION_NAME", { fallback: "sk.sid" }),
+    // Thirty days: this is a store people return to once a month to renew.
+    sessionMaxAgeMs: readNumber("ACCOUNT_SESSION_MAX_AGE_MS", 30 * 24 * 60 * 60 * 1000),
+    // An emailed sign-in code is good for ten minutes and five guesses.
+    codeTtlMs: readNumber("SIGN_IN_CODE_TTL_MS", 10 * 60 * 1000),
+    codeMaxAttempts: 5,
+    // How many codes one email address can be sent per hour.
+    codesPerEmailPerHour: readNumber("SIGN_IN_CODES_PER_HOUR", 5),
+    // Password sign-in locks after this many wrong passwords in a row.
+    lockoutThreshold: 5,
+    lockoutMs: readNumber("PASSWORD_LOCKOUT_MS", 15 * 60 * 1000),
+  },
+
+  security: {
+    // AES-256-GCM key for secrets kept in the database: two-factor secrets
+    // now, VPN panel credentials from M3. 32 bytes, base64. Required in
+    // production; the fallbacks are public and only good for development.
+    //   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+    encryptionKey: read("APP_ENCRYPTION_KEY", {
+      required: true,
+      fallback: Buffer.alloc(32, isTest ? "t" : "d").toString("base64"),
+    }),
   },
 
   session: {

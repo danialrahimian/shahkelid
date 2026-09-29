@@ -8,6 +8,9 @@ const logger = require("./libraries/logger");
 const { createApp } = require("./app");
 const { handleFatal } = require("./libraries/errors/error-handler");
 const { ensureUploadDirectory } = require("./libraries/storage/file-store");
+const { closeDb } = require("./platform/db/client");
+const { closeAppRedis } = require("./platform/redis");
+const { closeEmailQueue } = require("./modules/notifications/email");
 
 /**
  * Owns the process lifecycle.
@@ -54,6 +57,11 @@ const stop = async () => {
   if (mongoose.connection.readyState !== 0) {
     await mongoose.disconnect();
   }
+  // The /api/v1 connections. Each is opened only on first use, and closing
+  // one that was never opened does nothing.
+  await closeEmailQueue();
+  await closeAppRedis();
+  await closeDb();
   logger.info("Server stopped");
 };
 
