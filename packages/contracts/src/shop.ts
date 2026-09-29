@@ -20,8 +20,28 @@ export type PublicPlan = {
   priceToman: number;
 };
 
-export const PAYMENT_METHODS_ON_SALE = ["zarinpal", "card_transfer"] as const;
+export const PAYMENT_METHODS_ON_SALE = ["zarinpal", "card_transfer", "usdt_tron", "nowpayments"] as const;
 export type CheckoutMethod = (typeof PAYMENT_METHODS_ON_SALE)[number];
+
+/**
+ * The ways to pay right now. Crypto appears only when it is set up and the
+ * USDT rate is fresh, with the rate the quote will use.
+ */
+export type CheckoutMethodView =
+  | { method: "zarinpal" | "card_transfer" }
+  | { method: "usdt_tron" | "nowpayments"; rateTomanPerUsdt: number };
+
+/** What to send, for a direct USDT payment: this exact amount, to this address, before this time. */
+export type CryptoQuote = {
+  asset: "USDT";
+  network: "TRON";
+  address: string;
+  /** "12.000347": the tail makes the amount unique, and is how the payment is recognised. */
+  amount: string;
+  amountUnits: number;
+  rateTomanPerUsdt: number;
+  expiresAt: string;
+};
 
 export const createOrderInput = z.object({ planId: z.string().uuid("REQUIRED") });
 export type CreateOrderInput = z.infer<typeof createOrderInput>;
@@ -59,10 +79,12 @@ export type OrderView = {
   paidAt: string | null;
   /** The latest attempt to pay, if any. */
   payment: {
-    method: CheckoutMethod | "wallet" | "nowpayments" | "usdt_tron";
+    method: CheckoutMethod | "wallet";
     status: PaymentStatus;
     refId: string | null;
     failureReason: string | null;
+    /** For a direct USDT payment still waiting: what to send, and where. */
+    crypto: CryptoQuote | null;
   } | null;
   subscription: {
     id: string;
@@ -148,4 +170,53 @@ export type ReceiptReviewView = {
   submittedAt: string;
   reviewedAt: string | null;
   reviewerEmail: string | null;
+};
+
+// ------------------------------------------------------------------ crypto
+
+export const CRYPTO_TRANSFER_MATCHES = [
+  "matched",
+  "unmatched",
+  "late",
+  "wrong_amount",
+  "credited_to_wallet",
+  "refunded",
+  "ignored",
+] as const;
+export type CryptoTransferMatch = (typeof CRYPTO_TRANSFER_MATCHES)[number];
+
+/** A USDT transfer that arrived and belongs to no open invoice, for staff to decide on. */
+export type CryptoTransferView = {
+  id: string;
+  txHash: string;
+  /** The transaction on Tronscan (mainnet or Nile, whichever we watch). */
+  explorerUrl: string;
+  fromAddress: string;
+  amount: string;
+  blockTime: string;
+  match: CryptoTransferMatch;
+  /** A late transfer: the expired order whose exact amount it carries. */
+  suspected: { paymentId: string; orderId: string; orderNumber: number; customerEmail: string; amount: string } | null;
+  reviewNote: string;
+  reviewedAt: string | null;
+  reviewerEmail: string | null;
+};
+
+/**
+ * Staff deciding what a stray transfer was: the late payment of the order it
+ * matches (settle), money to give back (refunded: sent back by hand), or
+ * nothing to do with us (ignored).
+ */
+export const reviewCryptoTransferInput = z.object({
+  decision: z.enum(["settle", "refunded", "ignored"]),
+  note: z.string().trim().max(500, "TOO_LONG").default(""),
+});
+export type ReviewCryptoTransferInput = z.input<typeof reviewCryptoTransferInput>;
+
+/** USDT has six decimals: 12000347 units is "12.000347". */
+export const USDT_DECIMALS = 6;
+export const formatUsdtUnits = (units: number) => {
+  const whole = Math.floor(units / 10 ** USDT_DECIMALS);
+  const fraction = String(units % 10 ** USDT_DECIMALS).padStart(USDT_DECIMALS, "0");
+  return `${whole}.${fraction}`;
 };

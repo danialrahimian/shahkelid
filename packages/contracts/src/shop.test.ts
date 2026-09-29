@@ -56,3 +56,12 @@ describe("Reviewing a receipt", () => {
     assert.equal(reviewReceiptInput.safeParse({ decision: "approve" }).success, true);
   });
 });
+
+describe("USDT amounts", () => {
+  it("When units are shown, then all six decimals are kept, so the unique tail is never rounded away", async () => {
+    const { formatUsdtUnits } = await import("./shop.ts");
+    assert.equal(formatUsdtUnits(12_000_347), "12.000347");
+    assert.equal(formatUsdtUnits(1_500_000), "1.500000");
+    assert.equal(formatUsdtUnits(7), "0.000007");
+  });
+});

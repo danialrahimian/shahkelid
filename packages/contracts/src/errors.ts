@@ -46,6 +46,12 @@ export const API_ERROR_CODES = [
   "RECEIPT_INVALID",
   /** This payment was already reviewed. */
   "ALREADY_REVIEWED",
+
+  // crypto (M5)
+  /** No fresh USDT rate: crypto checkout waits until one arrives. */
+  "RATE_UNAVAILABLE",
+  /** That payment method is not set up (or not available right now). */
+  "METHOD_UNAVAILABLE",
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
