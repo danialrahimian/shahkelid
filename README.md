@@ -63,7 +63,11 @@ The customer's link is `{PUBLIC_API_URL}/s/{token}` (default `http://localhost:5
 - **Card to card**: add the cards to show buyers in `/staff/payments` (owners and admins). Receipts wait there for review; suspicious ones (a repeated image or tracking number, a different amount) are flagged. Receipt images are stored in `back-end/files/`, which is never committed and never served publicly.
 - **Alerts** to owners and admins go by email, and to Telegram when `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ADMIN_CHAT_IDS` are set. Telegram is filtered in Iran, so from a machine there only the emails arrive; on the server abroad both do.
 
-The **worker** does the rest: it puts paid subscriptions on the panel, asks Zarinpal about payments whose customers never came back, and lapses unpaid orders.
+- **Crypto** appears at checkout only once it is set up and the USDT rate (read from Nobitex every minute) is fresh:
+  - **USDT on TRON**: set `TRON_RECEIVE_ADDRESS` (the address only; the server never holds a wallet key). Each order is quoted an exact amount (for example 1.500347 USDT) and is paid when that amount arrives. Transfers that match no quote wait in `/staff/payments` for a decision. For the Nile testnet, also set `TRONGRID_URL=https://nile.trongrid.io` and `TRON_USDT_CONTRACT=TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf`.
+  - **NOWPayments**: set `NOWPAYMENTS_API_KEY` and `NOWPAYMENTS_IPN_SECRET` (and `NOWPAYMENTS_SANDBOX=true` for its sandbox).
+
+The **worker** does the rest: it puts paid subscriptions on the panel, asks Zarinpal about payments whose customers never came back, reads the USDT rate and new USDT transfers, and lapses unpaid orders and quotes.
 
 To check the panel driver and Zarinpal against the real things (Zarinpal's sandbox, and your test panel, where test users named `sk-contract-...` and `sk_...` are created and deleted), fill the `PASARGUARD_TEST_*` values in `back-end/.env` and run:
 
