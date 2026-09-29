@@ -29,6 +29,23 @@ export const API_ERROR_CODES = [
   "NO_SERVER_AVAILABLE",
   /** The subscription is not on the panel yet (still being made, or failed). */
   "NOT_PROVISIONED",
+
+  // buying and paying (M4)
+  /** The plan is not on sale (archived, inactive, or not public). */
+  "PLAN_NOT_ON_SALE",
+  /** The order can no longer be paid: already paid, expired or cancelled. */
+  "ORDER_NOT_PAYABLE",
+  /** The payment gateway did not answer. Nothing was charged; try again. */
+  "GATEWAY_UNREACHABLE",
+  /** The payment gateway refused to start the payment. */
+  "GATEWAY_REJECTED",
+  "TRACKING_NUMBER_INVALID",
+  "LAST4_INVALID",
+  "CARD_NUMBER_INVALID",
+  /** The receipt is missing, not an image, or too large. */
+  "RECEIPT_INVALID",
+  /** This payment was already reviewed. */
+  "ALREADY_REVIEWED",
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
