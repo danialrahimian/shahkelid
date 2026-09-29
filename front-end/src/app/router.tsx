@@ -196,6 +196,29 @@ export const createAppRouter = () =>
     },
 
     {
+      // The new staff area (M3 onwards), on the new accounts and /api/v1.
+      // It guards itself: a finished sign-in, as staff, or back to sign-in.
+      path: paths.staff.path,
+      element: lazyRoute(() => import("@/app/routes/staff/layout")),
+      children: [
+        { index: true, element: lazyRoute(() => import("@/app/routes/staff/index")) },
+        { path: paths.staffCustomers.path, element: lazyRoute(() => import("@/app/routes/staff/customers")) },
+        { path: paths.staffCustomer.path, element: lazyRoute(() => import("@/app/routes/staff/customer")) },
+        {
+          path: paths.staffSubscriptions.path,
+          element: lazyRoute(() => import("@/app/routes/staff/subscriptions")),
+        },
+        {
+          path: paths.staffSubscription.path,
+          element: lazyRoute(() => import("@/app/routes/staff/subscription")),
+        },
+        { path: paths.staffPlans.path, element: lazyRoute(() => import("@/app/routes/staff/plans")) },
+        { path: paths.staffServers.path, element: lazyRoute(() => import("@/app/routes/staff/servers")) },
+        { path: paths.staffPanels.path, element: lazyRoute(() => import("@/app/routes/staff/panels")) },
+      ],
+    },
+
+    {
       // The staff area has its own frame -- a sidebar instead of the public
       // navigation bar -- so it sits beside the public shell rather than
       // inside it. One guard covers every screen in it, mirroring the

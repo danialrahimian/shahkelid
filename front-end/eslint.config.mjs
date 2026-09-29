@@ -61,6 +61,7 @@ export default defineConfig([
               "posts",
               "pricing",
               "profile",
+              "staff",
             ].map((feature) => ({
               target: `./src/features/${feature}`,
               from: "./src/features",

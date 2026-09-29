@@ -23,6 +23,12 @@ export const api = createApi({
   tagTypes: [
     "Session",
     "AccountSession",
+    "StaffPanel",
+    "StaffLocation",
+    "StaffServer",
+    "StaffPlan",
+    "StaffCustomer",
+    "StaffSubscription",
     "Profile",
     "Product",
     "Cart",

@@ -1,4 +1,4 @@
-import { AUTH_ERROR_CODES } from "@shah-kelid/contracts";
+import { API_ERROR_CODES } from "@shah-kelid/contracts";
 import { describe, expect, it } from "vitest";
 
 import { errorText, fieldErrorText, waitText } from "@/lib/error-text";
@@ -20,7 +20,7 @@ const v1Error = (status: number, code: string, retryAfterSeconds?: number) => ({
 });
 
 describe("Every API error code has words", () => {
-  it.each(AUTH_ERROR_CODES)("When the API answers %s, then there is a sentence in Persian and English", (code) => {
+  it.each(API_ERROR_CODES)("When the API answers %s, then there is a sentence in Persian and English", (code) => {
     expect(fa.errors.codes[code]).toBeTruthy();
     expect(en.errors.codes[code]).toBeTruthy();
   });

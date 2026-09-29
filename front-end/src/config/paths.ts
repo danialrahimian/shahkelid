@@ -79,6 +79,40 @@ export const paths = {
     getHref: () => "/account/forgot-password",
   },
 
+  /** The new staff area, on /api/v1/staff. */
+  staff: {
+    path: "/staff",
+    getHref: () => "/staff",
+  },
+  staffCustomers: {
+    path: "/staff/customers",
+    getHref: () => "/staff/customers",
+  },
+  staffCustomer: {
+    path: "/staff/customers/:customerId",
+    getHref: (customerId: string) => `/staff/customers/${customerId}`,
+  },
+  staffSubscriptions: {
+    path: "/staff/subscriptions",
+    getHref: () => "/staff/subscriptions",
+  },
+  staffSubscription: {
+    path: "/staff/subscriptions/:subscriptionId",
+    getHref: (subscriptionId: string) => `/staff/subscriptions/${subscriptionId}`,
+  },
+  staffPlans: {
+    path: "/staff/plans",
+    getHref: () => "/staff/plans",
+  },
+  staffServers: {
+    path: "/staff/servers",
+    getHref: () => "/staff/servers",
+  },
+  staffPanels: {
+    path: "/staff/panels",
+    getHref: () => "/staff/panels",
+  },
+
   auth: {
     path: "/auth",
     // Where to return to once the visitor has signed in.

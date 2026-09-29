@@ -1,4 +1,4 @@
-import { AUTH_ERROR_CODES, type AuthErrorCode } from "@shah-kelid/contracts";
+import { isApiErrorCode, type ApiErrorCode } from "@shah-kelid/contracts";
 
 import { normalizeError } from "@/lib/api-client";
 import i18n from "@/lib/i18n";
@@ -12,8 +12,7 @@ import i18n from "@/lib/i18n";
  * to change without touching the server.
  */
 
-export const isErrorCode = (value: unknown): value is AuthErrorCode =>
-  typeof value === "string" && (AUTH_ERROR_CODES as readonly string[]).includes(value);
+export const isErrorCode = isApiErrorCode;
 
 /** "۱۴ دقیقه", "۴۰ ثانیه": how long to wait, in the reader's digits. */
 export const waitText = (seconds: number | undefined) => {
@@ -26,7 +25,7 @@ export const waitText = (seconds: number | undefined) => {
     : i18n.t("errors.wait.minutes", { amount: digits.format(Math.ceil(seconds / 60)) });
 };
 
-export const codeText = (code: AuthErrorCode, retryAfterSeconds?: number) =>
+export const codeText = (code: ApiErrorCode, retryAfterSeconds?: number) =>
   i18n.t(`errors.codes.${code}`, { wait: waitText(retryAfterSeconds) });
 
 /** The sentence to show for anything a request threw. */

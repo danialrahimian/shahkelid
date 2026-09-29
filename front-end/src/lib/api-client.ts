@@ -161,13 +161,14 @@ export const baseQueryWithErrorHandling: BaseQueryFn<
     // reaching for `window.location` unguarded threw inside the base query,
     // which turned every 401 into an unrecognisable error instead of a 401.
     //
-    // The account endpoints (/api/v1/auth) are left alone: a 401 there is
-    // part of signing in ("wrong code", "authenticator code still to come"),
-    // and the sign-in screen answers it itself.
+    // The new API's endpoints (account*, staff*) are left alone: a 401 there
+    // is part of signing in ("authenticator code still to come"), and those
+    // screens send the reader to the new sign-in page themselves.
     if (
       error.status === 401 &&
       !SILENT_401_ENDPOINTS.has(api.endpoint) &&
       !api.endpoint.startsWith("account") &&
+      !api.endpoint.startsWith("staff") &&
       typeof window !== "undefined"
     ) {
       const redirectTo = `${window.location.pathname}${window.location.search}`;
