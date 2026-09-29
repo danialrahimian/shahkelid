@@ -1,0 +1,12 @@
+{
+  "name": "schema-check",
+  "private": true,
+  "type": "module",
+  "description": "Loads docs/02-schema.sql into an in-process PostgreSQL (PGlite) and checks the guarantees the design claims.",
+  "scripts": {
+    "verify": "node verify.mjs ../02-schema.sql"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.8"
+  }
+}

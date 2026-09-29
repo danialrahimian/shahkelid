@@ -1,0 +1,14 @@
+# Every text file is stored and checked out with LF line endings, on every
+# machine. Production runs on Linux, and a shell script or a Dockerfile with
+# CRLF endings fails there in ways that are hard to see from Windows.
+* text=auto eol=lf
+
+# Binary files are left exactly as they are.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.woff binary
+*.woff2 binary

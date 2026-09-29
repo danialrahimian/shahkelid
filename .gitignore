@@ -1,0 +1,31 @@
+# Dependencies and build output
+node_modules/
+dist/
+dist-ssr/
+*.tsbuildinfo
+coverage/
+
+# Secrets. Only the .example files are committed; each one lists every
+# variable its app reads, with a safe placeholder.
+.env
+.env.*
+!.env.example
+
+# Customer data never belongs in the repository: uploaded receipts and
+# avatars, and the purge backups, which hold the personal data of the
+# accounts they removed.
+back-end/uploads/
+back-end/backups/
+back-end/files/
+backups/
+
+# Logs
+logs/
+*.log
+
+# Editors and operating systems
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db

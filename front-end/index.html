@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Matches the app's own background so the first paint is not a white
+         flash before the stylesheet applies. -->
+    <meta
+      name="theme-color"
+      media="(prefers-color-scheme: light)"
+      content="#ffffff"
+    />
+    <meta
+      name="theme-color"
+      media="(prefers-color-scheme: dark)"
+      content="#0a0a0a"
+    />
+
+    <title>Shah Kelid — the master key to an open internet</title>
+    <meta
+      name="description"
+      content="Real speeds, strong encryption, and 80+ servers in 50 countries."
+    />
+
+    <!--
+      The stylesheet is imported by src/main.tsx so Vite can bundle and hash it.
+      A hand-written <link> used to sit here pointing at /front-end/src/index.css,
+      an address that does not exist in either dev or build: it fell through to
+      the SPA fallback, so every page load fetched index.html and tried to parse
+      it as CSS.
+    -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

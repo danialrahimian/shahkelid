@@ -1,0 +1,50 @@
+{
+  "name": "shah-kelid-api",
+  "version": "1.0.0",
+  "description": "Backend for the Shah Kelid store",
+  "main": "index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "test": "node --test --test-concurrency=1 test/**/*.test.js",
+    "test:watch": "node --test --watch test/**/*.test.js",
+    "seed:admin": "node scripts/seed-admin.js",
+    "audit": "npm audit --omit=dev",
+    "seed:posts": "node scripts/seed-posts.js",
+    "migrate:periods": "node scripts/normalize-product-periods.js",
+    "seed:plans": "node scripts/seed-plans.js",
+    "prune:products": "node scripts/prune-invalid-products.js",
+    "prune:test-orders": "node scripts/prune-test-orders.js",
+    "purge:generated": "node scripts/purge-generated-data.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "connect-mongo": "^6.0.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "express-session": "^1.19.0",
+    "express-validator": "^7.3.2",
+    "helmet": "^8.3.0",
+    "mongoose": "^9.2.1",
+    "multer": "^2.2.0",
+    "nodemailer": "^10.0.9",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "zarinpal-checkout": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/express-session": "^1.18.2",
+    "mongodb-memory-server": "^11.2.0",
+    "nock": "^14.0.17",
+    "pino-pretty": "^13.1.3"
+  }
+}
