@@ -22,7 +22,9 @@
     "purge:generated": "node scripts/purge-generated-data.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/platform/db/migrate.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "worker": "tsx src/entrypoints/worker.ts",
+    "dev:worker": "tsx watch src/entrypoints/worker.ts"
   },
   "keywords": [],
   "author": "",
