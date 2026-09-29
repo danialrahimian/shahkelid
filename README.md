@@ -26,6 +26,24 @@ npm run dev:worker -w back-end   # the worker: outbox relay, queues
 npm run dev -w front-end         # the web app, on :5173
 ```
 
+## Signing in (the new accounts)
+
+The new database starts empty. Make the first owner once:
+
+```bash
+npm run create-owner -w back-end -- you@example.com
+```
+
+Then open http://localhost:5173/account/sign-in and sign in with that address. Without SMTP settings (`SMTP_USER` empty), emails are not sent: the **worker** writes them to its log, so the worker must be running to see the code. An owner is asked to set up an authenticator app (Google Authenticator, 2FAS, …) before anything else, and is shown ten recovery codes once.
+
+| Page | What it is |
+|---|---|
+| `/account/sign-in` | Email code (also creates the account), or password; then the authenticator code |
+| `/account/forgot-password` | A code by email, then a new password |
+| `/account` | The account: set a first password, turn on two-step sign-in, sign out |
+
+The old `/auth` page and `/dashboard` still use the old accounts (MongoDB) until the dashboard's sections move over, milestone by milestone.
+
 ## Checking it
 
 ```bash
