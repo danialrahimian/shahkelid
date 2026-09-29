@@ -65,9 +65,33 @@ const config = {
     bodyLimit: read("BODY_LIMIT", { fallback: "100kb" }),
   },
 
+  // MongoDB: where the existing modules still live. Each moves to PostgreSQL
+  // as it is rebuilt (roadmap M2-M9), and this goes at M10.
   database: {
     uri:
       read("DATABASE_URI") || `mongodb://${databaseHost}:27017/${databaseName}`,
+  },
+
+  // PostgreSQL: the platform's database from here on. The defaults match
+  // compose.yaml, so `npm run services:up` is all a new machine needs; tests
+  // get their own database so a test run never touches development data.
+  postgres: {
+    url: read("POSTGRES_URL", {
+      required: true,
+      fallback: isTest
+        ? "postgres://shah_kelid:dev-only-password@127.0.0.1:5432/shah_kelid_test"
+        : "postgres://shah_kelid:dev-only-password@127.0.0.1:5432/shah_kelid",
+    }),
+    poolSize: readNumber("POSTGRES_POOL_SIZE", 10),
+  },
+
+  // Redis: queues, and later sessions and rate limits. Tests use database 1,
+  // for the same reason as above.
+  redis: {
+    url: read("REDIS_URL", {
+      required: true,
+      fallback: isTest ? "redis://127.0.0.1:6379/1" : "redis://127.0.0.1:6379/0",
+    }),
   },
 
   session: {

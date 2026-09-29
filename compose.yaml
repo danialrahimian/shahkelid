@@ -1,0 +1,52 @@
+# Local services for development and tests: PostgreSQL and Redis.
+#
+#   npm run services:up      start both and wait until they are healthy
+#   npm run services:down    stop them, keeping the data
+#   npm run services:reset   stop them and delete the data
+#
+# Both listen on 127.0.0.1 only, so nothing else on the network can reach a
+# development database with a development password. Production has its own
+# compose file (milestone M10) with real secrets and no published ports.
+
+name: shah-kelid
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: shah_kelid
+      POSTGRES_PASSWORD: dev-only-password
+      POSTGRES_DB: shah_kelid
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # From PostgreSQL 18 the image keeps its data in a versioned folder
+      # under /var/lib/postgresql, so the parent is what gets mounted.
+      - postgres-data:/var/lib/postgresql
+      # Runs once, on first start: creates the separate test database.
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shah_kelid -d shah_kelid"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    # noeviction: BullMQ keeps its jobs in Redis, and a Redis that evicts
+    # keys under memory pressure would silently delete queued work.
+    # appendonly: queued jobs survive a restart of the container.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  postgres-data:
+  redis-data:

@@ -1,0 +1,31 @@
+{
+  // TypeScript is being introduced gradually: new code is written in .ts, the
+  // existing .js keeps working beside it and moves over module by module.
+  // `allowJs` lets TypeScript files import the JavaScript ones with inferred
+  // types; `checkJs` stays off so the old files are not held to new rules
+  // until they are actually rewritten.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+
+    "allowJs": true,
+    "checkJs": false,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+
+    // Run through tsx, never compiled to disk. The shared contracts package
+    // imports its own files with a .ts extension, which this allows.
+    "noEmit": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts", "drizzle.config.ts"]
+}
