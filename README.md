@@ -55,7 +55,17 @@ The old `/auth` page and `/dashboard` still use the old accounts (MongoDB) until
 
 The customer's link is `{PUBLIC_API_URL}/s/{token}` (default `http://localhost:5000`). To try it from a phone on the same network, set `PUBLIC_API_URL` in `back-end/.env` to this computer's address, for example `http://192.168.1.10:5000`.
 
-To check the panel driver against a real panel (it creates and deletes test users named `sk-contract-...` and `sk_...`), fill the `PASARGUARD_TEST_*` values in `back-end/.env` and run:
+## Buying
+
+`/pricing` lists the plans on sale; buying one is `/buy/{planId}`: the buyer signs in there with an emailed code if needed, chooses online payment (Zarinpal) or card to card, and pays. `/orders/{id}` then shows the link and QR code as soon as the service is ready. The old cart and checkout pages are gone; their addresses lead to `/pricing`.
+
+- **Zarinpal** runs on its sandbox until `ZARINPAL_SANDBOX=false` and `ZARINPAL_MERCHANT_ID` are set in `back-end/.env`. In the sandbox the payment page has a "پرداخت" button that pays without a card.
+- **Card to card**: add the cards to show buyers in `/staff/payments` (owners and admins). Receipts wait there for review; suspicious ones (a repeated image or tracking number, a different amount) are flagged. Receipt images are stored in `back-end/files/`, which is never committed and never served publicly.
+- **Alerts** to owners and admins go by email, and to Telegram when `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ADMIN_CHAT_IDS` are set. Telegram is filtered in Iran, so from a machine there only the emails arrive; on the server abroad both do.
+
+The **worker** does the rest: it puts paid subscriptions on the panel, asks Zarinpal about payments whose customers never came back, and lapses unpaid orders.
+
+To check the panel driver and Zarinpal against the real things (Zarinpal's sandbox, and your test panel, where test users named `sk-contract-...` and `sk_...` are created and deleted), fill the `PASARGUARD_TEST_*` values in `back-end/.env` and run:
 
 ```bash
 npm run test:contract -w back-end
