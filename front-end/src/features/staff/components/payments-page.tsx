@@ -25,6 +25,7 @@ import { formatDateTime, formatNumber, formatToman } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 import { showSaveError } from "../form-errors";
+import { CryptoTransfersSection } from "./crypto-transfers-section";
 import { CheckField, FormActions, NumberField, TextField } from "./fields";
 import { Button, ConfirmButton, FormDialog, PageHeader, Placeholder, Section, TableFrame } from "./staff-ui";
 
@@ -345,6 +346,8 @@ export const PaymentsPage = ({ canReview, canManageCards }: { canReview: boolean
           )}
         </section>
       ) : null}
+
+      {canReview ? <CryptoTransfersSection /> : null}
 
       {canManageCards ? <CardsSection /> : null}
     </div>

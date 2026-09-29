@@ -1,4 +1,4 @@
-import type { OrderView, PaymentCardView, PublicPlan } from "@shah-kelid/contracts";
+import type { CheckoutMethodView, OrderView, PaymentCardView, PublicPlan } from "@shah-kelid/contracts";
 
 import { api } from "@/lib/api";
 
@@ -18,6 +18,9 @@ export const shopApi = api.injectEndpoints({
     }),
     shopCards: builder.query<PaymentCardView[], void>({
       query: () => `${SHOP}/cards`,
+    }),
+    shopPaymentMethods: builder.query<CheckoutMethodView[], void>({
+      query: () => `${SHOP}/payment-methods`,
     }),
     shopCreateOrder: builder.mutation<OrderView, { planId: string; idempotencyKey: string }>({
       query: ({ planId, idempotencyKey }) => ({
@@ -43,11 +46,21 @@ export const shopApi = api.injectEndpoints({
       query: ({ orderId, form }) => ({ url: `${SHOP}/orders/${orderId}/pay/card`, method: "POST", body: form }),
       invalidatesTags: (_result, _error, { orderId }) => ["ShopOrder", { type: "ShopOrder", id: orderId }],
     }),
+    shopPayUsdt: builder.mutation<OrderView, string>({
+      query: (orderId) => ({ url: `${SHOP}/orders/${orderId}/pay/usdt`, method: "POST" }),
+      invalidatesTags: (_result, _error, orderId) => ["ShopOrder", { type: "ShopOrder", id: orderId }],
+    }),
+    shopPayNowPayments: builder.mutation<{ payUrl: string }, string>({
+      query: (orderId) => ({ url: `${SHOP}/orders/${orderId}/pay/nowpayments`, method: "POST" }),
+    }),
   }),
 });
 
 export const {
   useShopPlansQuery,
+  useShopPaymentMethodsQuery,
+  useShopPayUsdtMutation,
+  useShopPayNowPaymentsMutation,
   useShopCardsQuery,
   useShopCreateOrderMutation,
   useShopOrdersQuery,

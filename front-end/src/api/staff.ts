@@ -1,5 +1,7 @@
 import type {
   CreateSubscriptionInput,
+  CryptoTransferView,
+  ReviewCryptoTransferInput,
   OrderView,
   PaymentCardInput,
   PaymentCardView,
@@ -159,6 +161,14 @@ export const staffApi = api.injectEndpoints({
       query: ({ paymentId, body }) => ({ url: `${STAFF}/receipts/${paymentId}/review`, method: "POST", body }),
       invalidatesTags: ["StaffReceipt", "StaffOrder", "StaffCustomer", "StaffSubscription"],
     }),
+    staffCryptoTransfers: builder.query<CryptoTransferView[], "waiting" | "decided">({
+      query: (which) => ({ url: `${STAFF}/crypto-transfers`, params: { which } }),
+      providesTags: ["StaffReceipt"],
+    }),
+    staffReviewCryptoTransfer: builder.mutation<CryptoTransferView, { id: string; body: ReviewCryptoTransferInput }>({
+      query: ({ id, body }) => ({ url: `${STAFF}/crypto-transfers/${id}/review`, method: "POST", body }),
+      invalidatesTags: ["StaffReceipt", "StaffOrder", "StaffCustomer", "StaffSubscription"],
+    }),
     staffPaymentCards: builder.query<StaffPaymentCard[], void>({
       query: () => `${STAFF}/payment-cards`,
       providesTags: ["StaffPaymentCard"],
@@ -207,6 +217,8 @@ export const {
   useStaffCreateSubscriptionMutation,
   useStaffSubscriptionActionMutation,
   useStaffReceiptsQuery,
+  useStaffCryptoTransfersQuery,
+  useStaffReviewCryptoTransferMutation,
   useStaffReviewReceiptMutation,
   useStaffPaymentCardsQuery,
   useStaffSavePaymentCardMutation,

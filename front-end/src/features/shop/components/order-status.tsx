@@ -13,6 +13,7 @@ import { formatNumber, formatToman } from "@/lib/format";
 
 import { pollEvery, stageOf } from "../order-stage";
 import { CardTransferForm } from "./card-transfer-form";
+import { UsdtPayment } from "./usdt-payment";
 
 /**
  * Where the buyer lands after paying, and where the link appears.
@@ -22,9 +23,11 @@ import { CardTransferForm } from "./card-transfer-form";
  * paying, without a reload. A receipt under review is checked less often.
  */
 
-const reasonKey = (reason: string | null) => {
+const reasonKey = (reason: string | null, status: string | undefined) => {
+  if (status === "expired") return "expired" as const;
   if (reason === "cancelled") return "cancelled" as const;
   if (reason === "amount_mismatch") return "amount_mismatch" as const;
+  if (reason === "partially_paid") return "partially_paid" as const;
   if (reason?.startsWith("not_paid")) return "not_paid" as const;
   return "other" as const;
 };
@@ -115,6 +118,8 @@ export const OrderStatus = ({ orderId }: { orderId: string }) => {
           <Headline icon={Loader2} tone="[&_svg]:animate-spin">
             {slow ? t("shop.order.preparingSlow") : t("shop.order.preparing")}
           </Headline>
+        ) : stage === "awaiting_transfer" && order.payment?.crypto ? (
+          <UsdtPayment quote={order.payment.crypto} />
         ) : stage === "checking" ? (
           <Headline icon={Loader2} tone="[&_svg]:animate-spin">
             {t("shop.order.checking")}
@@ -131,7 +136,7 @@ export const OrderStatus = ({ orderId }: { orderId: string }) => {
             <p className="text-sm" dir="auto">
               {order.payment?.method === "card_transfer" && order.payment.failureReason
                 ? order.payment.failureReason
-                : t(`shop.order.reasons.${reasonKey(order.payment?.failureReason ?? null)}`)}
+                : t(`shop.order.reasons.${reasonKey(order.payment?.failureReason ?? null, order.payment?.status)}`)}
             </p>
             {order.status === "pending" ? <PayAgain order={order} /> : null}
           </>

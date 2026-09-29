@@ -5,7 +5,15 @@ import type { OrderView } from "@shah-kelid/contracts";
  * its page should look again.
  */
 
-export type Stage = "waiting_payment" | "checking" | "review" | "preparing" | "ready" | "failed" | "expired";
+export type Stage =
+  | "waiting_payment"
+  | "awaiting_transfer"
+  | "checking"
+  | "review"
+  | "preparing"
+  | "ready"
+  | "failed"
+  | "expired";
 
 export const stageOf = (order: OrderView): Stage => {
   if (order.subscription?.link) return "ready";
@@ -14,6 +22,7 @@ export const stageOf = (order: OrderView): Stage => {
   const payment = order.payment;
   if (!payment) return "waiting_payment";
   if (payment.status === "pending_review") return "review";
+  if (payment.status === "pending" && payment.crypto) return "awaiting_transfer";
   if (payment.status === "pending" || payment.status === "initiated") return "checking";
   if (payment.status === "failed" || payment.status === "expired") return "failed";
   return "waiting_payment";
@@ -21,5 +30,11 @@ export const stageOf = (order: OrderView): Stage => {
 
 /** How often to look again, by stage; 0 when there is nothing to wait for. */
 export const pollEvery = (stage: Stage) =>
-  stage === "checking" || stage === "preparing" ? 2000 : stage === "review" ? 15000 : 0;
+  stage === "checking" || stage === "preparing"
+    ? 2000
+    : stage === "awaiting_transfer"
+      ? 5000
+      : stage === "review"
+        ? 15000
+        : 0;
 

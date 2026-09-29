@@ -29,6 +29,7 @@ const payment = (status: NonNullable<OrderView["payment"]>["status"]) => ({
   status,
   refId: null,
   failureReason: null,
+  crypto: null,
 });
 
 describe("The order page", () => {
@@ -64,6 +65,26 @@ describe("The order page", () => {
   it("When the payment failed, then it says so and stops asking", () => {
     expect(stageOf(anOrder({ payment: payment("failed") }))).toBe("failed");
     expect(pollEvery("failed")).toBe(0);
+  });
+
+  it("When a USDT quote is waiting, then the page shows what to send and keeps watching", () => {
+    const order = anOrder({
+      payment: {
+        ...payment("pending"),
+        method: "usdt_tron",
+        crypto: {
+          asset: "USDT",
+          network: "TRON",
+          address: "TGBCcHD7f7eeVpzpy6rE9FcgAgg4CWugVT",
+          amount: "1.500347",
+          amountUnits: 1500347,
+          rateTomanPerUsdt: 100000,
+          expiresAt: "2026-09-30T01:00:00Z",
+        },
+      },
+    });
+    expect(stageOf(order)).toBe("awaiting_transfer");
+    expect(pollEvery("awaiting_transfer")).toBe(5000);
   });
 
   it("When the order lapsed unpaid, then it is expired", () => {
