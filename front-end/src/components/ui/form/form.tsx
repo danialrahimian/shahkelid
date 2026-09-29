@@ -12,6 +12,7 @@ import {
 } from "react-hook-form";
 import type { ZodType } from "zod";
 
+import { fieldErrorText } from "@/lib/error-text";
 import { cn } from "@/lib/utils";
 
 /**
@@ -108,7 +109,9 @@ export const FieldError = ({ name }: { name: string }) => {
     formState: { errors },
   } = useFormContext();
 
-  const message = messageAt(errors as Record<string, unknown>, name);
+  const raw = messageAt(errors as Record<string, unknown>, name);
+  // Shared schemas use error codes as messages; this shows their sentence.
+  const message = raw === undefined ? undefined : fieldErrorText(raw);
 
   return (
     <AnimatePresence mode="wait" initial={false}>

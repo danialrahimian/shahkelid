@@ -22,6 +22,7 @@ export const api = createApi({
   // without importing it.
   tagTypes: [
     "Session",
+    "AccountSession",
     "Profile",
     "Product",
     "Cart",

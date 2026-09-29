@@ -49,6 +49,7 @@ export default defineConfig([
           zones: [
             // No feature may import another feature. Compose them in `app`.
             ...[
+              "account",
               "admin",
               "auth",
               "cart",

@@ -61,6 +61,24 @@ export const paths = {
     getHref: () => "/invoices",
   },
 
+  /** The new account screens, on /api/v1. */
+  account: {
+    path: "/account",
+    getHref: () => "/account",
+  },
+
+  accountSignIn: {
+    path: "/account/sign-in",
+    // Where to go once signed in. Only paths on this site are honoured.
+    getHref: (redirectTo?: string | null | undefined) =>
+      `/account/sign-in${redirectTo ? `?redirectTo=${encodeURIComponent(redirectTo)}` : ""}`,
+  },
+
+  accountForgotPassword: {
+    path: "/account/forgot-password",
+    getHref: () => "/account/forgot-password",
+  },
+
   auth: {
     path: "/auth",
     // Where to return to once the visitor has signed in.

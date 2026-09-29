@@ -27,6 +27,8 @@ export type ApiError = {
   /** The first message, which is what most callers want to show. */
   message: string;
   code?: string;
+  /** From /api/v1: how long until trying again can work (a lock, a limit). */
+  retryAfterSeconds?: number;
 };
 
 const NETWORK_ERROR_MESSAGE = "Could not reach the server. Check your connection.";
@@ -76,6 +78,31 @@ export const normalizeError = (error: unknown): ApiError => {
   // Some proxies answer with plain text rather than the API's JSON envelope.
   if (typeof body === "string" && body.trim() !== "") {
     return { status, errors: [{ msg: body }], message: body };
+  }
+
+  // /api/v1 answers { error: { code, message, fields?, retryAfterSeconds? } }.
+  // The code is what a screen translates; the message is for developers.
+  const v1 =
+    body && typeof body === "object" && "error" in body
+      ? (body as { error?: unknown }).error
+      : undefined;
+  if (v1 && typeof v1 === "object" && typeof (v1 as { code?: unknown }).code === "string") {
+    const { code, message, fields, retryAfterSeconds } = v1 as {
+      code: string;
+      message?: unknown;
+      fields?: { path?: unknown; code?: unknown }[];
+      retryAfterSeconds?: unknown;
+    };
+    const text = typeof message === "string" ? message : code;
+    return {
+      status,
+      errors: Array.isArray(fields)
+        ? fields.map((field) => ({ msg: String(field.code), path: String(field.path) }))
+        : [{ msg: text }],
+      message: text,
+      code,
+      retryAfterSeconds: typeof retryAfterSeconds === "number" ? retryAfterSeconds : undefined,
+    };
   }
 
   const envelope =
@@ -133,9 +160,14 @@ export const baseQueryWithErrorHandling: BaseQueryFn<
     // Guarded on `window` because this module also runs outside a browser:
     // reaching for `window.location` unguarded threw inside the base query,
     // which turned every 401 into an unrecognisable error instead of a 401.
+    //
+    // The account endpoints (/api/v1/auth) are left alone: a 401 there is
+    // part of signing in ("wrong code", "authenticator code still to come"),
+    // and the sign-in screen answers it itself.
     if (
       error.status === 401 &&
       !SILENT_401_ENDPOINTS.has(api.endpoint) &&
+      !api.endpoint.startsWith("account") &&
       typeof window !== "undefined"
     ) {
       const redirectTo = `${window.location.pathname}${window.location.search}`;

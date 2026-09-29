@@ -83,6 +83,20 @@ export const createAppRouter = () =>
           path: paths.post.path,
           element: lazyRoute(() => import("@/app/routes/post")),
         },
+        // The new account screens, on /api/v1. They guard themselves: each
+        // follows the session the server reports, step by step.
+        {
+          path: paths.account.path,
+          element: lazyRoute(() => import("@/app/routes/account/account")),
+        },
+        {
+          path: paths.accountSignIn.path,
+          element: lazyRoute(() => import("@/app/routes/account/sign-in")),
+        },
+        {
+          path: paths.accountForgotPassword.path,
+          element: lazyRoute(() => import("@/app/routes/account/forgot-password")),
+        },
         {
           path: paths.auth.path,
           element: lazyRoute(() => import("@/app/routes/auth/auth")),
