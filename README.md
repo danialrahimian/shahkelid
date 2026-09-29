@@ -44,6 +44,23 @@ Then open http://localhost:5173/account/sign-in and sign in with that address. W
 
 The old `/auth` page and `/dashboard` still use the old accounts (MongoDB) until the dashboard's sections move over, milestone by milestone.
 
+## The staff area and the VPN panel
+
+`/staff` is the new staff area (sign in on `/account/sign-in` first). In order:
+
+1. **Panels**: add the PasarGuard panel (its address and a panel account or API key). It is checked before it is saved.
+2. **Servers and locations**: add a location, then a server on that panel, choosing the panel group that gives access to it.
+3. **Plans**: volume, days, devices, price, and the panels it is sold on. Time starts at the customer's first connection (or after 30 days regardless).
+4. **Customers**: open a customer and make a subscription. The **worker** must be running: it puts the subscription on the panel and copies usage back every 5 minutes.
+
+The customer's link is `{PUBLIC_API_URL}/s/{token}` (default `http://localhost:5000`). To try it from a phone on the same network, set `PUBLIC_API_URL` in `back-end/.env` to this computer's address, for example `http://192.168.1.10:5000`.
+
+To check the panel driver against a real panel (it creates and deletes test users named `sk-contract-...` and `sk_...`), fill the `PASARGUARD_TEST_*` values in `back-end/.env` and run:
+
+```bash
+npm run test:contract -w back-end
+```
+
 ## Checking it
 
 ```bash
