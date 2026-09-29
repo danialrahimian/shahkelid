@@ -1,5 +1,6 @@
-import { LogIn } from "lucide-react";
-import { AnimatePresence, motion, type Variants } from "motion/react";
+import { LogIn, UserRound } from "lucide-react";
+import { motion, type Variants } from "motion/react";
+import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate } from "react-router";
 
 import { MorphingText } from "@/components/animate-ui/primitives/texts/morphing";
@@ -10,7 +11,7 @@ import {
 } from "@/components/layouts/nav-links";
 import { MobileNav } from "@/components/layouts/mobile-nav";
 import { ModeToggle } from "@/components/layouts/mode-toggle";
-import { UserMenu } from "@/components/layouts/user-menu";
+import { useAccountSessionQuery } from "@/api/account";
 import { Button } from "@/components/ui/button";
 import { paths } from "@/config/paths";
 import { useMediaQuery } from "@/hooks/use-media-query";
@@ -28,31 +29,8 @@ const linkVariants: Variants = {
   show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" } },
 };
 
-/**
- * How many items sit in the cart, read from the session.
- *
- * The session already carries the cart, so the badge costs no extra request.
- * It pops when the number changes, which is the only feedback that an "add to
- * cart" further down the page actually landed.
- */
-const CartCount = ({ count }: { count: number }) => (
-  <AnimatePresence>
-    {count > 0 ? (
-      <motion.span
-        key={count}
-        initial={{ scale: 0.4, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.4, opacity: 0 }}
-        transition={{ type: "spring", stiffness: 520, damping: 18 }}
-        className="absolute -top-2 -right-3 grid min-w-4.5 place-items-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground tabular-nums"
-      >
-        {count > 99 ? "99+" : count}
-      </motion.span>
-    ) : null}
-  </AnimatePresence>
-);
-
 export const Navbar = () => {
+  const { t } = useTranslation();
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -62,12 +40,11 @@ export const Navbar = () => {
     canSeeLink(link, isLoggedIn, user?.role),
   );
 
-  const cartCount =
-    user?.cart?.items?.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
-
-  const authControl = isLoggedIn ? (
-    <UserMenu />
-  ) : (
+  // Signing in and the account are the new accounts (/account); the old
+  // session above only still decides whether the old dashboard link shows.
+  const { data: session } = useAccountSessionQuery();
+  const signedIn = session?.status === "signed_in";
+  const authControl = (
     <motion.div
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
@@ -75,10 +52,11 @@ export const Navbar = () => {
     >
       <Button
         className="cursor-pointer gap-1.5"
-        onClick={() => navigate(paths.auth.getHref())}
+        variant={signedIn ? "outline" : "default"}
+        onClick={() => navigate(signedIn ? paths.account.getHref() : paths.accountSignIn.getHref())}
       >
-        <LogIn className="size-4" />
-        login / sign up
+        {signedIn ? <UserRound className="size-4" /> : <LogIn className="size-4" />}
+        {signedIn ? t("shop.nav.account") : t("shop.nav.signIn")}
       </Button>
     </motion.div>
   );
@@ -121,11 +99,8 @@ export const Navbar = () => {
                       }`}
                       to={link.to}
                     >
-                      <span className="relative mr-1">
+                      <span className="relative me-1">
                         <Icon className="size-4" />
-                        {link.path === paths.cart.path ? (
-                          <CartCount count={cartCount} />
-                        ) : null}
                       </span>
                       {link.label}
                     </Link>

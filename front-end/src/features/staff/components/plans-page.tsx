@@ -19,7 +19,7 @@ import {
 import { FieldError, Form } from "@/components/ui/form/form";
 import { errorText } from "@/lib/error-text";
 
-import { formatGb, formatNumber, formatToman } from "../format";
+import { formatGb, formatNumber, formatToman } from "@/lib/format";
 import { showSaveError } from "../form-errors";
 import { parseGroups } from "../group-list";
 import { CheckField, FormActions, NumberField, SelectField, TextField } from "./fields";
@@ -259,11 +259,11 @@ export const PlansPage = () => {
                   ) : null}
                 </td>
                 <td className="tabular-nums">{formatGb(plan.dataLimitBytes)}</td>
-                <td className="tabular-nums">{t("staff.units.days", { amount: formatNumber(plan.durationDays) })}</td>
+                <td className="tabular-nums">{t("units.days", { amount: formatNumber(plan.durationDays) })}</td>
                 <td className="tabular-nums">
                   {plan.deviceLimit === null
-                    ? t("staff.common.unlimited")
-                    : t("staff.units.devices", { amount: formatNumber(plan.deviceLimit) })}
+                    ? t("units.unlimited")
+                    : t("units.devices", { amount: formatNumber(plan.deviceLimit) })}
                 </td>
                 <td className="tabular-nums">{formatToman(plan.priceToman)}</td>
                 <td>{plan.panels.map((entry) => entry.panelName).join("، ")}</td>

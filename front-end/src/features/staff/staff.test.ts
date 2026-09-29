@@ -36,6 +36,13 @@ describe("Where /staff leads", () => {
     expect(firstStaffPage(staff(["customers:read", "servers:manage"]))).toBe("/staff/customers");
   });
 
+  it("When staff may review receipts, then receipts come after customers, and alone they land on receipts", () => {
+    expect(firstStaffPage(staff(["orders:read", "payments:review", "analytics:read", "customers:read"]))).toBe(
+      "/staff/customers",
+    );
+    expect(firstStaffPage(staff(["payments:review"]))).toBe("/staff/payments");
+  });
+
   it("When someone may only manage servers, then they land on servers", () => {
     expect(firstStaffPage(staff(["servers:manage"]))).toBe("/staff/servers");
   });

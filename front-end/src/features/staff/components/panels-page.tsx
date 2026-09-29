@@ -13,7 +13,7 @@ import {
 import { Form } from "@/components/ui/form/form";
 import { errorText } from "@/lib/error-text";
 
-import { formatDateTime } from "../format";
+import { formatDateTime } from "@/lib/format";
 import { showSaveError } from "../form-errors";
 import { CheckField, FormActions, SelectField, TextField } from "./fields";
 import { Button, FormDialog, PageHeader, Placeholder, TableFrame } from "./staff-ui";

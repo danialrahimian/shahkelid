@@ -24,7 +24,7 @@ import {
 import { Form } from "@/components/ui/form/form";
 import { errorText } from "@/lib/error-text";
 
-import { formatNumber } from "../format";
+import { formatNumber } from "@/lib/format";
 import { showSaveError } from "../form-errors";
 import { CheckField, FormActions, NumberField, SelectField, TextField } from "./fields";
 import {

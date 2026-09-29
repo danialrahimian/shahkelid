@@ -4,7 +4,7 @@ import { Link } from "react-router";
 
 import { paths } from "@/config/paths";
 
-import { formatDate } from "../format";
+import { formatDate } from "@/lib/format";
 import { StatusBadge, TableFrame, UsageMeter } from "./staff-ui";
 
 /** Subscriptions as rows: shared by the subscriptions list and a customer's page. */

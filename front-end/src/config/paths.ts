@@ -79,6 +79,18 @@ export const paths = {
     getHref: () => "/account/forgot-password",
   },
 
+  /** Buying a plan: sign in if needed, choose how to pay, pay. */
+  buy: {
+    path: "/buy/:planId",
+    getHref: (planId: string) => `/buy/${planId}`,
+  },
+
+  /** An order's page: where Zarinpal brings the buyer back, and where the link appears. */
+  order: {
+    path: "/orders/:orderId",
+    getHref: (orderId: string) => `/orders/${orderId}`,
+  },
+
   /** The new staff area, on /api/v1/staff. */
   staff: {
     path: "/staff",
@@ -99,6 +111,10 @@ export const paths = {
   staffSubscription: {
     path: "/staff/subscriptions/:subscriptionId",
     getHref: (subscriptionId: string) => `/staff/subscriptions/${subscriptionId}`,
+  },
+  staffPayments: {
+    path: "/staff/payments",
+    getHref: () => "/staff/payments",
   },
   staffPlans: {
     path: "/staff/plans",

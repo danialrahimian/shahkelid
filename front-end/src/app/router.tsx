@@ -83,6 +83,14 @@ export const createAppRouter = () =>
           path: paths.post.path,
           element: lazyRoute(() => import("@/app/routes/post")),
         },
+        {
+          path: paths.buy.path,
+          element: lazyRoute(() => import("@/app/routes/buy")),
+        },
+        {
+          path: paths.order.path,
+          element: lazyRoute(() => import("@/app/routes/order")),
+        },
         // The new account screens, on /api/v1. They guard themselves: each
         // follows the session the server reports, step by step.
         {
@@ -114,28 +122,19 @@ export const createAppRouter = () =>
         // check to finish, so a reload on a private page does not bounce a
         // signed-in visitor to the sign-in screen.
         {
+          // The old cart and checkout: buying is one plan at a time now.
           path: paths.cart.path,
-          element: (
-            <ProtectedRoute fallback={<RouteFallback />}>
-              {lazyRoute(() => import("@/app/routes/cart"))}
-            </ProtectedRoute>
-          ),
+          element: <Navigate to={paths.pricing.getHref()} replace />,
         },
         {
+          // The old cart and checkout: buying is one plan at a time now.
           path: paths.checkout.path,
-          element: (
-            <ProtectedRoute fallback={<RouteFallback />}>
-              {lazyRoute(() => import("@/app/routes/checkout"))}
-            </ProtectedRoute>
-          ),
+          element: <Navigate to={paths.pricing.getHref()} replace />,
         },
         {
+          // The old cart and checkout: buying is one plan at a time now.
           path: paths.verifyPayment.path,
-          element: (
-            <ProtectedRoute fallback={<RouteFallback />}>
-              {lazyRoute(() => import("@/app/routes/verify-payment"))}
-            </ProtectedRoute>
-          ),
+          element: <Navigate to={paths.pricing.getHref()} replace />,
         },
         {
           path: paths.profile.path,
@@ -212,6 +211,7 @@ export const createAppRouter = () =>
           path: paths.staffSubscription.path,
           element: lazyRoute(() => import("@/app/routes/staff/subscription")),
         },
+        { path: paths.staffPayments.path, element: lazyRoute(() => import("@/app/routes/staff/payments")) },
         { path: paths.staffPlans.path, element: lazyRoute(() => import("@/app/routes/staff/plans")) },
         { path: paths.staffServers.path, element: lazyRoute(() => import("@/app/routes/staff/servers")) },
         { path: paths.staffPanels.path, element: lazyRoute(() => import("@/app/routes/staff/panels")) },

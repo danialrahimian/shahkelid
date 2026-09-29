@@ -17,14 +17,14 @@ export const formatNumber = (value: number) => new Intl.NumberFormat(locale()).f
 /** 53687091200 → "۵۰ گیگ". Binary gigabytes, as the panel counts. */
 export const formatGb = (bytes: number | null) =>
   bytes === null
-    ? i18n.t("staff.common.unlimited")
-    : i18n.t("staff.units.gb", { amount: formatNumber(bytesToGigabytes(bytes)) });
+    ? i18n.t("units.unlimited")
+    : i18n.t("units.gb", { amount: formatNumber(bytesToGigabytes(bytes)) });
 
 export const formatUsage = (used: number, limit: number | null) =>
-  i18n.t("staff.units.usage", { used: formatGb(used), total: formatGb(limit) });
+  i18n.t("units.usage", { used: formatGb(used), total: formatGb(limit) });
 
 export const formatToman = (amount: number) =>
-  i18n.t("staff.units.toman", { amount: formatNumber(amount) });
+  i18n.t("units.toman", { amount: formatNumber(amount) });
 
 /** "۸ مهر ۱۴۰۵" */
 export const formatDate = (iso: string | null) =>

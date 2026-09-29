@@ -1,11 +1,12 @@
 import { motion, useScroll, useSpring } from "motion/react";
+import { useTranslation } from "react-i18next";
 
 import { AppErrorBoundary } from "@/components/errors/error-fallback";
 import { ClosingCta } from "@/features/marketing/components/closing-cta";
 import { FaqSection } from "@/features/marketing/components/faq-section";
 import { FeaturesSection } from "@/features/marketing/components/features-section";
 import { Hero } from "@/features/marketing/components/hero";
-import { PricingSection } from "@/features/marketing/components/pricing-section";
+import { PlanCards } from "@/features/shop/components/plan-cards";
 import { ServerMarquee } from "@/features/marketing/components/server-marquee";
 
 /**
@@ -17,6 +18,7 @@ import { ServerMarquee } from "@/features/marketing/components/server-marquee";
  * boundary, so a catalogue outage costs the pricing table and nothing else.
  */
 const HomeRoute = () => {
+  const { t } = useTranslation();
   const { scrollYProgress } = useScroll();
   // Spring-smoothed, so the bar glides instead of tracking every wheel tick.
   const progress = useSpring(scrollYProgress, {
@@ -38,7 +40,15 @@ const HomeRoute = () => {
       <FeaturesSection />
 
       <AppErrorBoundary>
-        <PricingSection />
+        <section id="plans" className="mx-auto max-w-5xl scroll-mt-20 space-y-8 px-4 py-16" aria-labelledby="home-plans-title">
+          <div className="space-y-2 text-center">
+            <h2 id="home-plans-title" className="text-3xl font-bold text-balance">
+              {t("shop.plans.title")}
+            </h2>
+            <p className="mx-auto max-w-2xl text-muted-foreground">{t("shop.plans.subtitle")}</p>
+          </div>
+          <PlanCards />
+        </section>
       </AppErrorBoundary>
 
       <FaqSection />

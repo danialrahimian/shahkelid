@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { authApi } from "@/api/auth";
-import { cartApi } from "@/api/cart";
 import { ordersApi } from "@/api/orders";
 import { productsApi } from "@/api/products";
 import { env } from "@/config/env";
@@ -161,59 +160,6 @@ describe.skipIf(!backendUp)("API layer against the live backend", () => {
 
       expect(result.error).toBeUndefined();
       expect(result.data?.username).toBe(credentials.username);
-    });
-  });
-
-  describe("Cart", () => {
-    it("When nobody is signed in, then reading the cart is refused", async () => {
-      const result = await store.dispatch(
-        cartApi.endpoints.getCart.initiate(),
-      );
-
-      expect(normalizeError(result.error).status).toBe(401);
-    });
-
-    it("When a product is added, then the cart and the checkout total agree", async () => {
-      await registerAndSignIn();
-
-      const catalogue = await store.dispatch(
-        productsApi.endpoints.getProducts.initiate({ limit: 1 }),
-      );
-      const product = catalogue.data?.products[0];
-      if (!product) {
-        // Nothing to buy on this database; the assertions would be vacuous.
-        return;
-      }
-
-      const added = await store.dispatch(
-        cartApi.endpoints.addToCart.initiate(product._id),
-      );
-      expect("error" in added && added.error).toBeFalsy();
-
-      const cart = await store.dispatch(
-        cartApi.endpoints.getCart.initiate(undefined, { forceRefetch: true }),
-      );
-      expect(cart.data).toHaveLength(1);
-      expect(cart.data?.[0].quantity).toBe(1);
-
-      // The server prices the order; the client never sends an amount.
-      const checkout = await store.dispatch(
-        ordersApi.endpoints.getCheckout.initiate(undefined, {
-          forceRefetch: true,
-        }),
-      );
-      expect(checkout.data?.totalPrice).toBe(product.price);
-      expect(checkout.data?.status).toBe("pending");
-    });
-
-    it("When the cart is empty, then checkout answers 400 rather than an empty order", async () => {
-      await registerAndSignIn();
-
-      const checkout = await store.dispatch(
-        ordersApi.endpoints.getCheckout.initiate(),
-      );
-
-      expect(normalizeError(checkout.error).status).toBe(400);
     });
   });
 

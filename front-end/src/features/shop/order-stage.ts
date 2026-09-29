@@ -1,0 +1,25 @@
+import type { OrderView } from "@shah-kelid/contracts";
+
+/**
+ * Where an order stands, from the buyer's side of the screen, and how often
+ * its page should look again.
+ */
+
+export type Stage = "waiting_payment" | "checking" | "review" | "preparing" | "ready" | "failed" | "expired";
+
+export const stageOf = (order: OrderView): Stage => {
+  if (order.subscription?.link) return "ready";
+  if (order.status === "paid" || order.status === "fulfilled") return "preparing";
+  if (order.status === "expired" || order.status === "cancelled") return "expired";
+  const payment = order.payment;
+  if (!payment) return "waiting_payment";
+  if (payment.status === "pending_review") return "review";
+  if (payment.status === "pending" || payment.status === "initiated") return "checking";
+  if (payment.status === "failed" || payment.status === "expired") return "failed";
+  return "waiting_payment";
+};
+
+/** How often to look again, by stage; 0 when there is nothing to wait for. */
+export const pollEvery = (stage: Stage) =>
+  stage === "checking" || stage === "preparing" ? 2000 : stage === "review" ? 15000 : 0;
+

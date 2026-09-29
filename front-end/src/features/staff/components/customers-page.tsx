@@ -8,13 +8,16 @@ import {
   useStaffCreateSubscriptionMutation,
   useStaffCustomerQuery,
   useStaffCustomersQuery,
+  useStaffFulfilOrderMutation,
+  useStaffOrdersQuery,
   useStaffPlansQuery,
 } from "@/api/staff";
+import { errorText } from "@/lib/error-text";
 import { Form } from "@/components/ui/form/form";
 import { Input } from "@/components/ui/input";
 import { paths } from "@/config/paths";
 
-import { formatDate, formatGb, formatNumber, formatToman } from "../format";
+import { formatDate, formatGb, formatNumber, formatToman } from "@/lib/format";
 import { showSaveError } from "../form-errors";
 import { FormActions, SelectField } from "./fields";
 import { Button, FormDialog, PageHeader, Placeholder, Section, TableFrame } from "./staff-ui";
@@ -128,7 +131,7 @@ const NewSubscriptionDialog = ({ userId, onClose }: { userId: string; onClose: (
                 label={t("staff.customer.plan")}
                 options={onSale.map((plan) => ({
                   value: plan.id,
-                  label: `${plan.name} · ${formatGb(plan.dataLimitBytes)} · ${t("staff.units.days", {
+                  label: `${plan.name} · ${formatGb(plan.dataLimitBytes)} · ${t("units.days", {
                     amount: formatNumber(plan.durationDays),
                   })} · ${formatToman(plan.priceToman)}`,
                 }))}
@@ -147,7 +150,69 @@ const NewSubscriptionDialog = ({ userId, onClose }: { userId: string; onClose: (
   );
 };
 
-export const CustomerPage = ({ customerId }: { customerId: string }) => {
+/** The customer's orders; a paid order still waiting for room gets a "make it" button. */
+const OrdersSection = ({ userId }: { userId: string }) => {
+  const { t } = useTranslation();
+  const { data: orders, isLoading } = useStaffOrdersQuery({ userId });
+  const [fulfil, { isLoading: isFulfilling }] = useStaffFulfilOrderMutation();
+
+  return (
+    <Section title={t("staff.orders.title")}>
+      {isLoading ? (
+        <Placeholder>{t("common.loading")}</Placeholder>
+      ) : !orders?.length ? (
+        <Placeholder>{t("staff.orders.none")}</Placeholder>
+      ) : (
+        <TableFrame>
+          <thead>
+            <tr>
+              <th>{t("staff.orders.number")}</th>
+              <th>{t("staff.subscriptions.plan")}</th>
+              <th>{t("staff.orders.total")}</th>
+              <th>{t("staff.orders.method")}</th>
+              <th>{t("staff.orders.status")}</th>
+              <th>{t("staff.orders.paidAt")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {orders.map((order) => (
+              <tr key={order.id}>
+                <td className="tabular-nums">{formatNumber(order.number)}</td>
+                <td>{order.plan.name}</td>
+                <td className="tabular-nums">{formatToman(order.totalToman)}</td>
+                <td>{order.payment ? t(`shop.methods.${order.payment.method}`) : "—"}</td>
+                <td>
+                  {order.status === "paid" ? (
+                    <div className="space-y-1.5">
+                      <p className="text-amber-700 dark:text-amber-300">{t("staff.orders.waitingForServer")}</p>
+                      <Button
+                        tone="primary"
+                        busy={isFulfilling}
+                        onClick={() =>
+                          fulfil(order.id)
+                            .unwrap()
+                            .then(() => toast.success(t("staff.orders.fulfilled")))
+                            .catch((error: unknown) => toast.error(errorText(error)))
+                        }
+                      >
+                        {t("staff.orders.fulfil")}
+                      </Button>
+                    </div>
+                  ) : (
+                    t(`shop.orders.status.${order.status}`)
+                  )}
+                </td>
+                <td>{formatDate(order.paidAt)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </TableFrame>
+      )}
+    </Section>
+  );
+};
+
+export const CustomerPage = ({ customerId, canSeeOrders }: { customerId: string; canSeeOrders: boolean }) => {
   const { t } = useTranslation();
   const customer = useStaffCustomerQuery(customerId);
   const [adding, setAdding] = React.useState(false);
@@ -184,6 +249,8 @@ export const CustomerPage = ({ customerId }: { customerId: string }) => {
           <SubscriptionTable subscriptions={data.subscriptions} showCustomer={false} />
         )}
       </Section>
+
+      {canSeeOrders ? <OrdersSection userId={data.id} /> : null}
 
       {adding ? <NewSubscriptionDialog userId={data.id} onClose={() => setAdding(false)} /> : null}
     </div>

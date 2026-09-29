@@ -4,7 +4,6 @@ import {
   type SubscriptionStatus,
   type SubscriptionView,
 } from "@shah-kelid/contracts";
-import QRCode from "qrcode";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
@@ -15,11 +14,12 @@ import {
   useStaffSubscriptionQuery,
   useStaffSubscriptionsQuery,
 } from "@/api/staff";
+import { QrLink } from "@/components/ui/qr-link";
 import { paths } from "@/config/paths";
 import { errorText } from "@/lib/error-text";
 import { cn } from "@/lib/utils";
 
-import { formatDate, formatDateTime, formatGb, formatNumber } from "../format";
+import { formatDate, formatDateTime, formatGb, formatNumber } from "@/lib/format";
 import { Button, ConfirmButton, PageHeader, Placeholder, Section, StatusBadge, UsageMeter } from "./staff-ui";
 import { SubscriptionTable } from "./subscription-table";
 
@@ -125,43 +125,6 @@ const Actions = ({ subscription }: { subscription: SubscriptionView }) => {
   );
 };
 
-/** The customer's link, to copy or scan into a VPN app. */
-const LinkCard = ({ link }: { link: string }) => {
-  const { t } = useTranslation();
-  const [qr, setQr] = React.useState<string>();
-
-  React.useEffect(() => {
-    let current = true;
-    QRCode.toDataURL(link, { margin: 1, width: 168 })
-      .then((url) => current && setQr(url))
-      .catch(() => undefined);
-    return () => {
-      current = false;
-    };
-  }, [link]);
-
-  return (
-    <div className="flex flex-wrap items-start gap-4 rounded-lg border bg-card p-4">
-      {qr ? (
-        <img src={qr} alt={t("staff.subscription.qrAlt")} width={168} height={168} className="rounded-md bg-white p-1.5" />
-      ) : null}
-      <div className="min-w-0 flex-1 space-y-2">
-        <p className="text-sm text-muted-foreground">{t("staff.subscription.linkHint")}</p>
-        <code dir="ltr" className="block rounded bg-muted p-2 font-mono text-xs break-all select-all">
-          {link}
-        </code>
-        <Button
-          onClick={() =>
-            void navigator.clipboard.writeText(link).then(() => toast.success(t("staff.common.copied")))
-          }
-        >
-          {t("staff.common.copy")}
-        </Button>
-      </div>
-    </div>
-  );
-};
-
 const Fact = ({ label, children }: { label: string; children: React.ReactNode }) => (
   <div className="space-y-1">
     <dt className="text-xs text-muted-foreground">{label}</dt>
@@ -218,7 +181,7 @@ export const SubscriptionPage = ({ subscriptionId }: { subscriptionId: string })
         <Fact label={t("staff.subscription.lifetime")}>{formatGb(subscription.lifetimeUsedBytes)}</Fact>
         <Fact label={t("staff.subscription.devices")}>
           {subscription.deviceLimit === null
-            ? t("staff.common.unlimited")
+            ? t("units.unlimited")
             : formatNumber(subscription.deviceLimit)}
         </Fact>
         <Fact label={t("staff.subscription.expires")}>
@@ -251,7 +214,17 @@ export const SubscriptionPage = ({ subscriptionId }: { subscriptionId: string })
       <Actions subscription={subscription} />
 
       <Section title={t("staff.subscription.link")}>
-        {onPanel ? <LinkCard link={subscription.link} /> : <Placeholder>{t("staff.subscription.linkNotReady")}</Placeholder>}
+        {onPanel ? (
+          <QrLink
+            link={subscription.link}
+            hint={t("staff.subscription.linkHint")}
+            qrAlt={t("staff.subscription.qrAlt")}
+            copyLabel={t("staff.common.copy")}
+            copiedLabel={t("staff.common.copied")}
+          />
+        ) : (
+          <Placeholder>{t("staff.subscription.linkNotReady")}</Placeholder>
+        )}
       </Section>
 
       <Section title={t("staff.subscription.history")}>

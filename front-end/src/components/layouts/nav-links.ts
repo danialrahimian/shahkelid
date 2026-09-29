@@ -7,7 +7,6 @@ import {
   Newspaper,
   Package,
   Tags,
-  ShoppingCart,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -60,14 +59,6 @@ export const NAV_LINKS: NavLink[] = [
     path: paths.posts.path,
     label: "journal",
     icon: Newspaper,
-    group: "main",
-  },
-  {
-    to: paths.cart.getHref(),
-    path: paths.cart.path,
-    label: "cart",
-    icon: ShoppingCart,
-    requiresAuth: true,
     group: "main",
   },
   {

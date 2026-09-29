@@ -137,6 +137,12 @@ const rawBaseQuery = fetchBaseQuery({
   credentials: "include",
 });
 
+/**
+ * The new API's endpoints (/api/v1), by name prefix. Their screens handle a
+ * 401 themselves, with the new sign-in page.
+ */
+const NEW_API_ENDPOINTS = ["account", "staff", "shop"];
+
 /** Requests that are expected to 401 for a signed-out visitor, and so must not bounce them. */
 const SILENT_401_ENDPOINTS = new Set(["getSession", "logout"]);
 
@@ -161,14 +167,13 @@ export const baseQueryWithErrorHandling: BaseQueryFn<
     // reaching for `window.location` unguarded threw inside the base query,
     // which turned every 401 into an unrecognisable error instead of a 401.
     //
-    // The new API's endpoints (account*, staff*) are left alone: a 401 there
+    // The new API's endpoints (account*, staff*, shop*) are left alone: a 401 there
     // is part of signing in ("authenticator code still to come"), and those
     // screens send the reader to the new sign-in page themselves.
     if (
       error.status === 401 &&
       !SILENT_401_ENDPOINTS.has(api.endpoint) &&
-      !api.endpoint.startsWith("account") &&
-      !api.endpoint.startsWith("staff") &&
+      !NEW_API_ENDPOINTS.some((prefix) => api.endpoint.startsWith(prefix)) &&
       typeof window !== "undefined"
     ) {
       const redirectTo = `${window.location.pathname}${window.location.search}`;

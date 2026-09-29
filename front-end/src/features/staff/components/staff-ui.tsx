@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
-import { formatUsage, fullness } from "../format";
+import { formatUsage, fullness } from "@/lib/format";
 
 /**
  * The small pieces every staff page is made of, so the pages read the same:

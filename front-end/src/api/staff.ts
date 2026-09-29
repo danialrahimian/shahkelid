@@ -1,5 +1,10 @@
 import type {
   CreateSubscriptionInput,
+  OrderView,
+  PaymentCardInput,
+  PaymentCardView,
+  ReceiptReviewView,
+  ReviewReceiptInput,
   CustomerDetail,
   CustomerSummary,
   LocationInput,
@@ -29,6 +34,9 @@ import { api } from "@/lib/api";
  */
 
 const STAFF = "/api/v1/staff";
+
+export type StaffOrderView = OrderView & { customer: { id: string; email: string } };
+export type StaffPaymentCard = PaymentCardView & { isActive: boolean; sortOrder: number };
 
 export type SubscriptionDetail = {
   subscription: SubscriptionView;
@@ -141,8 +149,42 @@ export const staffApi = api.injectEndpoints({
       }),
       invalidatesTags: ["StaffSubscription", "StaffCustomer", "StaffServer"],
     }),
+
+    // ---------------------------------------------------------- payments
+    staffReceipts: builder.query<ReceiptReviewView[], "waiting" | "decided">({
+      query: (which) => ({ url: `${STAFF}/receipts`, params: { which } }),
+      providesTags: ["StaffReceipt"],
+    }),
+    staffReviewReceipt: builder.mutation<ReceiptReviewView, { paymentId: string; body: ReviewReceiptInput }>({
+      query: ({ paymentId, body }) => ({ url: `${STAFF}/receipts/${paymentId}/review`, method: "POST", body }),
+      invalidatesTags: ["StaffReceipt", "StaffOrder", "StaffCustomer", "StaffSubscription"],
+    }),
+    staffPaymentCards: builder.query<StaffPaymentCard[], void>({
+      query: () => `${STAFF}/payment-cards`,
+      providesTags: ["StaffPaymentCard"],
+    }),
+    staffSavePaymentCard: builder.mutation<StaffPaymentCard, { id?: string; body: PaymentCardInput }>({
+      query: ({ id, body }) => ({
+        url: id ? `${STAFF}/payment-cards/${id}` : `${STAFF}/payment-cards`,
+        method: id ? "PUT" : "POST",
+        body,
+      }),
+      invalidatesTags: ["StaffPaymentCard"],
+    }),
+    staffOrders: builder.query<StaffOrderView[], { userId?: string }>({
+      query: ({ userId }) => ({ url: `${STAFF}/orders`, params: userId ? { userId } : {} }),
+      providesTags: ["StaffOrder"],
+    }),
+    staffFulfilOrder: builder.mutation<OrderView, string>({
+      query: (id) => ({ url: `${STAFF}/orders/${id}/fulfil`, method: "POST" }),
+      invalidatesTags: ["StaffOrder", "StaffCustomer", "StaffSubscription", "StaffServer"],
+    }),
   }),
 });
+
+/** A receipt image, fetched with the staff member's session (never a public URL). */
+export const receiptImageUrl = (apiUrl: string, paymentId: string) =>
+  `${apiUrl}${STAFF}/receipts/${paymentId}/image`;
 
 export const {
   useStaffPanelsQuery,
@@ -164,4 +206,10 @@ export const {
   useStaffSubscriptionQuery,
   useStaffCreateSubscriptionMutation,
   useStaffSubscriptionActionMutation,
+  useStaffReceiptsQuery,
+  useStaffReviewReceiptMutation,
+  useStaffPaymentCardsQuery,
+  useStaffSavePaymentCardMutation,
+  useStaffOrdersQuery,
+  useStaffFulfilOrderMutation,
 } = staffApi;

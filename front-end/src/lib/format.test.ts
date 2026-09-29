@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatDate, formatGb, formatToman, formatUsage, fullness } from "./format";
+import { formatDate, formatGb, formatToman, formatUsage, fullness } from "@/lib/format";
 
 /** What staff read: Persian digits, the Solar Hijri calendar, binary gigabytes. */
 
