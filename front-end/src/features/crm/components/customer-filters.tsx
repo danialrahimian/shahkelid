@@ -49,10 +49,14 @@ export const CustomerFilters = ({
 }) => {
   const [term, setTerm] = React.useState(query.search ?? "");
 
-  // Kept in step when the parent clears the filters from elsewhere.
-  React.useEffect(() => {
+  // Kept in step when the parent clears the filters from elsewhere. Adjusted
+  // during render, which React recommends over an effect: the effect showed
+  // the old text for a frame and then replaced it.
+  const [syncedSearch, setSyncedSearch] = React.useState(query.search);
+  if (query.search !== syncedSearch) {
+    setSyncedSearch(query.search);
     setTerm(query.search ?? "");
-  }, [query.search]);
+  }
 
   React.useEffect(() => {
     if (term === (query.search ?? "")) return;

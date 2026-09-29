@@ -102,7 +102,14 @@ const PostsRoute = () => {
   const search = searchParams.get("search") ?? "";
   const [searchInput, setSearchInput] = React.useState(search);
 
-  React.useEffect(() => setSearchInput(search), [search]);
+  // When the URL's search changes from outside the box (back button, a
+  // cleared filter), the box follows. Adjusted during render, which React
+  // recommends over an effect: the effect drew the stale text first.
+  const [syncedSearch, setSyncedSearch] = React.useState(search);
+  if (search !== syncedSearch) {
+    setSyncedSearch(search);
+    setSearchInput(search);
+  }
 
   const { data: tags } = useGetPostTagsQuery();
   const { data, isLoading, isFetching, isError, error, refetch } =

@@ -1,0 +1,22 @@
+{
+  "name": "shah-kelid",
+  "private": true,
+  "description": "VPN subscription platform: storefront, customer panel, staff dashboard and CRM.",
+  "workspaces": [
+    "packages/*",
+    "back-end",
+    "front-end"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "check": "npm run lint && npm run typecheck && npm test",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm test --workspaces --if-present",
+    "services:up": "docker compose up -d --wait",
+    "services:down": "docker compose down",
+    "services:reset": "docker compose down --volumes"
+  }
+}

@@ -56,14 +56,11 @@ const ProductsRoute = () => {
   const { productId } = useParams<{ productId?: string }>();
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = React.useState<ActiveTab>(
-    productId ? "form" : "products",
-  );
-
-  // Following an edit link from a card should also switch the tab.
-  React.useEffect(() => {
-    if (productId) setActiveTab("form");
-  }, [productId]);
+  // The URL wins: an edit link always opens the form. Otherwise, whichever
+  // tab was last chosen. Derived on every render rather than copied into
+  // state by an effect, which drew the list first and then jumped to the form.
+  const [chosenTab, setChosenTab] = React.useState<ActiveTab>("products");
+  const activeTab: ActiveTab = productId ? "form" : chosenTab;
 
   const { data, isLoading, isError, error, refetch } =
     useGetAdminProductsQuery();
@@ -71,7 +68,7 @@ const ProductsRoute = () => {
 
   const goToList = () => {
     navigate(paths.dashboardProducts.getHref());
-    setActiveTab("products");
+    setChosenTab("products");
   };
 
   let productsContent: ReactNode;
@@ -105,7 +102,7 @@ const ProductsRoute = () => {
           title="You have no products yet"
           description="Add your first plan and it will show up in the catalogue."
           action={
-            <Button className="gap-2" onClick={() => setActiveTab("form")}>
+            <Button className="gap-2" onClick={() => setChosenTab("form")}>
               <PackagePlus className="size-4" />
               Add your first product
             </Button>
@@ -128,7 +125,7 @@ const ProductsRoute = () => {
               key={entry.productId}
               productId={entry.productId}
               index={index}
-              onEdit={() => setActiveTab("form")}
+              onEdit={() => setChosenTab("form")}
             />
           ))}
         </AnimatePresence>
@@ -183,7 +180,7 @@ const ProductsRoute = () => {
         value={activeTab}
         onValueChange={(value) => {
           const next = value as ActiveTab;
-          setActiveTab(next);
+          setChosenTab(next);
           // Leaving the form drops the product being edited from the URL.
           if (next === "products" && productId) {
             navigate(paths.dashboardProducts.getHref());

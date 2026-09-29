@@ -48,18 +48,15 @@ const PostsRoute = () => {
   const { postId } = useParams<{ postId?: string }>();
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = React.useState<ActiveTab>(
-    postId ? "form" : "posts",
-  );
+  // The URL wins: an edit link always opens the form. Otherwise, whichever
+  // tab was last chosen. Derived on every render rather than copied into
+  // state by an effect, which drew the list first and then jumped to the form.
+  const [chosenTab, setChosenTab] = React.useState<ActiveTab>("posts");
+  const activeTab: ActiveTab = postId ? "form" : chosenTab;
   const [scope, setScope] = React.useState<Scope>("all");
   const [page, setPage] = React.useState(1);
   const [term, setTerm] = React.useState("");
   const [search, setSearch] = React.useState("");
-
-  // Following an edit link should also switch to the form.
-  React.useEffect(() => {
-    if (postId) setActiveTab("form");
-  }, [postId]);
 
   // Debounced, so a title typed at speed is one request rather than twenty.
   React.useEffect(() => {
@@ -84,7 +81,7 @@ const PostsRoute = () => {
 
   const goToList = () => {
     navigate(paths.dashboardPosts.getHref());
-    setActiveTab("posts");
+    setChosenTab("posts");
   };
 
   const countLabel = isLoading
@@ -121,7 +118,7 @@ const PostsRoute = () => {
         }
         action={
           search ? undefined : (
-            <Button className="gap-2" onClick={() => setActiveTab("form")}>
+            <Button className="gap-2" onClick={() => setChosenTab("form")}>
               <PenLine className="size-4" />
               Write the first one
             </Button>
@@ -226,7 +223,7 @@ const PostsRoute = () => {
         value={activeTab}
         onValueChange={(value) => {
           const next = value as ActiveTab;
-          setActiveTab(next);
+          setChosenTab(next);
           // Leaving the form drops the post being edited from the URL.
           if (next === "posts" && postId) {
             navigate(paths.dashboardPosts.getHref());
