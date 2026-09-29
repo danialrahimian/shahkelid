@@ -47,7 +47,13 @@ flowchart TB
 
 ### نقاط تحویل
 
-#### M1 · زیرساخت — بزرگ
+#### M1 · زیرساخت — بزرگ · ✅ انجام شد
+
+> **تفاوت با برنامه، با دلیل:**
+> - نام پوشه‌ها `back-end` و `front-end` ماند (به‌جای `apps/server` و `apps/web`). تغییر نام ارزشی نداشت و همه‌ی فایل‌های باز و عادت‌ها را می‌شکست.
+> - به‌جای pnpm، **npm workspaces**. pnpm نصب نبود و فعال کردنش روی Windows دسترسی مدیر می‌خواست؛ npm workspaces چیزی اضافه لازم ندارد.
+> - **PostgreSQL 18** به‌جای ۱۷. تا ۲۰۳۰ پشتیبانی می‌شود و `uuidv7()` را خودش دارد.
+> - نقش `scheduler` حذف شد. در BullMQ 6 زمان‌بندی کارهای تکرارشونده در Redis نگه داشته می‌شود و خود workerها اجرایشان می‌کنند؛ یک پروسه‌ی جدا فقط تنظیمات را نگه می‌داشت.
 - ساختن مخزن git (پیش‌نیاز همه‌چیز)
 - monorepo با pnpm: `back-end` به `apps/server` و `front-end` به `apps/web` منتقل می‌شوند؛ پکیج `packages/contracts` برای schemaهای zod مشترک
 - TypeScript در سرور (تدریجی)؛ PostgreSQL با Drizzle و migration برای **۴۲ جدول MVP** از روی [`02-schema.sql`](02-schema.sql)

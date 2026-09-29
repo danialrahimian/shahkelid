@@ -5,6 +5,9 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* Vazirmatn covers Persian and Latin in one face, so mixed text such as
+     "۵۰ گیگ · VLESS" sits on a single baseline. */
+  --font-sans: "Vazirmatn Variable", ui-sans-serif, system-ui, sans-serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

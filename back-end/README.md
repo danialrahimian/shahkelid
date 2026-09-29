@@ -34,6 +34,11 @@ panels.
 | `npm run prune:test-orders` | Lists orders that only name withdrawn plans. |
 | `npm run purge:generated` | Removes every generated or hand-made test record. |
 | `npm run audit` | Audits the production dependencies. |
+| `npm run worker` | Runs the worker: the outbox relay, and the queue consumers as they arrive. |
+| `npm run dev:worker` | The same, restarting on change. |
+| `npm run db:migrate` | Applies pending PostgreSQL migrations. |
+| `npm run db:generate` | Writes a new migration from changes to the module schemas. |
+| `npm run typecheck` | Checks the TypeScript code. |
 
 Every `seed:`, `prune:` and `purge:` script is a dry run by default and prints
 what it would do. Pass `-- --write` to apply it.

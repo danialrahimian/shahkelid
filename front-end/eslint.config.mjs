@@ -83,6 +83,7 @@ export default defineConfig([
                 "./src/utils",
                 "./src/config",
                 "./src/api",
+                "./src/locales",
               ],
               from: ["./src/features", "./src/app"],
             },
