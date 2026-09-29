@@ -5,6 +5,8 @@ import logger from "../../libraries/logger";
 import { sendEmail as sendWithSmtp } from "../../libraries/mailer";
 import { QUEUES } from "../../platform/queue/routes";
 import { createConsumerConnection } from "../../platform/redis";
+import type { Db } from "../../platform/db/client";
+import { ALERT_TOPIC, deliverAlert, type Alert } from "./alerts";
 import type { Email } from "./email";
 
 /**
@@ -33,18 +35,23 @@ const deliver = async (job: Job<Email>) => {
   }
 };
 
-export const startEmailWorker = () => {
+/**
+ * The notifications queue: emails (queued directly by the API) and alerts to
+ * staff (recorded in the outbox; see alerts.ts).
+ */
+export const startNotificationsWorker = ({ db }: { db: Db }) => {
   const connection = createConsumerConnection();
-  const worker = new Worker<Email>(
+  const worker = new Worker(
     QUEUES.notifications,
-    async (job) => {
-      if (job.name === "email.send") await deliver(job);
+    async (job: Job) => {
+      if (job.name === "email.send") return deliver(job as Job<Email>);
+      if (job.name === ALERT_TOPIC) return deliverAlert(db, (job.data as { payload: Alert }).payload);
     },
     { connection, concurrency: 5 },
   );
 
   worker.on("failed", (job, error) =>
-    logger.warn({ err: error, jobId: job?.id, attempts: job?.attemptsMade }, "Email job failed"),
+    logger.warn({ err: error, job: job?.name, jobId: job?.id, attempts: job?.attemptsMade }, "Notification job failed"),
   );
 
   return {

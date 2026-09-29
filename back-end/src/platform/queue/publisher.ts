@@ -45,6 +45,13 @@ const JOB_OPTIONS: Record<QueueName, JobsOptions> = {
     removeOnComplete: { age: 7 * 24 * 3600 },
     removeOnFail: false,
   },
+  // Recurring bookkeeping (reconcile, expiry); each tick is idempotent.
+  billing: {
+    attempts: 3,
+    backoff: { type: "exponential", delay: 5000 },
+    removeOnComplete: { age: 24 * 3600 },
+    removeOnFail: { age: 7 * 24 * 3600 },
+  },
   notifications: {
     attempts: 5,
     backoff: { type: "exponential", delay: 5000 },

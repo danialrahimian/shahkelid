@@ -12,6 +12,7 @@
 export const QUEUES = {
   provisioning: "provisioning",
   notifications: "notifications",
+  billing: "billing",
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -21,4 +22,6 @@ export type TopicRoutes = Readonly<Record<string, QueueName>>;
 export const TOPIC_ROUTES: TopicRoutes = {
   // M3: put a subscription on its panel (src/modules/provisioning/worker.ts)
   "subscription.provision_requested": QUEUES.provisioning,
+  // M4: tell owners and admins about trouble (src/modules/notifications/alerts.ts)
+  "admin.alert": QUEUES.notifications,
 };

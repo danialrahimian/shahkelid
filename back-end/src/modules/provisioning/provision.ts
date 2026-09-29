@@ -3,6 +3,8 @@ import { and, eq } from "drizzle-orm";
 import config from "../../config";
 import type { Db } from "../../platform/db/client";
 import { plans } from "../catalog/schema";
+import { users } from "../identity/schema";
+import { alertStaff } from "../notifications/alerts";
 import { findPanel } from "../infrastructure/service";
 import { fromPanel, groupsFor, recordHistory } from "../subscriptions/service";
 import { subscriptions } from "../subscriptions/schema";
@@ -82,5 +84,37 @@ export const markProvisioningFailed = async (db: Db, id: string, error: Error) =
       .returning({ id: subscriptions.id });
     if (updated.length > 0) {
       await recordHistory(tx, id, "provisioning_failed", "system", { error: error.message.slice(0, 500) });
+      await alertStaff(tx, await provisioningAlert(tx, id, error, "gave_up"), { type: "subscription", id });
     }
   });
+
+/** What staff are told about a subscription that cannot be put on its panel. */
+export const provisioningAlert = async (
+  executor: Pick<Db, "select">,
+  id: string,
+  error: Error,
+  stage: "still_failing" | "gave_up",
+) => {
+  const [row] = await executor
+    .select({ email: users.email })
+    .from(subscriptions)
+    .innerJoin(users, eq(users.id, subscriptions.userId))
+    .where(eq(subscriptions.id, id));
+  return stage === "gave_up"
+    ? {
+        subject: "ساخت سرویس متوقف شد",
+        text: [
+          `اشتراک ${id} برای ${row?.email ?? "?"} روی پنل ساخته نشد و تلاش خودکار تمام شد.`,
+          `خطا: ${error.message.slice(0, 300)}`,
+          "پول مشتری ثبت شده است. بعد از رفع مشکل پنل، در بخش مدیریت روی «تلاش دوباره برای ساخت» بزنید.",
+        ].join("\n"),
+      }
+    : {
+        subject: "ساخت سرویس یک دقیقه است که شکست می‌خورد",
+        text: [
+          `اشتراک ${id} برای ${row?.email ?? "?"} هنوز روی پنل ساخته نشده است.`,
+          `خطا: ${error.message.slice(0, 300)}`,
+          "تلاش خودکار ادامه دارد و به محض برگشتن پنل، سرویس ساخته می‌شود. مشتری «در حال آماده‌سازی» می‌بیند.",
+        ].join("\n"),
+      };
+};

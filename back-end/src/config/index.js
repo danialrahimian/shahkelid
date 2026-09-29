@@ -139,6 +139,37 @@ const config = {
     origin: read("CLIENT_ORIGIN", { fallback: "http://localhost:5173" }),
   },
 
+  // Buying (src/modules/billing).
+  checkout: {
+    // Zarinpal's v4 API. In the sandbox any merchant id is accepted, so
+    // development needs none; production refuses to start without one.
+    zarinpalSandbox: read("ZARINPAL_SANDBOX", { fallback: "true" }) !== "false",
+    zarinpalMerchantId:
+      paymentMerchantId ||
+      (read("ZARINPAL_SANDBOX", { fallback: "true" }) !== "false"
+        ? "00000000-0000-0000-0000-000000000000"
+        : ""),
+    // An unpaid order lapses after this long; a card transfer gets longer,
+    // since the customer has to go to their bank app and come back.
+    orderTtlMs: readNumber("ORDER_TTL_MS", 60 * 60 * 1000),
+    // Orders and payment attempts per address per minute. The test suite
+    // buys dozens of times from one address.
+    requestsPerMinute: readNumber("SHOP_REQUESTS_PER_MINUTE", isTest ? 1000 : 30),
+    cardTransferTtlMs: readNumber("CARD_TRANSFER_TTL_MS", 24 * 60 * 60 * 1000),
+    // Receipts and other private files, never served statically.
+    privateFilesDirectory: path.join(__dirname, "..", "..", "files"),
+  },
+
+  // Alerts to the people running the store (src/modules/notifications/alerts).
+  alerts: {
+    // A bot from @BotFather, and the chats (people or a group) it writes to.
+    telegramBotToken: read("TELEGRAM_BOT_TOKEN", { fallback: "" }),
+    telegramChatIds: read("TELEGRAM_ADMIN_CHAT_IDS", { fallback: "" })
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean),
+  },
+
   // VPN panels and subscriptions (src/modules/provisioning).
   provisioning: {
     // Where this API is reached from outside: customers' links are

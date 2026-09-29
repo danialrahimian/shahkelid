@@ -150,3 +150,16 @@ export const aCustomerAccount = async () => {
     .returning();
   return { id: user!.id, email };
 };
+
+/**
+ * A customer signed in the way a real one signs in, with an emailed code
+ * (which also makes the account). Needs the emails captured.
+ */
+export const signedInCustomer = async (emails: ReturnType<typeof captureEmails>) => {
+  const client = createClient();
+  const email = uniqueEmail("buyer");
+  await client.post("/api/v1/auth/code", { email });
+  const response = await client.post("/api/v1/auth/code/verify", { email, code: emails.lastCodeFor(email) });
+  assert.equal(response.data.status, "signed_in");
+  return { client, email, id: response.data.account.id as string };
+};

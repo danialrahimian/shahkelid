@@ -7,7 +7,13 @@ import { QUEUES } from "../../platform/queue/routes";
 import { createConsumerConnection, createProducerConnection } from "../../platform/redis";
 import { PROVISION_TOPIC } from "../subscriptions/service";
 import { PanelRejectedError } from "./driver";
-import { markProvisioningFailed, noteAttemptFailed, provisionSubscription } from "./provision";
+import { alertStaff } from "../notifications/alerts";
+import {
+  markProvisioningFailed,
+  noteAttemptFailed,
+  provisionSubscription,
+  provisioningAlert,
+} from "./provision";
 import { syncAllPanels } from "./sync";
 
 /**
@@ -21,6 +27,9 @@ import { syncAllPanels } from "./sync";
  */
 
 export const SYNC_JOB = "subscriptions.sync";
+
+/** Attempts after which staff hear about it: 1+2+4+8+16+32 s of backoff ≈ a minute. */
+export const ALERT_AFTER_ATTEMPTS = 6;
 
 type OutboxJob = { aggregateId: string };
 
@@ -41,6 +50,11 @@ export const runProvisionJob = async (
       throw new UnrecoverableError(failure.message);
     }
     await noteAttemptFailed(db, id, failure);
+    // About a minute of failures (1 + 2 + 4 + … seconds of backoff): tell someone,
+    // once, while the attempts carry on.
+    if (job.attemptsMade + 1 === ALERT_AFTER_ATTEMPTS) {
+      await alertStaff(db, await provisioningAlert(db, id, failure, "still_failing"), { type: "subscription", id });
+    }
     throw failure;
   }
 };

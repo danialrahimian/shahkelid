@@ -211,12 +211,14 @@ export const recordHistory = (
   kind: string,
   actor: StaffActor | "system",
   details: Record<string, unknown> = {},
+  orderId?: string,
 ) =>
   executor.insert(subscriptionEvents).values({
     subscriptionId,
     kind,
     actorKind: actor === "system" ? "system" : "staff",
     actorUserId: actor === "system" ? null : actor.userId,
+    orderId: orderId ?? null,
     details,
   });
 
@@ -302,7 +304,16 @@ const placeOn = async (executor: Executor, planId: string): Promise<Placement> =
 export const createSubscription = async (
   executor: Executor,
   actor: StaffActor | "system",
-  { userId, planId }: { userId: string; planId: string },
+  {
+    userId,
+    planId,
+    orderId,
+  }: {
+    userId: string;
+    planId: string;
+    /** A paid order: its plan is made even if it has since gone off sale. */
+    orderId?: string;
+  },
 ): Promise<string> => {
   const [customer] = await executor
     .select({ id: users.id, status: users.status, deletedAt: users.deletedAt })
@@ -314,7 +325,8 @@ export const createSubscription = async (
   }
 
   const [plan] = await executor.select().from(plans).where(eq(plans.id, planId));
-  if (!plan || plan.archivedAt || !plan.isActive) throw notFound("No such plan on sale");
+  if (!plan) throw notFound("No such plan");
+  if (!orderId && (plan.archivedAt || !plan.isActive)) throw notFound("No such plan on sale");
 
   const place = await placeOn(executor, planId);
 
@@ -337,7 +349,7 @@ export const createSubscription = async (
     accessToken: newAccessToken(),
   });
 
-  await recordHistory(executor, id, "created", actor, { planId, serverId: place.serverId });
+  await recordHistory(executor, id, "created", actor, { planId, serverId: place.serverId }, orderId);
   await recordEvent(executor, {
     topic: PROVISION_TOPIC,
     aggregateType: "subscription",

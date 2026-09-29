@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import config from "../config";
 import { accessRouter } from "../modules/access/routes";
+import { billingStaffRouter, shopRouter } from "../modules/billing/routes";
 import { catalogRouter } from "../modules/catalog/routes";
 import { identityRouter } from "../modules/identity/routes";
 import { infrastructureRouter } from "../modules/infrastructure/routes";
@@ -34,6 +35,8 @@ export const createV1Router = () => {
   router.use("/staff", infrastructureRouter({ db }));
   router.use("/staff", catalogRouter({ db }));
   router.use("/staff", subscriptionsRouter({ db }));
+  router.use("/staff", billingStaffRouter({ db }));
+  router.use(shopRouter({ db, redis }));
 
   router.use(v1NotFound);
   router.use(v1ErrorHandler);

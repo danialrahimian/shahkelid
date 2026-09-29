@@ -26,7 +26,7 @@ panels.
 | `npm run dev` | Runs it with Node's own watcher, restarting on change. |
 | `npm test` | Runs every suite against a real MongoDB. |
 | `npm run test:watch` | Reruns the suites on change. |
-| `npm run test:contract` | The PasarGuard driver and M3's acceptance, against the real panel in `.env`. Creates and deletes test users there. |
+| `npm run test:contract` | The PasarGuard driver, the Zarinpal gateway (sandbox) and the M3 and M4 acceptance tests, against the real services. Creates and deletes test users on the panel in `.env`. |
 | `npm run seed:admin` | Creates or promotes a privileged account (old MongoDB accounts). |
 | `npm run create-owner -- <email>` | Makes the first owner of the new PostgreSQL accounts. Refuses when one exists; `--another` adds one on purpose. |
 | `npm run seed:posts` | Fills the journal with ten sample articles. |
@@ -206,6 +206,26 @@ The new accounts live in PostgreSQL, with sessions in Redis (cookie `sk.sid`).
   (User-Agent and the device headers the panel's device limit reads) to the
   panel's own link and returns the body and the headers apps read, never the
   panel's address. Revoking the link changes the token.
+
+## Buying and paying (/api/v1/shop)
+
+- **The rule**: once money is confirmed it is recorded, whatever else fails.
+  Settling a payment is one transaction (payment, double-entry ledger, order,
+  invoice), and the subscription is made inside it on its own savepoint. No
+  room on any server: the order stays paid, staff are alerted, and they make
+  it later (`POST /staff/orders/:id/fulfil`).
+- **Zarinpal** (v4 REST, `src/modules/billing/zarinpal.ts`): the amount
+  verified is always the stored one. Settling is idempotent: a second
+  callback finds the payment settled (row lock, a ledger idempotency key,
+  and a unique index on one successful payment per order). Payments whose
+  callback never came are asked about every two minutes and settled if paid.
+- **Card to card**: the receipt image's type is read from its bytes; images
+  go to `files/` and are served only to `payments:review`. Repeated images or
+  tracking numbers and differing amounts are flagged, not refused.
+- **Alerts** (`src/modules/notifications/alerts.ts`) are outbox events,
+  delivered by the worker to owners and admins by email and to Telegram.
+  Provisioning alerts once after about a minute of failures, and again if it
+  gives up.
 
 ## Tests
 

@@ -5,7 +5,8 @@ import { startOutboxRelay } from "../platform/outbox/outbox";
 import { createPublisher } from "../platform/queue/publisher";
 import { TOPIC_ROUTES } from "../platform/queue/routes";
 import { createProducerConnection } from "../platform/redis";
-import { startEmailWorker } from "../modules/notifications/email-worker";
+import { startNotificationsWorker } from "../modules/notifications/email-worker";
+import { scheduleBilling, startBillingWorker } from "../modules/billing/worker";
 import { scheduleUsageSync, startProvisioningWorker } from "../modules/provisioning/worker";
 
 /**
@@ -35,12 +36,13 @@ const main = async () => {
     onError: (error) => logger.debug({ err: error }, "Queue connection error"),
   });
   const relay = startOutboxRelay({ db, publish: publisher.publish, logger });
-  const emails = startEmailWorker();
+  const emails = startNotificationsWorker({ db });
   const provisioning = startProvisioningWorker({ db });
+  const billing = startBillingWorker({ db });
   // Redis may be down at start; the relay copes with that, and so does this.
   const schedule = () =>
-    scheduleUsageSync().catch((error: unknown) => {
-      logger.warn({ err: error }, "Could not schedule the usage sync yet; trying again in 30 s");
+    Promise.all([scheduleUsageSync(), scheduleBilling()]).catch((error: unknown) => {
+      logger.warn({ err: error }, "Could not schedule the recurring jobs yet; trying again in 30 s");
       setTimeout(schedule, 30_000).unref();
     });
   void schedule();
@@ -57,6 +59,7 @@ const main = async () => {
     await relay.stop();
     await emails.close();
     await provisioning.close();
+    await billing.close();
     await publisher.close();
     connection.disconnect();
     await closeDb();

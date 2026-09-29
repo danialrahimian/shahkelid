@@ -234,6 +234,8 @@ export const cardTransferReceipts = pgTable(
       .notNull()
       .references(() => files.id, { onDelete: "restrict" }),
     trackingNumber: text("tracking_number").notNull(),
+    // what the customer says they sent; differing from the order is flagged
+    claimedAmountToman: wholeNumber("claimed_amount_toman").notNull(),
     payerCardLast4: text("payer_card_last4"),
     claimedPaidAt: at("claimed_paid_at"),
     imageSha256: text("image_sha256").notNull(),
@@ -243,6 +245,7 @@ export const cardTransferReceipts = pgTable(
   },
   (t) => [
     check("card_transfer_receipts_last4_format", sql`${t.payerCardLast4} ~ '^[0-9]{4}$'`),
+    check("card_transfer_receipts_claimed_amount_positive", sql`${t.claimedAmountToman} > 0`),
     index("card_transfer_receipts_image_idx").on(t.imageSha256),
     index("card_transfer_receipts_tracking_idx").on(t.trackingNumber),
   ],

@@ -1,0 +1,2 @@
+ALTER TABLE "card_transfer_receipts" ADD COLUMN "claimed_amount_toman" bigint NOT NULL;--> statement-breakpoint
+ALTER TABLE "card_transfer_receipts" ADD CONSTRAINT "card_transfer_receipts_claimed_amount_positive" CHECK ("card_transfer_receipts"."claimed_amount_toman" > 0);
