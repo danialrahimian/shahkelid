@@ -1,0 +1,2 @@
+ALTER TABLE "crypto_transfers" ADD COLUMN "suspected_payment_id" uuid;--> statement-breakpoint
+ALTER TABLE "crypto_transfers" ADD CONSTRAINT "crypto_transfers_suspected_payment_id_payments_id_fk" FOREIGN KEY ("suspected_payment_id") REFERENCES "public"."payments"("id") ON DELETE set null ON UPDATE no action;

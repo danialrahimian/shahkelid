@@ -1,5 +1,7 @@
 import {
   RECEIPT_MAX_BYTES,
+  reviewCryptoTransferInput,
+  type CheckoutMethodView,
   cardTransferInput,
   createOrderInput,
   paymentCardInput,
@@ -28,6 +30,9 @@ import {
   submitCardTransfer,
 } from "./card-transfer";
 import { createOrder, fulfilPaidOrder, myOrder, myOrders, plansOnSale, staffOrders } from "./orders";
+import { handleNowPaymentsIpn, isNowPaymentsConfigured, isValidIpn, startNowPayments } from "./nowpayments";
+import { freshRate } from "./rates";
+import { cryptoTransfersFor, isUsdtConfigured, reviewCryptoTransfer, startUsdtTron } from "./usdt-checkout";
 import { startZarinpal, zarinpalCallback } from "./zarinpal-checkout";
 
 /**
@@ -35,18 +40,24 @@ import { startZarinpal, zarinpalCallback } from "./zarinpal-checkout";
  *
  *   GET  /shop/plans                       plans on sale
  *   GET  /shop/cards                       cards to transfer to
+ *   GET  /shop/payment-methods             the ways to pay right now (crypto only with a fresh rate)
  *   POST /shop/orders                      { planId }, Idempotency-Key header
  *   GET  /shop/orders   GET /shop/orders/:id
  *   POST /shop/orders/:id/pay/zarinpal     → { payUrl }
  *   POST /shop/orders/:id/pay/card         multipart: receipt (image) + fields
+ *   POST /shop/orders/:id/pay/usdt         → the order, with the exact USDT amount and address
+ *   POST /shop/orders/:id/pay/nowpayments  → { payUrl }
  *
  * /api/v1/payments/zarinpal/callback — where Zarinpal sends the customer back.
+ * /api/v1/payments/nowpayments/ipn   — signed notifications from NOWPayments.
  *
  * /api/v1/staff:
  *   GET  /receipts?which=waiting|decided   payments:review
  *   GET  /receipts/:paymentId/image        payments:review
  *   POST /receipts/:paymentId/review       payments:review { decision, note }
  *   GET|POST /payment-cards, PUT /payment-cards/:id   settings:manage
+ *   GET  /crypto-transfers?which=waiting|decided      payments:review
+ *   POST /crypto-transfers/:id/review      payments:review { decision: settle|refunded|ignored, note }
  *   GET  /orders?userId=&status=           orders:read
  *   POST /orders/:id/fulfil                subscriptions:manage
  */
@@ -74,6 +85,15 @@ export const shopRouter = ({ db, redis }: { db: Db; redis: Redis }) => {
 
   router.get("/shop/cards", requireSignedIn, async (_req, res) => {
     res.json(await activeCards(db));
+  });
+
+  router.get("/shop/payment-methods", async (_req, res) => {
+    const rate = await freshRate(db);
+    const methods: CheckoutMethodView[] = [{ method: "zarinpal" }];
+    if ((await activeCards(db)).length > 0) methods.push({ method: "card_transfer" });
+    if (rate && isUsdtConfigured()) methods.push({ method: "usdt_tron", rateTomanPerUsdt: rate.bidToman });
+    if (rate && isNowPaymentsConfigured()) methods.push({ method: "nowpayments", rateTomanPerUsdt: rate.bidToman });
+    res.json(methods);
   });
 
   router.post("/shop/orders", requireSignedIn, perIp, async (req, res) => {
@@ -111,6 +131,26 @@ export const shopRouter = ({ db, redis }: { db: Db; redis: Redis }) => {
     res.status(201).json(await myOrder(db, req.account!.user.id, orderId));
   });
 
+  router.post("/shop/orders/:id/pay/usdt", requireSignedIn, perIp, async (req, res) => {
+    const orderId = parseId(req.params.id);
+    await startUsdtTron(db, req.account!.user.id, orderId);
+    res.json(await myOrder(db, req.account!.user.id, orderId));
+  });
+
+  router.post("/shop/orders/:id/pay/nowpayments", requireSignedIn, perIp, async (req, res) => {
+    res.json(await startNowPayments(db, req.account!.user.id, parseId(req.params.id)));
+  });
+
+  // NOWPayments posts here. The signature is checked, then the status is read
+  // back from its API. A 5xx makes NOWPayments try again later.
+  router.post("/payments/nowpayments/ipn", async (req, res) => {
+    if (!isValidIpn(req.body, req.get("x-nowpayments-sig"))) {
+      res.status(401).json({ error: { code: "FORBIDDEN", message: "Bad signature" } });
+      return;
+    }
+    res.json({ outcome: await handleNowPaymentsIpn(db, req.body as { payment_id?: unknown; order_id?: unknown }) });
+  });
+
   // Zarinpal redirects the customer's browser here. No session is needed:
   // the payment is found by its authority and verified with Zarinpal.
   router.get("/payments/zarinpal/callback", async (req, res) => {
@@ -146,6 +186,14 @@ export const billingStaffRouter = ({ db }: { db: Db }) => {
   router.post("/receipts/:paymentId/review", requirePermission("payments:review"), async (req, res) => {
     const input = parseBody(reviewReceiptInput, req.body);
     res.json(await reviewReceipt(db, staffActor(req), parseId(req.params.paymentId), input));
+  });
+
+  router.get("/crypto-transfers", requirePermission("payments:review"), async (req, res) => {
+    res.json(await cryptoTransfersFor(db, req.query.which === "decided" ? "decided" : "waiting"));
+  });
+  router.post("/crypto-transfers/:id/review", requirePermission("payments:review"), async (req, res) => {
+    const input = parseBody(reviewCryptoTransferInput, req.body);
+    res.json(await reviewCryptoTransfer(db, staffActor(req), parseId(req.params.id), input));
   });
 
   router.get("/payment-cards", requirePermission("settings:manage"), async (_req, res) => {

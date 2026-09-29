@@ -350,6 +350,11 @@ export const cryptoTransfers = pgTable(
     paymentId: uuid("payment_id")
       .unique()
       .references(() => payments.id, { onDelete: "restrict" }),
+    // A late transfer: the expired invoice whose exact amount it carries, so
+    // staff can settle that order with one click.
+    suspectedPaymentId: uuid("suspected_payment_id").references(() => payments.id, {
+      onDelete: "set null",
+    }),
     reviewedByUserId: uuid("reviewed_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),

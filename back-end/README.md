@@ -26,7 +26,7 @@ panels.
 | `npm run dev` | Runs it with Node's own watcher, restarting on change. |
 | `npm test` | Runs every suite against a real MongoDB. |
 | `npm run test:watch` | Reruns the suites on change. |
-| `npm run test:contract` | The PasarGuard driver, the Zarinpal gateway (sandbox) and the M3 and M4 acceptance tests, against the real services. Creates and deletes test users on the panel in `.env`. |
+| `npm run test:contract` | The PasarGuard driver, the Zarinpal gateway (sandbox) and the M3, M4 and M5 acceptance tests, against the real services. Creates and deletes test users on the panel in `.env`; M5 sends test USDT on the Nile testnet. |
 | `npm run seed:admin` | Creates or promotes a privileged account (old MongoDB accounts). |
 | `npm run create-owner -- <email>` | Makes the first owner of the new PostgreSQL accounts. Refuses when one exists; `--another` adds one on purpose. |
 | `npm run seed:posts` | Fills the journal with ten sample articles. |
@@ -222,6 +222,14 @@ The new accounts live in PostgreSQL, with sessions in Redis (cookie `sk.sid`).
 - **Card to card**: the receipt image's type is read from its bytes; images
   go to `files/` and are served only to `payments:review`. Repeated images or
   tracking numbers and differing amounts are flagged, not refused.
+- **Crypto**: the USDT rate comes from Nobitex (`bestBuy`, every minute);
+  a rate older than ten minutes hides crypto at checkout. Direct USDT on
+  TRON is matched by exact amount (the price rounded up to the cent, plus a
+  tail no other open quote has; a unique index enforces it). Every confirmed
+  transfer of the official USDT contract to our address is recorded first,
+  then matched by the block's time against the quote's expiry; a token
+  merely named USDT is never recorded. NOWPayments IPNs are checked by
+  signature and then read back from its API before anything is settled.
 - **Alerts** (`src/modules/notifications/alerts.ts`) are outbox events,
   delivered by the worker to owners and admins by email and to Telegram.
   Provisioning alerts once after about a minute of failures, and again if it

@@ -11,6 +11,7 @@ import { alertStaff } from "../notifications/alerts";
 import { panels } from "../infrastructure/schema";
 import { subscriptions } from "../subscriptions/schema";
 import { createSubscription, linkFor } from "../subscriptions/service";
+import { quoteForPayment } from "./crypto-quote";
 import { invoices, orderItems, orders, payments } from "./schema";
 
 /**
@@ -126,6 +127,10 @@ export const orderView = async (executor: Executor, order: OrderRow): Promise<Or
           status: payment.status,
           refId: payment.providerRefId,
           failureReason: payment.failureReason,
+          crypto:
+            payment.method === "usdt_tron" && payment.status === "pending"
+              ? await quoteForPayment(executor, payment.id)
+              : null,
         }
       : null,
     subscription,
@@ -288,7 +293,7 @@ export const fulfil = async (tx: Executor, order: OrderRow, paymentId: string | 
  * nothing, so a duplicate callback cannot make a second subscription.
  */
 export const settlePayment = async (
-  db: Db,
+  db: Executor,
   paymentId: string,
   confirmation: {
     refId?: string | null;

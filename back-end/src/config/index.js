@@ -160,6 +160,32 @@ const config = {
     privateFilesDirectory: path.join(__dirname, "..", "..", "files"),
   },
 
+  // Crypto payments (src/modules/billing/crypto*). Both methods stay hidden
+  // at checkout until they are configured and the USDT rate is fresh.
+  crypto: {
+    // Nobitex's public market stats; api.nobitex.ir does not resolve from abroad.
+    nobitexUrl: read("NOBITEX_URL", { fallback: "https://apiv2.nobitex.ir" }),
+    // A rate older than this stops crypto checkout until a fresh one arrives.
+    rateMaxAgeMs: readNumber("CRYPTO_RATE_MAX_AGE_MS", 10 * 60 * 1000),
+    // How long a quoted amount is honoured.
+    invoiceTtlMs: readNumber("CRYPTO_INVOICE_TTL_MS", 30 * 60 * 1000),
+
+    // USDT on TRON, sent straight to our wallet. Only its address is needed:
+    // the server never holds the wallet's key.
+    tronAddress: read("TRON_RECEIVE_ADDRESS", { fallback: "" }),
+    // TronGrid: https://api.trongrid.io on mainnet, https://nile.trongrid.io on the Nile testnet.
+    tronGridUrl: read("TRONGRID_URL", { fallback: "https://api.trongrid.io" }),
+    tronGridApiKey: read("TRONGRID_API_KEY", { fallback: "" }),
+    // The official USDT contract; a token merely named USDT is ignored.
+    // Mainnet TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t; Nile TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf.
+    usdtContract: read("TRON_USDT_CONTRACT", { fallback: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t" }),
+
+    // NOWPayments: an API key and the IPN secret from its dashboard.
+    nowpaymentsApiKey: read("NOWPAYMENTS_API_KEY", { fallback: "" }),
+    nowpaymentsIpnSecret: read("NOWPAYMENTS_IPN_SECRET", { fallback: "" }),
+    nowpaymentsSandbox: read("NOWPAYMENTS_SANDBOX", { fallback: "false" }) === "true",
+  },
+
   // Alerts to the people running the store (src/modules/notifications/alerts).
   alerts: {
     // A bot from @BotFather, and the chats (people or a group) it writes to.
