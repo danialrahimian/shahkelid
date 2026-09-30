@@ -6,13 +6,15 @@ import { Pool } from "pg";
 
 import config from "../../config";
 import { syncSystemRoles } from "../../modules/access/roles";
+import { seedTicketCategories } from "../../modules/support/defaults";
 import * as schema from "./schema";
 
 const MIGRATIONS = path.join(__dirname, "..", "..", "..", "drizzle");
 
 /**
  * Applies every migration not yet applied, in order, each in a transaction,
- * then brings the built-in roles up to date.
+ * then brings the built-in roles up to date and gives an empty installation
+ * its first ticket categories.
  *
  *   npm run db:migrate -w back-end
  *
@@ -27,6 +29,7 @@ export const runMigrations = async (url = config.postgres.url) => {
     const db = drizzle(pool, { schema });
     await migrate(db, { migrationsFolder: MIGRATIONS });
     await syncSystemRoles(db);
+    await seedTicketCategories(db);
   } finally {
     await pool.end();
   }

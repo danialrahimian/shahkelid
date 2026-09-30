@@ -9,6 +9,7 @@ import { infrastructureRouter } from "../modules/infrastructure/routes";
 import { notificationsRouter } from "../modules/notifications/routes";
 import { subscriptionLinkRouter } from "../modules/subscriptions/link";
 import { subscriptionsRouter } from "../modules/subscriptions/routes";
+import { supportRouter, supportStaffRouter } from "../modules/support/routes";
 import { getDb } from "../platform/db/client";
 import { accountSession, loadAccount } from "../platform/http/account-session";
 import { v1ErrorHandler, v1NotFound } from "../platform/http/error-handler";
@@ -38,6 +39,8 @@ export const createV1Router = () => {
   router.use("/staff", subscriptionsRouter({ db }));
   router.use("/staff", billingStaffRouter({ db }));
   router.use("/staff", notificationsRouter({ db }));
+  router.use("/staff", supportStaffRouter({ db }));
+  router.use("/support", supportRouter({ db, redis }));
   router.use(shopRouter({ db, redis }));
 
   router.use(v1NotFound);

@@ -9,6 +9,7 @@ import type { Db } from "../../platform/db/client";
 import { ALERT_TOPIC, deliverAlert, type Alert } from "./alerts";
 import { deliverNotification, NOTIFY_TOPIC } from "./notify";
 import { scanReminders } from "./reminders";
+import { deliverTicketAlert, resolveQuietTickets, TICKET_ALERT_TOPIC } from "../support/service";
 import type { Email } from "./email";
 
 /**
@@ -38,10 +39,12 @@ const deliver = async (job: Job<Email>) => {
 };
 
 export const REMINDERS_SCAN = "reminders.scan";
+export const TICKETS_SWEEP = "tickets.resolve_quiet";
 
 /**
- * The notifications queue: emails (queued directly by the API) and alerts to
- * staff (recorded in the outbox; see alerts.ts).
+ * The notifications queue: emails (queued directly by the API), alerts to
+ * staff and to support agents, and customers' emails (all three recorded in
+ * the outbox), plus the scheduled reminder scan and ticket sweep.
  */
 export const startNotificationsWorker = ({ db }: { db: Db }) => {
   const connection = createConsumerConnection();
@@ -51,6 +54,10 @@ export const startNotificationsWorker = ({ db }: { db: Db }) => {
       if (job.name === "email.send") return deliver(job as Job<Email>);
       if (job.name === ALERT_TOPIC) return deliverAlert(db, (job.data as { payload: Alert }).payload);
       if (job.name === REMINDERS_SCAN) return scanReminders(db);
+      if (job.name === TICKETS_SWEEP) return resolveQuietTickets(db);
+      if (job.name === TICKET_ALERT_TOPIC) {
+        return deliverTicketAlert(db, (job.data as { payload: Parameters<typeof deliverTicketAlert>[1] }).payload);
+      }
       if (job.name === NOTIFY_TOPIC) {
         return deliverNotification(db, (job.data as { payload: { notificationId: number } }).payload.notificationId);
       }
@@ -72,7 +79,11 @@ export const startNotificationsWorker = ({ db }: { db: Db }) => {
   };
 };
 
-/** Every fifteen minutes: queue the reminders that have come due. Idempotent, like every schedule. */
+/**
+ * Every fifteen minutes: queue the reminders that have come due. Every hour:
+ * mark resolved the tickets a customer left unanswered for a week.
+ * Idempotent, like every schedule.
+ */
 export const scheduleReminders = async () => {
   const connection = createProducerConnection();
   const queue = new Queue(QUEUES.notifications, { connection });
@@ -81,6 +92,11 @@ export const scheduleReminders = async () => {
       "reminders",
       { every: 15 * 60 * 1000 },
       { name: REMINDERS_SCAN, opts: { removeOnComplete: 100, removeOnFail: 100 } },
+    );
+    await queue.upsertJobScheduler(
+      "tickets-sweep",
+      { every: 60 * 60 * 1000 },
+      { name: TICKETS_SWEEP, opts: { removeOnComplete: 100, removeOnFail: 100 } },
     );
   } finally {
     await queue.close();

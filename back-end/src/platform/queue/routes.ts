@@ -28,4 +28,6 @@ export const TOPIC_ROUTES: TopicRoutes = {
   "admin.alert": QUEUES.notifications,
   // M7: an email to a customer (src/modules/notifications/notify.ts)
   "customer.notify": QUEUES.notifications,
+  // M8: tell support agents about a new ticket or a customer's reply (src/modules/support/service.ts)
+  "support.ticket_alert": QUEUES.notifications,
 };
