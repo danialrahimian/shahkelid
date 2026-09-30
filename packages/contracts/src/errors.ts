@@ -56,6 +56,10 @@ export const API_ERROR_CODES = [
   // the customer panel (M6)
   /** The subscription cannot be renewed now (still being made, deleted, or disabled by staff). */
   "NOT_RENEWABLE",
+
+  // notifications (M7)
+  /** A template uses a {{variable}} it does not have. */
+  "TEMPLATE_VARIABLE_UNKNOWN",
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
