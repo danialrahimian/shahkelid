@@ -46,26 +46,38 @@ const staged = ({ search, userId }: Filters) => {
     const pattern = `%${escapeLike(search.trim())}%`;
     where.push(sql`(u.email ilike ${pattern} or u.display_name ilike ${pattern})`);
   }
+  // Services and orders are added up once, grouped by customer, and joined:
+  // with 10,000 customers, a subquery per customer took half a second. For
+  // one customer's page the sums are kept to that customer.
+  const onlyOne = userId ? sql`where user_id = ${userId}` : sql``;
+  const onlyOneAnd = userId ? sql`and user_id = ${userId}` : sql``;
   return sql`
-    with facts as (
+    with services as (
+      select user_id,
+        count(*) filter (where status in ('provisioning', 'on_hold', 'active', 'limited'))::int as live,
+        bool_or(status = 'limited'
+          or (status = 'active' and expires_at < now() + make_interval(days => ${AT_RISK_DAYS}))) as at_risk
+      from subscriptions ${onlyOne}
+      group by user_id
+    ),
+    paid_orders as (
+      select user_id, sum(total_toman) as value, count(*) as paid, max(paid_at) as last_paid
+      from orders
+      where status in ('paid', 'fulfilled') and kind <> 'wallet_topup' ${onlyOneAnd}
+      group by user_id
+    ),
+    facts as (
       select
         u.id, u.email, u.display_name, u.status, u.created_at, u.last_login_at,
         coalesce(o.value, 0)::bigint as value,
         coalesce(o.paid, 0)::int as paid,
         o.last_paid,
-        (select count(*)::int from subscriptions x
-          where x.user_id = u.id and x.status in ('provisioning', 'on_hold', 'active', 'limited')) as live,
-        exists (select 1 from subscriptions x
-          where x.user_id = u.id
-            and (x.status = 'limited'
-              or (x.status = 'active' and x.expires_at < now() + make_interval(days => ${AT_RISK_DAYS})))) as at_risk,
+        coalesce(s.live, 0) as live,
+        coalesce(s.at_risk, false) as at_risk,
         cp.stage_override
       from users u
-      left join lateral (
-        select sum(o.total_toman) as value, count(*) as paid, max(o.paid_at) as last_paid
-        from orders o
-        where o.user_id = u.id and o.status in ('paid', 'fulfilled') and o.kind <> 'wallet_topup'
-      ) o on true
+      left join services s on s.user_id = u.id
+      left join paid_orders o on o.user_id = u.id
       left join customer_profiles cp on cp.user_id = u.id
       where ${sql.join(where, sql` and `)}
     ),

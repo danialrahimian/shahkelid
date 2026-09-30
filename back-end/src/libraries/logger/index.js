@@ -35,6 +35,7 @@ const logger = pino({
     paths: [
       "req.headers.cookie",
       "req.headers.authorization",
+      "res.headers[\"set-cookie\"]",
       "password",
       "newPassword",
       "repeatPassword",

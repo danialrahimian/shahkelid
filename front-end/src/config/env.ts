@@ -11,11 +11,13 @@ import * as z from "zod";
  */
 const createEnv = () => {
   const EnvSchema = z.object({
+    // Empty in the production build: the API is on the same domain, under /api.
     API_URL: z.string().default("http://localhost:5000"),
     ENABLE_API_MOCKING: z
       .enum(["true", "false"])
       .transform((value) => value === "true")
       .optional(),
+    // Empty in the production build: links use the address the page is on.
     APP_URL: z.string().optional().default("http://localhost:5173"),
   });
 

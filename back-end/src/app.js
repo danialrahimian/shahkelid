@@ -35,7 +35,7 @@ const createApp = () => {
     }),
   );
 
-  app.use(cors({ origin: config.cors.origin, credentials: true }));
+  app.use(cors({ origin: config.cors.allowedOrigins, credentials: true }));
 
   // A correlation id on every request and log line.
   app.use((req, res, next) => {

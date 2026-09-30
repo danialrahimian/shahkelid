@@ -13,12 +13,13 @@ import { paths } from "@/config/paths";
 /**
  * The public address of a post.
  *
- * Built from the configured `APP_URL` rather than from wherever the page
- * happens to be open. A link copied from a staging tab or a local dev server
- * would otherwise send the reader somewhere they cannot reach.
+ * Built from the configured `APP_URL` when there is one, so a link copied
+ * from a staging tab does not send the reader somewhere they cannot reach.
+ * The production build leaves it empty (one build serves every domain), and
+ * then the address the page was opened on is used.
  */
 export const postUrl = (slug: string) =>
-  new URL(paths.post.getHref(slug), env.APP_URL).toString();
+  new URL(paths.post.getHref(slug), env.APP_URL || window.location.origin).toString();
 
 export type ShareNetwork =
   | "telegram"

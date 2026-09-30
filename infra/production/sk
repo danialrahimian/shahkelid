@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# Everyday operations on the server, so no one has to remember compose flags.
+#
+#   ./sk init                    make .env with fresh secrets (once)
+#   ./sk up                      build and start everything
+#   ./sk status                  what is running, and is it healthy
+#   ./sk logs [service]          follow the logs (app, worker, web, backup…)
+#   ./sk create-owner <email>    the first owner (or --another)
+#   ./sk backup                  a backup now
+#   ./sk snapshots               the backups there are
+#   ./sk restore <id|latest>     replace the database and files with a backup
+#   ./sk update                  pull the code, rebuild, restart
+#   ./sk psql                    a database shell
+set -euo pipefail
+cd "$(dirname "$0")"
+
+compose() { docker compose --env-file .env -f compose.yaml "$@"; }
+
+need_env() {
+  [ -f .env ] || { echo "No .env yet: run ./sk init first." >&2; exit 1; }
+}
+
+secret() { openssl rand -base64 "$1" | tr -d '\n/+=' | cut -c1-"$2"; }
+
+case "${1:-help}" in
+  init)
+    if [ -f .env ]; then echo ".env exists already; nothing changed." >&2; exit 1; fi
+    cp .env.example .env
+    chmod 600 .env
+    sed -i \
+      -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(secret 48 40)|" \
+      -e "s|^REDIS_PASSWORD=.*|REDIS_PASSWORD=$(secret 48 40)|" \
+      -e "s|^SESSION_SECRET=.*|SESSION_SECRET=$(secret 64 64)|" \
+      -e "s|^APP_ENCRYPTION_KEY=.*|APP_ENCRYPTION_KEY=$(openssl rand -base64 32)|" \
+      -e "s|^RESTIC_PASSWORD=.*|RESTIC_PASSWORD=$(secret 48 40)|" \
+      .env
+    echo "Made .env with fresh secrets. Now fill in the addresses, mail, payments and backups."
+    echo
+    echo "Keep these two somewhere away from this server. Without them a backup cannot be read"
+    echo "and two-step sign-in cannot be restored:"
+    grep -E '^(RESTIC_PASSWORD|APP_ENCRYPTION_KEY)=' .env
+    ;;
+  up)
+    need_env
+    compose up -d --build --wait
+    compose ps
+    ;;
+  status)
+    need_env
+    compose ps
+    ;;
+  logs)
+    need_env
+    shift
+    compose logs -f --tail=200 "$@"
+    ;;
+  create-owner)
+    need_env
+    shift
+    compose run --rm --no-deps app npx tsx scripts/create-owner.ts "$@"
+    ;;
+  backup)
+    need_env
+    compose exec backup backup.sh
+    ;;
+  snapshots)
+    need_env
+    compose exec backup restore.sh --list
+    ;;
+  restore)
+    need_env
+    [ -n "${2:-}" ] || { echo "Which one? ./sk snapshots lists them; ./sk restore latest takes the newest." >&2; exit 2; }
+    read -r -p "The database and files will be REPLACED by backup '$2'. Type yes to go on: " answer
+    [ "$answer" = "yes" ] || { echo "Nothing changed."; exit 1; }
+    compose stop web app worker
+    compose exec backup restore.sh "$2" --yes
+    # Migrations first: a backup from an older release catches up here.
+    compose up -d --wait
+    compose ps
+    ;;
+  update)
+    need_env
+    git pull --ff-only
+    compose up -d --build --wait
+    docker image prune -f > /dev/null
+    compose ps
+    ;;
+  psql)
+    need_env
+    compose exec postgres psql -U shah_kelid shah_kelid
+    ;;
+  *)
+    sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+    ;;
+esac

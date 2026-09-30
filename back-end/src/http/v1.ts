@@ -31,7 +31,7 @@ export const createV1Router = () => {
   const redis = getAppRedis();
   const router = Router();
 
-  router.use(requireSameOrigin([config.cors.origin]));
+  router.use(requireSameOrigin(config.cors.allowedOrigins));
   router.use(accountSession(redis));
   router.use(loadAccount(db));
 

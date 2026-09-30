@@ -121,7 +121,17 @@ const config = {
   },
 
   cors: {
-    origin: read("CLIENT_ORIGIN", { fallback: "http://localhost:5173" }),
+    // The site's main address: links in emails and payment returns use it.
+    origin: read("CLIENT_ORIGIN", { fallback: "http://localhost:5173" }).replace(/\/+$/, ""),
+    // Every address the site may be opened from: the main one, and any backup
+    // domains (ALLOWED_ORIGINS, comma separated), for when the main one is
+    // blocked. Browsers may change things only from these.
+    allowedOrigins: [
+      read("CLIENT_ORIGIN", { fallback: "http://localhost:5173" }),
+      ...(read("ALLOWED_ORIGINS", { fallback: "" }) ?? "").split(","),
+    ]
+      .map((origin) => origin.trim().replace(/\/+$/, ""))
+      .filter(Boolean),
   },
 
   // Buying (src/modules/billing).
