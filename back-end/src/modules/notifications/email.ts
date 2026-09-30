@@ -22,6 +22,8 @@ export type Email = {
   to: string;
   subject: string;
   text: string;
+  /** The same message laid out for mail apps (right to left for Persian). */
+  html?: string;
 };
 
 export type EmailSender = (email: Email) => Promise<void>;

@@ -6,6 +6,7 @@ import { billingStaffRouter, shopRouter } from "../modules/billing/routes";
 import { catalogRouter } from "../modules/catalog/routes";
 import { identityRouter } from "../modules/identity/routes";
 import { infrastructureRouter } from "../modules/infrastructure/routes";
+import { notificationsRouter } from "../modules/notifications/routes";
 import { subscriptionLinkRouter } from "../modules/subscriptions/link";
 import { subscriptionsRouter } from "../modules/subscriptions/routes";
 import { getDb } from "../platform/db/client";
@@ -36,6 +37,7 @@ export const createV1Router = () => {
   router.use("/staff", catalogRouter({ db }));
   router.use("/staff", subscriptionsRouter({ db }));
   router.use("/staff", billingStaffRouter({ db }));
+  router.use("/staff", notificationsRouter({ db }));
   router.use(shopRouter({ db, redis }));
 
   router.use(v1NotFound);

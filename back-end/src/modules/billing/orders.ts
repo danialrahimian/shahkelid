@@ -8,6 +8,7 @@ import { planPanelSettings, plans } from "../catalog/schema";
 import { users } from "../identity/schema";
 import { post } from "../ledger/ledger";
 import { alertStaff } from "../notifications/alerts";
+import { format, notifyCustomer, siteUrl } from "../notifications/notify";
 import { panels } from "../infrastructure/schema";
 import { subscriptions } from "../subscriptions/schema";
 import { assertRenewable, requestRenewal } from "../subscriptions/renewal";
@@ -30,6 +31,15 @@ import { invoices, orderItems, orders, payments } from "./schema";
 export type OrderRow = typeof orders.$inferSelect;
 export type PaymentRow = typeof payments.$inferSelect;
 type PlanRow = typeof plans.$inferSelect;
+
+/** How a payment method reads in a customer's email. */
+const METHOD_NAMES: Record<string, string> = {
+  zarinpal: "زرین‌پال",
+  card_transfer: "کارت‌به‌کارت",
+  usdt_tron: "تتر (ترون)",
+  nowpayments: "ارز دیجیتال",
+  wallet: "کیف پول",
+};
 
 const GATEWAY_ACCOUNT = {
   zarinpal: "gateway_zarinpal",
@@ -368,6 +378,13 @@ export const settlePayment = async (
     });
 
     await markPaidAndFulfil(tx, order!, paymentId);
+    await notifyCustomer(tx, order!.userId, "payment_received", {
+      order_number: format.number(order!.number),
+      amount: format.toman(payment.amountToman),
+      plan_name: (await snapshotOf(tx, order!.id)).name,
+      method: METHOD_NAMES[payment.method] ?? payment.method,
+      order_url: siteUrl.order(order!.id),
+    });
     return { settled: true as const };
   });
 

@@ -26,4 +26,6 @@ export const TOPIC_ROUTES: TopicRoutes = {
   "order.renewal_paid": QUEUES.provisioning,
   // M4: tell owners and admins about trouble (src/modules/notifications/alerts.ts)
   "admin.alert": QUEUES.notifications,
+  // M7: an email to a customer (src/modules/notifications/notify.ts)
+  "customer.notify": QUEUES.notifications,
 };

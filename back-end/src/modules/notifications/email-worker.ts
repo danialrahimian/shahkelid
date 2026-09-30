@@ -1,12 +1,14 @@
-import { Worker, type Job } from "bullmq";
+import { Queue, Worker, type Job } from "bullmq";
 
 import config from "../../config";
 import logger from "../../libraries/logger";
 import { sendEmail as sendWithSmtp } from "../../libraries/mailer";
 import { QUEUES } from "../../platform/queue/routes";
-import { createConsumerConnection } from "../../platform/redis";
+import { createConsumerConnection, createProducerConnection } from "../../platform/redis";
 import type { Db } from "../../platform/db/client";
 import { ALERT_TOPIC, deliverAlert, type Alert } from "./alerts";
+import { deliverNotification, NOTIFY_TOPIC } from "./notify";
+import { scanReminders } from "./reminders";
 import type { Email } from "./email";
 
 /**
@@ -28,12 +30,14 @@ const deliver = async (job: Job<Email>) => {
     return;
   }
 
-  const result = await sendWithSmtp({ ...email, html: undefined });
+  const result = await sendWithSmtp({ ...email, html: email.html });
   if (!result.delivered) {
     // Thrown so BullMQ retries with backoff; the mailer already logged why.
     throw new Error(`The mail provider did not accept the email to ${email.to}`);
   }
 };
+
+export const REMINDERS_SCAN = "reminders.scan";
 
 /**
  * The notifications queue: emails (queued directly by the API) and alerts to
@@ -46,6 +50,10 @@ export const startNotificationsWorker = ({ db }: { db: Db }) => {
     async (job: Job) => {
       if (job.name === "email.send") return deliver(job as Job<Email>);
       if (job.name === ALERT_TOPIC) return deliverAlert(db, (job.data as { payload: Alert }).payload);
+      if (job.name === REMINDERS_SCAN) return scanReminders(db);
+      if (job.name === NOTIFY_TOPIC) {
+        return deliverNotification(db, (job.data as { payload: { notificationId: number } }).payload.notificationId);
+      }
     },
     { connection, concurrency: 5 },
   );
@@ -62,4 +70,20 @@ export const startNotificationsWorker = ({ db }: { db: Db }) => {
       connection.disconnect();
     },
   };
+};
+
+/** Every fifteen minutes: queue the reminders that have come due. Idempotent, like every schedule. */
+export const scheduleReminders = async () => {
+  const connection = createProducerConnection();
+  const queue = new Queue(QUEUES.notifications, { connection });
+  try {
+    await queue.upsertJobScheduler(
+      "reminders",
+      { every: 15 * 60 * 1000 },
+      { name: REMINDERS_SCAN, opts: { removeOnComplete: 100, removeOnFail: 100 } },
+    );
+  } finally {
+    await queue.close();
+    connection.disconnect();
+  }
 };

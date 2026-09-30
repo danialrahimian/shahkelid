@@ -7,6 +7,7 @@ import { recordEvent } from "../../platform/outbox/outbox";
 import { orderItems, orders } from "../billing/schema";
 import { planPanelSettings } from "../catalog/schema";
 import { findPanel } from "../infrastructure/service";
+import { format, notifyCustomer, siteUrl } from "../notifications/notify";
 import type { PanelUser } from "../provisioning/driver";
 import { driverFor } from "../provisioning/drivers";
 import { subscriptionEvents, subscriptions } from "./schema";
@@ -154,6 +155,12 @@ export const applyRenewal = async (db: Db, orderId: string) => {
       .set({ ...fromPanel(user), planId: plan.id })
       .where(eq(subscriptions.id, subscription!.id));
     await recordHistory(tx, subscription!.id, "renewed", "system", { planId: plan.id, days: plan.durationDays }, order.id);
+    await notifyCustomer(tx, subscription!.userId, "subscription_renewed", {
+      plan_name: plan.name,
+      expires_on: user.expiresAt ? format.date(user.expiresAt) : "اولین اتصال + " + format.days(Math.round((user.onHoldDurationSeconds ?? 0) / 86400)),
+      remaining: format.gb(user.dataLimitBytes === null ? null : Math.max(0, user.dataLimitBytes - user.usedBytes)),
+      account_url: siteUrl.account(),
+    });
   });
   return "renewed" as const;
 };

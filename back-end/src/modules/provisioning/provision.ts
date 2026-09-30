@@ -5,8 +5,9 @@ import type { Db } from "../../platform/db/client";
 import { plans } from "../catalog/schema";
 import { users } from "../identity/schema";
 import { alertStaff } from "../notifications/alerts";
+import { format, notifyCustomer, siteUrl } from "../notifications/notify";
 import { findPanel } from "../infrastructure/service";
-import { fromPanel, groupsFor, recordHistory } from "../subscriptions/service";
+import { fromPanel, groupsFor, linkFor, recordHistory } from "../subscriptions/service";
 import { subscriptions } from "../subscriptions/schema";
 import { driverFor } from "./drivers";
 
@@ -58,6 +59,13 @@ export const provisionSubscription = async (db: Db, id: string): Promise<Provisi
       await recordHistory(tx, id, "provisioned", "system", {
         panelUserId: user.id,
         foundExisting: existing !== null,
+      });
+      await notifyCustomer(tx, subscription.userId, "subscription_ready", {
+        plan_name: plan!.name,
+        volume: format.gb(subscription.dataLimitBytes),
+        days: format.days(plan!.durationDays),
+        link: linkFor(subscription.accessToken, panel.subscriptionBaseUrl),
+        account_url: siteUrl.account(),
       });
     }
   });
