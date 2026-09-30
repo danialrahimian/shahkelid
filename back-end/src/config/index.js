@@ -43,13 +43,7 @@ const readNumber = (key, fallback) => {
   return parsed;
 };
 
-// Read before the config object so its presence can be reported alongside it.
-const paymentMerchantId = read("ZARINPAL_MERCHANT_ID", { required: true });
-
-const databaseHost = read("DATABASE_HOST", { fallback: "127.0.0.1" });
-const databaseName = read("DATABASE_NAME", {
-  fallback: isTest ? "shahkelid-test" : "shahkelid",
-});
+const zarinpalMerchantId = read("ZARINPAL_MERCHANT_ID", { required: true });
 
 const config = {
   env: NODE_ENV,
@@ -63,13 +57,6 @@ const config = {
     port: readNumber("PORT", isTest ? 0 : 5000),
     // Requests larger than this are rejected (security practice 6.14).
     bodyLimit: read("BODY_LIMIT", { fallback: "100kb" }),
-  },
-
-  // MongoDB: where the existing modules still live. Each moves to PostgreSQL
-  // as it is rebuilt (roadmap M2-M9), and this goes at M10.
-  database: {
-    uri:
-      read("DATABASE_URI") || `mongodb://${databaseHost}:27017/${databaseName}`,
   },
 
   // PostgreSQL: the platform's database from here on. The defaults match
@@ -126,13 +113,11 @@ const config = {
   },
 
   session: {
+    // Signs the account session's cookie (src/platform/http/account-session.ts).
     secret: read("SESSION_SECRET", {
       fallback: isProduction ? undefined : "dev-only-insecure-secret",
       required: true,
     }),
-    name: read("SESSION_NAME", { fallback: "shahkelid.sid" }),
-    // One week.
-    maxAgeMs: readNumber("SESSION_MAX_AGE_MS", 7 * 24 * 60 * 60 * 1000),
   },
 
   cors: {
@@ -145,7 +130,7 @@ const config = {
     // development needs none; production refuses to start without one.
     zarinpalSandbox: read("ZARINPAL_SANDBOX", { fallback: "true" }) !== "false",
     zarinpalMerchantId:
-      paymentMerchantId ||
+      zarinpalMerchantId ||
       (read("ZARINPAL_SANDBOX", { fallback: "true" }) !== "false"
         ? "00000000-0000-0000-0000-000000000000"
         : ""),
@@ -210,14 +195,6 @@ const config = {
     syncEveryMs: readNumber("USAGE_SYNC_EVERY_MS", 5 * 60 * 1000),
   },
 
-  uploads: {
-    // Anchored to the package, not to the shell's working directory. Starting
-    // the app from a parent folder used to point this somewhere else, so new
-    // uploads landed outside the folder that already held every stored image.
-    directory: path.join(__dirname, "..", "..", "uploads"),
-    publicPath: "/uploads",
-    maxFileSizeBytes: readNumber("UPLOAD_MAX_BYTES", 5 * 1024 * 1024),
-  },
 
   mail: {
     host: read("SMTP_HOST", { fallback: "sandbox.smtp.mailtrap.io" }),
@@ -227,21 +204,7 @@ const config = {
     from: read("MAIL_FROM", { fallback: "no-reply@shahkelid.local" }),
   },
 
-  payment: {
-    merchantId: paymentMerchantId,
-    // The library throws on an undefined merchant id, so callers check this
-    // rather than discovering the problem as an unrelated TypeError.
-    isConfigured: Boolean(paymentMerchantId),
-    // Zarinpal's sandbox, unless explicitly turned off.
-    sandbox: read("ZARINPAL_SANDBOX", { fallback: "true" }) !== "false",
-    callbackUrl: read("PAYMENT_CALLBACK_URL", {
-      fallback: "http://localhost:5173/verify-payment",
-    }),
-  },
-
   auth: {
-    bcryptRounds: readNumber("BCRYPT_ROUNDS", isTest ? 4 : 12),
-    resetTokenTtlMs: readNumber("RESET_TOKEN_TTL_MS", 60 * 60 * 1000),
     // Credential attempts allowed per IP per window. Twenty is right for a
     // public deployment but far too few for development, where iterating on
     // the sign-in screen or running the client's integration suite exhausts

@@ -1,13 +1,10 @@
 "use strict";
 
 const http = require("node:http");
-const mongoose = require("mongoose");
 
 const config = require("./config");
 const logger = require("./libraries/logger");
 const { createApp } = require("./app");
-const { handleFatal } = require("./libraries/errors/error-handler");
-const { ensureUploadDirectory } = require("./libraries/storage/file-store");
 const { closeDb } = require("./platform/db/client");
 const { closeAppRedis } = require("./platform/redis");
 const { closeEmailQueue } = require("./modules/notifications/email");
@@ -22,16 +19,7 @@ const { closeEmailQueue } = require("./modules/notifications/email");
 
 let server;
 
-const connectToDatabase = async (uri = config.database.uri) => {
-  mongoose.set("strictQuery", true);
-  await mongoose.connect(uri);
-  logger.info("Connected to MongoDB");
-};
-
-const start = async ({ port = config.server.port, uri } = {}) => {
-  await ensureUploadDirectory();
-  await connectToDatabase(uri);
-
+const start = async ({ port = config.server.port } = {}) => {
   const app = createApp();
   server = http.createServer(app);
 
@@ -54,11 +42,8 @@ const stop = async () => {
     await new Promise((resolve) => server.close(resolve));
   }
   server = undefined;
-  if (mongoose.connection.readyState !== 0) {
-    await mongoose.disconnect();
-  }
-  // The /api/v1 connections. Each is opened only on first use, and closing
-  // one that was never opened does nothing.
+  // Each connection is opened only on first use, and closing one that was
+  // never opened does nothing.
   await closeEmailQueue();
   await closeAppRedis();
   await closeDb();
@@ -86,12 +71,21 @@ const shutdown = async (signal, code = 0) => {
   }
 };
 
-/** Installs signal and crash handlers. Only the real entry point calls this. */
+/**
+ * Installs signal and crash handlers. Only the real entry point calls this.
+ * An error that escapes every request leaves the process in an unknown
+ * state, so it is logged, drained and restarted by the process manager.
+ */
 const registerProcessHandlers = () => {
-  handleFatal({ onFatal: () => shutdown("fatal-error", 1) });
+  for (const origin of ["unhandledRejection", "uncaughtException"]) {
+    process.on(origin, (error) => {
+      logger.fatal({ err: error, origin }, "Unhandled error, shutting down");
+      void shutdown("fatal-error", 1);
+    });
+  }
   for (const signal of ["SIGTERM", "SIGINT"]) {
     process.on(signal, () => shutdown(signal, 0));
   }
 };
 
-module.exports = { start, stop, connectToDatabase, registerProcessHandlers };
+module.exports = { start, stop, registerProcessHandlers };
