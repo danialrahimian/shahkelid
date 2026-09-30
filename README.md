@@ -14,8 +14,6 @@ npm run db:migrate -w back-end   # creates the tables
 
 Copy `back-end/.env.example` to `back-end/.env` and `front-end/.env.example` to `front-end/.env`. The defaults work as they are for development. PostgreSQL and Redis need no settings, because the defaults match `compose.yaml`.
 
-The existing modules still use **MongoDB** until each moves to PostgreSQL (roadmap M2 to M9), so a local `mongod` on port 27017 is also needed for now.
-
 ## Running it
 
 Each in its own terminal:
@@ -40,13 +38,26 @@ Then open http://localhost:5173/account/sign-in and sign in with that address. W
 |---|---|
 | `/account/sign-in` | Email code (also creates the account), or password; then the authenticator code |
 | `/account/forgot-password` | A code by email, then a new password |
-| `/account` | The customer panel: their services (volume and days left, the link and QR code, renew), orders and invoices, name, password, two-step sign-in |
+| `/account` | The customer panel: their services (volume and days left, the link and QR code, renew), orders and invoices, name, password, two-step sign-in, deleting the account |
+| `/support` | The customer's tickets |
+| `/posts` | The journal: posts, likes, and comments (shown once staff approve them) |
 
-The old `/auth` page and `/dashboard` still use the old accounts (MongoDB) until the dashboard's sections move over, milestone by milestone.
+The old site's addresses (`/auth`, `/profile`, `/invoices`, `/dashboard`, `/admin`, `/mod`, `/crm`, `/cart`) lead to where the same thing lives now.
 
 ## The staff area and the VPN panel
 
-`/staff` is the new staff area (sign in on `/account/sign-in` first). In order:
+`/staff` is the staff area (sign in on `/account/sign-in` first). Its sidebar shows each person only the pages their roles allow:
+
+| Page | Who | What |
+|---|---|---|
+| Tickets | support | The support queue (see below) |
+| Sales reports | accountant, admin | Revenue, orders, average, completion and renewals against the range before; revenue by day, Persian week or Persian month; by plan and by payment method; who paid most. Days are Tehran's. |
+| Customers | support, accountant | Each customer's value and stage (lead, active, at risk, churned; VIP and blocked by hand), tags, notes, services, orders and emails. Suspend or delete an account. |
+| Posts, Comments | editor | Write the journal; approve or reject comments |
+| Team and roles | admin (owners change roles) | Add someone by email with a role; their account is made if needed and they are emailed where to sign in |
+| Activity log | admin | Every change staff or the system made, and by whom |
+
+Setting up, in order:
 
 1. **Panels**: add the PasarGuard panel (its address and a panel account or API key). It is checked before it is saved.
 2. **Servers and locations**: add a location, then a server on that panel, choosing the panel group that gives access to it.
@@ -99,9 +110,8 @@ Runs lint, typecheck and every test of every package. The back-end tests use the
 ## Layout
 
 ```
-back-end/            the API and the worker (Node, Express, TypeScript arriving gradually)
-  src/modules/       new code, one folder per module, each owning its tables
-  src/components/    existing modules, moving into src/modules one by one
+back-end/            the API and the worker (Node, Express, TypeScript, PostgreSQL)
+  src/modules/       one folder per module, each owning its tables
   src/platform/      database, queues, outbox
   drizzle/           migrations
 front-end/           the web app (React, Vite)
