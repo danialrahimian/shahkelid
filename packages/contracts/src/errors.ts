@@ -67,6 +67,18 @@ export const API_ERROR_CODES = [
   "ATTACHMENT_INVALID",
   /** The ticket is closed; the customer opens a new one. */
   "TICKET_CLOSED",
+
+  // the journal (M9)
+  /** A post's cover is not a JPEG, PNG or WebP picture, or is over 5 MB. */
+  "COVER_INVALID",
+
+  // reports (M9)
+  /** A report's range is not two days, is back to front, or is over a year. */
+  "RANGE_INVALID",
+
+  // accounts (M9)
+  /** The email typed to confirm deleting an account is not the account's. */
+  "CONFIRMATION_MISMATCH",
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

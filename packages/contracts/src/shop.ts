@@ -268,3 +268,9 @@ export const updateProfileInput = z.object({
   displayName: z.string().trim().max(60, "TOO_LONG"),
 });
 export type UpdateProfileInput = z.input<typeof updateProfileInput>;
+
+/** Deleting one's account: typing one's own email is the confirmation. */
+export const deleteAccountInput = z.object({
+  email: z.string().trim().min(1, "REQUIRED").max(254, "TOO_LONG"),
+});
+export type DeleteAccountInput = z.input<typeof deleteAccountInput>;

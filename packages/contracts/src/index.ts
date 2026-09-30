@@ -8,3 +8,7 @@ export * from "./subscriptions.ts";
 export * from "./shop.ts";
 export * from "./notifications.ts";
 export * from "./support.ts";
+export * from "./content.ts";
+export * from "./crm.ts";
+export * from "./reports.ts";
+export * from "./access.ts";

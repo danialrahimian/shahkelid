@@ -65,16 +65,3 @@ export type SubscriptionEventView = {
   createdAt: string;
 };
 
-export type CustomerSummary = {
-  id: string;
-  email: string;
-  displayName: string;
-  status: string;
-  createdAt: string;
-  lastLoginAt: string | null;
-  liveSubscriptions: number;
-};
-
-export type CustomerDetail = CustomerSummary & {
-  subscriptions: SubscriptionView[];
-};
