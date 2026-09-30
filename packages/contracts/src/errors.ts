@@ -60,6 +60,13 @@ export const API_ERROR_CODES = [
   // notifications (M7)
   /** A template uses a {{variable}} it does not have. */
   "TEMPLATE_VARIABLE_UNKNOWN",
+
+  // support (M8)
+  "TOO_SHORT",
+  /** An attachment is not an image, too large, or one too many. */
+  "ATTACHMENT_INVALID",
+  /** The ticket is closed; the customer opens a new one. */
+  "TICKET_CLOSED",
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

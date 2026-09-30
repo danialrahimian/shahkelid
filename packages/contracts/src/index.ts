@@ -7,3 +7,4 @@ export * from "./catalog.ts";
 export * from "./subscriptions.ts";
 export * from "./shop.ts";
 export * from "./notifications.ts";
+export * from "./support.ts";
