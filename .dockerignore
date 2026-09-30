@@ -1,0 +1,15 @@
+# Only the source goes into an image: never secrets, customer data or builds.
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+!**/.env.example
+back-end/files
+back-end/uploads
+back-end/backups
+backups
+**/*.log
+.git
+.vscode
+.idea
+**/coverage

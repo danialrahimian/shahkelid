@@ -1,0 +1,167 @@
+# Shah Kelid on one server. Run from this folder, through ./sk (see
+# docs/05-install.md), which is `docker compose` with this file and .env.
+#
+#   web     Caddy: TLS, the web app, and /api + /s passed to the app
+#   app     the API
+#   worker  outbox relay, queues, schedules (provisioning, reminders, billing)
+#   migrate runs the migrations, then exits; app and worker wait for it
+#   backup  pg_dump + files → S3-compatible storage (restic), on a schedule
+#   postgres, redis
+#
+# Only web publishes ports (80 and 443). The database and Redis are on the
+# internal network alone, and nothing but web faces the internet.
+
+name: shah-kelid-prod
+
+x-app: &app
+  image: shah-kelid-app:${RELEASE:-latest}
+  build:
+    context: ../..
+    target: app
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    NODE_ENV: production
+    POSTGRES_URL: postgres://shah_kelid:${POSTGRES_PASSWORD}@postgres:5432/shah_kelid
+    REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+    CLIENT_ORIGIN: https://${MAIN_DOMAIN}
+    PUBLIC_API_URL: https://${MAIN_DOMAIN}
+  volumes:
+    - files:/app/back-end/files
+  # public: the app calls out (panels, gateways, Nobitex, TronGrid, SMTP).
+  networks: [internal, public]
+  logging: &logging
+    driver: json-file
+    options: { max-size: "20m", max-file: "5" }
+
+services:
+  web:
+    image: shah-kelid-web:${RELEASE:-latest}
+    build:
+      context: ../..
+      target: web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SITE_ADDRESSES: ${SITE_ADDRESSES}
+      ACME_EMAIL: ${ACME_EMAIL}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1/32}
+      CADDY_LOCAL_CERTS: ${CADDY_LOCAL_CERTS:-}
+    volumes:
+      # Certificates survive a restart or an update: Let's Encrypt limits how
+      # often the same one can be issued.
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      app: { condition: service_healthy }
+    networks: [internal, public]
+    logging: *logging
+
+  app:
+    <<: *app
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  worker:
+    <<: *app
+    command: ["npx", "tsx", "src/entrypoints/worker.ts"]
+    healthcheck:
+      disable: true
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  migrate:
+    <<: *app
+    restart: "no"
+    command: ["npx", "tsx", "src/platform/db/migrate.ts"]
+    healthcheck:
+      disable: true
+    networks: [internal]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shah_kelid
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: shah_kelid
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    shm_size: 256mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shah_kelid -d shah_kelid"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [internal]
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # noeviction: BullMQ keeps its jobs in Redis, and evicting keys under
+    # memory pressure would silently delete queued work. appendonly: queued
+    # jobs survive a restart.
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --maxmemory-policy noeviction --requirepass "$$REDIS_PASSWORD"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [internal]
+    logging: *logging
+
+  backup:
+    image: shah-kelid-backup:${RELEASE:-latest}
+    build:
+      context: ../backup
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGUSER: shah_kelid
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: shah_kelid
+      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY}
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD}
+      AWS_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${BACKUP_S3_REGION:-auto}
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-15 */6 * * *}
+      BACKUP_PING_URL: ${BACKUP_PING_URL:-}
+      TZ: ${TZ:-Asia/Tehran}
+    volumes:
+      - files:/data/files
+      - backup-state:/var/lib/backup
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [internal, public]
+    logging: *logging
+
+networks:
+  # The database and Redis are only here: no route to or from the internet.
+  internal:
+    internal: true
+  # For what must reach out (the app, the worker, backups) or be reached (web).
+  public:
+
+volumes:
+  postgres-data:
+  redis-data:
+  files:
+  caddy-data:
+  caddy-config:
+  backup-state:

@@ -1,0 +1,73 @@
+# The front door: TLS, the web app, and the API behind it.
+#
+# SITE_ADDRESSES is every address the site answers on, comma separated: the
+# main domain and any backup domains ("shahkelid.com, www.shahkelid.com,
+# backup-domain.net"). Caddy takes and renews a certificate for each by
+# itself; adding a backup domain is adding it here (and to ALLOWED_ORIGINS in
+# the app) and restarting this container. "localhost" gets a certificate
+# from Caddy's own authority, for trying it out on one machine.
+#
+# Behind Cloudflare, set TRUSTED_PROXIES to Cloudflare's address ranges (see
+# .env.example): the visitor's own address is then read from the header
+# Cloudflare sends, so rate limits and logs see the customer, not Cloudflare.
+#
+# By default no one is trusted (127.0.0.1 is only Caddy itself): a header
+# naming "the real address" is then ignored, whoever sends it. Trusting
+# private ranges would let anyone whose connection arrives through Docker's
+# gateway pick their own address and walk past every rate limit.
+
+{
+	email {$ACME_EMAIL}
+	# "local_certs" on a trial install without real domains: every
+	# certificate then comes from Caddy's own authority. Empty in production.
+	{$CADDY_LOCAL_CERTS}
+	servers {
+		trusted_proxies static {$TRUSTED_PROXIES:127.0.0.1/32}
+		client_ip_headers CF-Connecting-IP X-Forwarded-For
+	}
+}
+
+{$SITE_ADDRESSES} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		-Server
+	}
+
+	# The API, customers' subscription links, and the health check.
+	@app path /api/* /s/* /health
+	handle @app {
+		reverse_proxy app:5000 {
+			# The visitor's address as Caddy worked it out (Cloudflare's
+			# header, or the connection), in place of whatever the request
+			# claimed. The app trusts exactly one proxy: this one.
+			header_up X-Forwarded-For {client_ip}
+		}
+	}
+
+	# The web app: files that exist, and index.html for every page address.
+	handle {
+		root * /srv/www
+		header {
+			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+			X-Frame-Options "DENY"
+		}
+		# Built files carry their hash in the name: cache them for good.
+		@hashed path /assets/*
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		# index.html must never be cached, or a release reaches nobody.
+		@shell not path /assets/*
+		header @shell Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
