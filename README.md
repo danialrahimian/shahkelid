@@ -2,6 +2,14 @@
 
 VPN subscription platform: the storefront and customer panel, the staff dashboard and CRM, and (later) the Telegram bot. Being rebuilt in phases; see [docs/03-roadmap.md](docs/03-roadmap.md).
 
+## Running it on a server
+
+Production is one server with Docker Compose: Caddy (automatic HTTPS), the API, the worker, PostgreSQL, Redis and encrypted backups to S3-compatible storage. Everything is operated through `infra/production/sk`.
+
+- [docs/05-install.md](docs/05-install.md): installing from scratch on an empty Ubuntu server (in Persian).
+- [docs/06-operations.md](docs/06-operations.md): everyday operations, backups and restoring, and what to do when the panel, a gateway, Nobitex or email is down.
+- [docs/04-security.md](docs/04-security.md): the security review.
+
 ## Setting up a development machine
 
 You need **Node.js 24** and **Docker Desktop** (running).
@@ -116,8 +124,13 @@ back-end/            the API and the worker (Node, Express, TypeScript, PostgreS
   drizzle/           migrations
 front-end/           the web app (React, Vite)
 packages/contracts/  what the apps must agree on: units, conversions, shared schemas
-docs/                the approved design: architecture, database, roadmap
-compose.yaml         local PostgreSQL and Redis
+docs/                the design, the roadmap, the security review, install and operations guides
+infra/production/    the server: compose.yaml, .env.example, and ./sk
+infra/caddy/         the Caddyfile
+infra/backup/        the backup image: backup.sh, restore.sh
+infra/loadtest/      the 10,000-customer load test (seed, fake panel, k6)
+Dockerfile           the app image (API, worker, migrations) and the web image (Caddy + the built site)
+compose.yaml         local PostgreSQL and Redis, for development
 ```
 
 ## Services
