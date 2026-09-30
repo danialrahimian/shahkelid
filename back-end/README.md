@@ -251,6 +251,31 @@ The new accounts live in PostgreSQL, with sessions in Redis (cookie `sk.sid`).
   Provisioning alerts once after about a minute of failures, and again if it
   gives up.
 
+## Support tickets (/api/v1/support, /api/v1/staff/tickets)
+
+`src/modules/support`. A ticket's status says who it waits on:
+`awaiting_staff`, `awaiting_customer`, `resolved`, `closed`.
+
+- **Internal notes** are messages with `is_internal`. The customer's queries
+  leave them out in SQL, and an attachment on one is refused to the
+  customer, so no screen can show them by mistake. A database check allows
+  internal messages only from staff.
+- **A staff reply** sets `awaiting_customer`, gives an unassigned ticket to
+  whoever answered, and queues the `ticket_reply` email in the same
+  transaction. **A customer's message** sets `awaiting_staff` (reopening a
+  resolved ticket; a closed one answers `TICKET_CLOSED`).
+- **Agents** are active users whose roles grant `tickets:reply`. A new
+  ticket, or a customer's reply, records a `support.ticket_alert` outbox
+  event; the worker emails the ticket's assignee, or every agent when there
+  is none.
+- **Attachments** are images only (checked by their first bytes), three per
+  message, stored with the receipts in the private files folder and served
+  by `GET /support/files/:id` to the ticket's owner or an agent.
+- **Quiet tickets**: every hour the worker marks resolved any ticket waiting
+  on the customer for 7 days, with a system message in the thread.
+- **Categories**: `npm run db:migrate` gives an empty installation four
+  defaults (`src/modules/support/defaults.ts`); after that they are staff's.
+
 ## Tests
 
 ```bash

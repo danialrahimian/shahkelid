@@ -69,7 +69,18 @@ The customer's link is `{PUBLIC_API_URL}/s/{token}` (default `http://localhost:5
 
 - **Emails to customers** (service ready, payment received, renewed, and the reminders at 3 days and 1 day left and at 80% and 100% of the volume) are in Persian and can be rewritten, previewed or switched off in `/staff/notifications`. Each customer's page in `/staff` lists what they were sent, or why not.
 
-The **worker** does the rest: it puts paid subscriptions on the panel, asks Zarinpal about payments whose customers never came back, reads the USDT rate and new USDT transfers, queues the reminders that are due, sends emails, and lapses unpaid orders and quotes.
+## Support tickets
+
+Customers open tickets at `/support` (linked from `/account`): a subject, a category, how urgent (up to "high"), optionally which service, and up to three screenshots. Staff with `tickets:reply` (the support, admin and owner roles) answer them at `/staff/tickets`:
+
+- The default view is what waits for staff, most urgent first and then whichever has waited longest. Other views: mine, unassigned, waiting for the customer, resolved, closed.
+- A reply emails the customer (the "ticket reply" template in `/staff/notifications`) and sets the ticket to waiting for the customer. Whoever answers an unassigned ticket gets it.
+- Tick "internal note" to write something only staff see. It changes nothing and emails nobody.
+- New tickets are emailed to every support agent; a customer's reply goes to whoever has the ticket.
+- A ticket left waiting for the customer for a week is marked resolved. A reply from the customer reopens it.
+- Categories are edited at the bottom of `/staff/tickets` (needs `settings:manage`). A new installation starts with four.
+
+The **worker** does the rest: it puts paid subscriptions on the panel, asks Zarinpal about payments whose customers never came back, reads the USDT rate and new USDT transfers, queues the reminders that are due, sends emails, resolves tickets left quiet for a week, and lapses unpaid orders and quotes.
 
 To check the panel driver and Zarinpal against the real things (Zarinpal's sandbox, and your test panel, where test users named `sk-contract-...` and `sk_...` are created and deleted), fill the `PASARGUARD_TEST_*` values in `back-end/.env` and run:
 
