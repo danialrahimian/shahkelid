@@ -70,6 +70,8 @@ case "${1:-help}" in
   restore)
     need_env
     [ -n "${2:-}" ] || { echo "Which one? ./sk snapshots lists them; ./sk restore latest takes the newest." >&2; exit 2; }
+    # Show what is about to come back: its time, and its accounts-N tag.
+    compose exec -T backup sh -c '. /etc/backup.env; restic snapshots --host shah-kelid "$0"' "$2" < /dev/null
     read -r -p "The database and files will be REPLACED by backup '$2'. Type yes to go on: " answer
     [ "$answer" = "yes" ] || { echo "Nothing changed."; exit 1; }
     compose stop web app worker

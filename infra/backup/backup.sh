@@ -25,8 +25,18 @@ SQL
 }
 
 run() {
+  # A database with no accounts is a fresh install: nothing to protect yet.
+  # Backing it up would make an empty copy "the latest", and on a new server
+  # being brought back from a backup, `restore latest` would then restore
+  # that empty copy instead of the shop.
+  accounts=$(psql -tAc "select count(*) from users where deleted_at is null")
+  if [ "$accounts" -eq 0 ]; then
+    say "no accounts yet: nothing to back up"
+    return 0
+  fi
+
   mkdir -p "$WORK"
-  say "dumping the database"
+  say "dumping the database ($accounts accounts)"
   pg_dump --format=custom --compress=6 --file="$WORK/database.dump.tmp"
   mv "$WORK/database.dump.tmp" "$WORK/database.dump"
 
@@ -44,7 +54,9 @@ run() {
   fi
 
   say "sending the snapshot"
-  restic backup --host shah-kelid --tag scheduled "$WORK/database.dump" "$FILES"
+  # The account count rides along as a tag, so a list of snapshots shows at a
+  # glance which ones hold the shop.
+  restic backup --host shah-kelid --tag scheduled --tag "accounts-$accounts" "$WORK/database.dump" "$FILES"
 
   say "thinning out old snapshots"
   restic forget --host shah-kelid --prune \
