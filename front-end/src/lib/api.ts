@@ -21,7 +21,6 @@ export const api = createApi({
   // Declared up front so a feature can invalidate another feature's data
   // without importing it.
   tagTypes: [
-    "Session",
     "AccountSession",
     "StaffPanel",
     "StaffLocation",
@@ -36,20 +35,15 @@ export const api = createApi({
     "StaffTicket",
     "StaffTicketCategory",
     "SupportTicket",
+    "StaffReport",
+    "StaffTeam",
+    "StaffPost",
+    "StaffComment",
     "ShopPlan",
     "ShopOrder",
     "ShopSubscription",
-    "Profile",
-    "Product",
-    "Cart",
-    "Order",
-    "AdminProduct",
-    "User",
     "Post",
-    "StaffPost",
     "Comment",
-    "Analytics",
-    "Customer",
   ],
   endpoints: () => ({}),
 });

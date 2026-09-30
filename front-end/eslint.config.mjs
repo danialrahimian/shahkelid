@@ -50,15 +50,8 @@ export default defineConfig([
             // No feature may import another feature. Compose them in `app`.
             ...[
               "account",
-              "admin",
-              "auth",
-              "crm",
-              "dashboard",
+              "journal",
               "marketing",
-              "moderator",
-              "orders",
-              "posts",
-              "profile",
               "shop",
               "staff",
               "support",

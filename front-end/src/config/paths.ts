@@ -17,15 +17,7 @@ export const paths = {
     getHref: () => "/pricing",
   },
 
-  /**
-   * The catalogue used to live here. Kept so links already out in the world,
-   * and anyone's bookmark, land on the pricing page rather than a 404.
-   */
-  productsLegacy: {
-    path: "/products",
-    getHref: () => "/products",
-  },
-
+  /** The journal. */
   posts: {
     path: "/posts",
     getHref: () => "/posts",
@@ -33,35 +25,9 @@ export const paths = {
 
   post: {
     path: "/posts/:slug",
-    getHref: (slug: string) => `/posts/${slug}`,
+    getHref: (slug: string) => `/posts/${encodeURIComponent(slug)}`,
   },
 
-  cart: {
-    path: "/cart",
-    getHref: () => "/cart",
-  },
-
-  checkout: {
-    path: "/checkout",
-    getHref: () => "/checkout",
-  },
-
-  verifyPayment: {
-    path: "/verify-payment",
-    getHref: () => "/verify-payment",
-  },
-
-  profile: {
-    path: "/profile",
-    getHref: () => "/profile",
-  },
-
-  invoices: {
-    path: "/invoices",
-    getHref: () => "/invoices",
-  },
-
-  /** The new account screens, on /api/v1. */
   account: {
     path: "/account",
     getHref: () => "/account",
@@ -112,10 +78,14 @@ export const paths = {
     getHref: (ticketId: string) => `/support/${ticketId}`,
   },
 
-  /** The new staff area, on /api/v1/staff. */
+  /** The staff area, on /api/v1/staff. */
   staff: {
     path: "/staff",
     getHref: () => "/staff",
+  },
+  staffReports: {
+    path: "/staff/reports",
+    getHref: () => "/staff/reports",
   },
   staffCustomers: {
     path: "/staff/customers",
@@ -145,6 +115,19 @@ export const paths = {
     path: "/staff/payments",
     getHref: () => "/staff/payments",
   },
+  staffPosts: {
+    path: "/staff/posts",
+    getHref: () => "/staff/posts",
+  },
+  /** "new" for a post not yet written. */
+  staffPost: {
+    path: "/staff/posts/:postId",
+    getHref: (postId: string) => `/staff/posts/${postId}`,
+  },
+  staffComments: {
+    path: "/staff/comments",
+    getHref: () => "/staff/comments",
+  },
   staffNotifications: {
     path: "/staff/notifications",
     getHref: () => "/staff/notifications",
@@ -161,99 +144,13 @@ export const paths = {
     path: "/staff/panels",
     getHref: () => "/staff/panels",
   },
-
-  auth: {
-    path: "/auth",
-    // Where to return to once the visitor has signed in.
-    getHref: (redirectTo?: string | null | undefined) =>
-      `/auth${redirectTo ? `?redirectTo=${encodeURIComponent(redirectTo)}` : ""}`,
+  staffTeam: {
+    path: "/staff/team",
+    getHref: () => "/staff/team",
   },
-
-  resetPassword: {
-    path: "/reset-password",
-    getHref: () => "/reset-password",
-  },
-
-  resetPasswordToken: {
-    path: "/reset-password/:resetToken",
-    getHref: (resetToken: string) => `/reset-password/${resetToken}`,
-  },
-
-  /**
-   * The staff area: every internal screen behind one sidebar.
-   *
-   * Sales, customers, products and users used to be four separate top-level
-   * pages, each a link in the public navigation. They are one workspace for
-   * the people who use them, so they now share one address prefix, one layout
-   * and one guard.
-   */
-  dashboard: {
-    path: "/dashboard",
-    getHref: () => "/dashboard",
-  },
-
-  dashboardCustomers: {
-    path: "/dashboard/customers",
-    getHref: () => "/dashboard/customers",
-  },
-
-  dashboardCustomer: {
-    path: "/dashboard/customers/:userId",
-    getHref: (userId: string) => `/dashboard/customers/${userId}`,
-  },
-
-  dashboardProducts: {
-    path: "/dashboard/products",
-    getHref: () => "/dashboard/products",
-  },
-
-  dashboardProduct: {
-    path: "/dashboard/products/:productId",
-    getHref: (productId: string) => `/dashboard/products/${productId}`,
-  },
-
-  dashboardPosts: {
-    path: "/dashboard/posts",
-    getHref: () => "/dashboard/posts",
-  },
-
-  dashboardPost: {
-    path: "/dashboard/posts/:postId",
-    getHref: (postId: string) => `/dashboard/posts/${postId}`,
-  },
-
-  dashboardUsers: {
-    path: "/dashboard/users",
-    getHref: () => "/dashboard/users",
-  },
-
-  /**
-   * Where the panels used to live. Kept so bookmarks and links already out in
-   * the world land on the same screen in its new home rather than a 404.
-   */
-  adminLegacy: {
-    path: "/admin",
-    getHref: () => "/admin",
-  },
-
-  adminProductLegacy: {
-    path: "/admin/:productId",
-    getHref: (productId: string) => `/admin/${productId}`,
-  },
-
-  moderatorLegacy: {
-    path: "/mod",
-    getHref: () => "/mod",
-  },
-
-  crmLegacy: {
-    path: "/crm",
-    getHref: () => "/crm",
-  },
-
-  crmCustomerLegacy: {
-    path: "/crm/:userId",
-    getHref: (userId: string) => `/crm/${userId}`,
+  staffAudit: {
+    path: "/staff/audit",
+    getHref: () => "/staff/audit",
   },
 
   notFound: {
@@ -261,3 +158,23 @@ export const paths = {
     getHref: () => "/404",
   },
 } as const;
+
+/**
+ * Addresses the old site used, each sent to where the same thing lives now,
+ * so bookmarks and links out in the world do not end on "not found".
+ */
+export const LEGACY_REDIRECTS: { from: string; to: string }[] = [
+  { from: "/products", to: paths.pricing.getHref() },
+  { from: "/cart", to: paths.pricing.getHref() },
+  { from: "/checkout", to: paths.pricing.getHref() },
+  { from: "/verify-payment", to: paths.pricing.getHref() },
+  { from: "/profile", to: paths.account.getHref() },
+  { from: "/invoices", to: paths.account.getHref() },
+  { from: "/auth", to: paths.accountSignIn.getHref() },
+  { from: "/reset-password", to: paths.accountForgotPassword.getHref() },
+  { from: "/reset-password/:resetToken", to: paths.accountForgotPassword.getHref() },
+  { from: "/dashboard/*", to: paths.staff.getHref() },
+  { from: "/admin/*", to: paths.staffPlans.getHref() },
+  { from: "/mod", to: paths.staffTeam.getHref() },
+  { from: "/crm/*", to: paths.staffCustomers.getHref() },
+];

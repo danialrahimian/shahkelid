@@ -7,7 +7,6 @@ import {
 import { toast } from "sonner";
 
 import { env } from "@/config/env";
-import { paths } from "@/config/paths";
 
 /**
  * The one configured API client the whole application talks through.
@@ -138,17 +137,12 @@ const rawBaseQuery = fetchBaseQuery({
 });
 
 /**
- * The new API's endpoints (/api/v1), by name prefix. Their screens handle a
- * 401 themselves, with the new sign-in page.
- */
-const NEW_API_ENDPOINTS = ["account", "staff", "shop", "support"];
-
-/** Requests that are expected to 401 for a signed-out visitor, and so must not bounce them. */
-const SILENT_401_ENDPOINTS = new Set(["getSession", "logout"]);
-
-/**
- * Wraps the transport with the two things every response needs: a readable
- * error, and one reaction to an expired session.
+ * Wraps the transport so every failure arrives in one readable shape.
+ *
+ * A 401 is not handled here: on this API it is part of signing in ("the
+ * authenticator code is still to come"), and each screen that needs a
+ * session sends the reader to the sign-in page itself, remembering where
+ * they were.
  */
 export const baseQueryWithErrorHandling: BaseQueryFn<
   string | FetchArgs,
@@ -158,32 +152,7 @@ export const baseQueryWithErrorHandling: BaseQueryFn<
   const result = await rawBaseQuery(args, api, extraOptions);
 
   if (result.error) {
-    const error = normalizeError(result.error);
-
-    // A session that expired mid-visit should send the user to sign in again,
-    // remembering where they were so they land back on the same page.
-    //
-    // Guarded on `window` because this module also runs outside a browser:
-    // reaching for `window.location` unguarded threw inside the base query,
-    // which turned every 401 into an unrecognisable error instead of a 401.
-    //
-    // The new API's endpoints (account*, staff*, shop*, support*) are left alone: a 401 there
-    // is part of signing in ("authenticator code still to come"), and those
-    // screens send the reader to the new sign-in page themselves.
-    if (
-      error.status === 401 &&
-      !SILENT_401_ENDPOINTS.has(api.endpoint) &&
-      !NEW_API_ENDPOINTS.some((prefix) => api.endpoint.startsWith(prefix)) &&
-      typeof window !== "undefined"
-    ) {
-      const redirectTo = `${window.location.pathname}${window.location.search}`;
-      if (!window.location.pathname.startsWith(paths.auth.path)) {
-        toast.error("Your session has expired. Please sign in again.");
-        window.location.href = paths.auth.getHref(redirectTo);
-      }
-    }
-
-    return { error };
+    return { error: normalizeError(result.error) };
   }
 
   return result;

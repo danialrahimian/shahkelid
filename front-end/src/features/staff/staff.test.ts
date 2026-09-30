@@ -36,9 +36,9 @@ describe("Where /staff leads", () => {
     expect(firstStaffPage(staff(["customers:read", "servers:manage"]))).toBe("/staff/customers");
   });
 
-  it("When staff may review receipts, then receipts come after customers, and alone they land on receipts", () => {
+  it("When an accountant signs in, then they land on the sales reports; with receipts alone, on receipts", () => {
     expect(firstStaffPage(staff(["orders:read", "payments:review", "analytics:read", "customers:read"]))).toBe(
-      "/staff/customers",
+      "/staff/reports",
     );
     expect(firstStaffPage(staff(["payments:review"]))).toBe("/staff/payments");
   });
@@ -47,7 +47,15 @@ describe("Where /staff leads", () => {
     expect(firstStaffPage(staff(["servers:manage"]))).toBe("/staff/servers");
   });
 
-  it("When someone has no staff page at all (an editor), then there is nowhere to go", () => {
-    expect(firstStaffPage(staff(["content:manage"]))).toBeUndefined();
+  it("When support staff sign in, then they land on the tickets", () => {
+    expect(firstStaffPage(staff(["customers:read", "tickets:reply"]))).toBe("/staff/tickets");
+  });
+
+  it("When an editor signs in, then they land on the posts", () => {
+    expect(firstStaffPage(staff(["content:manage"]))).toBe("/staff/posts");
+  });
+
+  it("When someone holds no permission a page needs, then there is nowhere to go", () => {
+    expect(firstStaffPage(staff([]))).toBeUndefined();
   });
 });

@@ -1,5 +1,6 @@
 import { Table2, TrendingUp } from "lucide-react";
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -52,6 +53,7 @@ export const ChartFrame = ({
   className,
   children,
 }: ChartFrameProps) => {
+  const { t } = useTranslation();
   const [view, setView] = React.useState<"chart" | "table">("chart");
   const showLegend = (legend?.length ?? 0) >= 2;
 
@@ -70,7 +72,7 @@ export const ChartFrame = ({
             {action}
             <div
               role="group"
-              aria-label={`${title} view`}
+              aria-label={title}
               className="flex items-center rounded-lg border border-border p-0.5"
             >
               <Button
@@ -82,7 +84,7 @@ export const ChartFrame = ({
                 onClick={() => setView("chart")}
               >
                 <TrendingUp className="size-3.5" />
-                Chart
+                {t("charts.chart")}
               </Button>
               <Button
                 type="button"
@@ -93,7 +95,7 @@ export const ChartFrame = ({
                 onClick={() => setView("table")}
               >
                 <Table2 className="size-3.5" />
-                Table
+                {t("charts.table")}
               </Button>
             </div>
           </div>
@@ -132,7 +134,7 @@ export const ChartFrame = ({
                       scope="col"
                       className={cn(
                         "px-3 py-2 font-medium text-muted-foreground",
-                        index === 0 ? "text-left" : "text-right",
+                        index === 0 ? "text-start" : "text-end",
                       )}
                     >
                       {column}
@@ -152,8 +154,8 @@ export const ChartFrame = ({
                         className={cn(
                           "px-3 py-2 tabular-nums",
                           cellIndex === 0
-                            ? "text-left font-medium"
-                            : "text-right text-muted-foreground",
+                            ? "text-start font-medium"
+                            : "text-end text-muted-foreground",
                         )}
                       >
                         {cell}

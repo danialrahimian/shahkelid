@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { useAppDispatch } from "@/stores";
 import {
   setAccountSession,
+  useAccountDeleteAccountMutation,
   useAccountSetPasswordMutation,
   useAccountSignOutMutation,
   useAccountUpdateProfileMutation,
@@ -145,6 +146,75 @@ const DisplayNameForm = ({ current }: { current: string }) => {
   );
 };
 
+/**
+ * Deleting one's own account. Typing the email is the confirmation, and the
+ * server checks it again. Staff are removed from the team first, so the
+ * section is not offered to them.
+ */
+const DeleteAccount = ({ email }: { email: string }) => {
+  const { t } = useTranslation();
+  const [open, setOpen] = React.useState(false);
+  const [typed, setTyped] = React.useState("");
+  const [error, setError] = React.useState<string>();
+  const [remove, { isLoading }] = useAccountDeleteAccountMutation();
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-sm text-destructive underline-offset-4 hover:underline"
+      >
+        {t("account.delete.title")}
+      </button>
+    );
+  }
+  const matches = typed.trim().toLowerCase() === email.toLowerCase();
+  return (
+    <form
+      className="space-y-3 rounded-lg border border-destructive/40 p-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        remove({ email: typed })
+          .unwrap()
+          .then(() => toast.success(t("account.delete.done")))
+          .catch((caught: unknown) => setError(errorText(caught)));
+      }}
+    >
+      <p className="leading-6">{t("account.delete.body")}</p>
+      <label htmlFor="delete-confirm" className="block text-sm font-medium text-foreground">
+        {t("account.delete.confirm")}
+      </label>
+      <input
+        id="delete-confirm"
+        dir="ltr"
+        autoComplete="off"
+        value={typed}
+        onChange={(event) => setTyped(event.target.value)}
+        placeholder={email}
+        className="block h-10 w-full rounded-md border bg-background px-3 text-start text-sm focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+      />
+      {error ? (
+        <p role="alert" className="text-sm font-medium text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="submit"
+          disabled={!matches || isLoading}
+          className="inline-flex h-10 items-center rounded-md bg-destructive px-4 text-sm font-medium text-white hover:bg-destructive/90 disabled:opacity-50"
+        >
+          {t("account.delete.button")}
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className="inline-flex h-10 items-center rounded-md border px-4 text-sm hover:bg-accent">
+          {t("common.cancel")}
+        </button>
+      </div>
+    </form>
+  );
+};
+
 export const AccountOverview = ({ account }: { account: AccountView }) => {
   const { t } = useTranslation();
   const [signOut, { isLoading: isSigningOut }] = useAccountSignOutMutation();
@@ -201,6 +271,12 @@ export const AccountOverview = ({ account }: { account: AccountView }) => {
           {t("account.profile.signOut")}
         </button>
       </div>
+
+      {account.isStaff ? null : (
+        <div className="border-t pt-4">
+          <DeleteAccount email={account.email} />
+        </div>
+      )}
     </div>
   );
 };

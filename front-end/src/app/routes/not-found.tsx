@@ -1,5 +1,6 @@
 import { Compass, Home } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import { paths } from "@/config/paths";
  * blank page with the navigation still on it and no explanation.
  */
 const NotFoundRoute = () => {
+  const { t } = useTranslation();
   const shouldReduceMotion = useReducedMotion();
 
   return (
@@ -39,12 +41,8 @@ const NotFoundRoute = () => {
         transition={{ delay: 0.12, duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
         className="space-y-2"
       >
-        <h1 className="text-2xl font-semibold tracking-tight">
-          This page does not exist
-        </h1>
-        <p className="mx-auto max-w-sm text-sm text-muted-foreground">
-          The link may be out of date, or the address may have a typo in it.
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("notFound.title")}</h1>
+        <p className="mx-auto max-w-sm text-sm text-muted-foreground">{t("notFound.body")}</p>
       </motion.div>
 
       <motion.div
@@ -56,13 +54,13 @@ const NotFoundRoute = () => {
         <Button asChild className="group gap-2">
           <Link to={paths.home.getHref()}>
             <Home className="size-4 transition-transform group-hover:-translate-y-0.5" />
-            Back home
+            {t("notFound.home")}
           </Link>
         </Button>
         <Button asChild variant="outline" className="group gap-2">
           <Link to={paths.pricing.getHref()}>
             <Compass className="size-4 transition-transform duration-500 group-hover:rotate-180" />
-            Browse plans
+            {t("nav.pricing")}
           </Link>
         </Button>
       </motion.div>

@@ -3,21 +3,13 @@ import { motion, type Variants } from "motion/react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate } from "react-router";
 
-import { MorphingText } from "@/components/animate-ui/primitives/texts/morphing";
-import {
-  canSeeLink,
-  isLinkActive,
-  NAV_LINKS,
-} from "@/components/layouts/nav-links";
+import { isLinkActive, visibleLinks } from "@/components/layouts/nav-links";
 import { MobileNav } from "@/components/layouts/mobile-nav";
 import { ModeToggle } from "@/components/layouts/mode-toggle";
 import { useAccountSessionQuery } from "@/api/account";
 import { Button } from "@/components/ui/button";
 import { paths } from "@/config/paths";
 import { useMediaQuery } from "@/hooks/use-media-query";
-import { useSession } from "@/lib/use-session";
-
-const MORPHING_WORDS = ["shah kelid", "best vpn", "most security"];
 
 const navVariants: Variants = {
   hidden: {},
@@ -34,16 +26,16 @@ export const Navbar = () => {
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { user, isLoggedIn } = useSession();
-
-  const links = NAV_LINKS.filter((link) =>
-    canSeeLink(link, isLoggedIn, user?.role),
-  );
-
-  // Signing in and the account are the new accounts (/account); the old
-  // session above only still decides whether the old dashboard link shows.
   const { data: session } = useAccountSessionQuery();
   const signedIn = session?.status === "signed_in";
+  const links = visibleLinks({ signedIn, isStaff: signedIn && session.account.isStaff });
+  // The name, as plain text: an animation that splits it into letters would
+  // break the joins between Persian letters.
+  const brand = (
+    <Link to={paths.home.getHref()} className="text-lg font-extrabold whitespace-nowrap">
+      {t("app.name")}
+    </Link>
+  );
   const authControl = (
     <motion.div
       whileHover={{ scale: 1.05 }}
@@ -71,7 +63,7 @@ export const Navbar = () => {
       <div className="flex h-full w-full items-center justify-between px-2">
         {isDesktop ? (
           <>
-            <MorphingText text={MORPHING_WORDS} loop />
+            {brand}
 
             <motion.nav
               variants={navVariants}
@@ -102,7 +94,7 @@ export const Navbar = () => {
                       <span className="relative me-1">
                         <Icon className="size-4" />
                       </span>
-                      {link.label}
+                      {t(`nav.${link.label}`)}
                     </Link>
 
                     {active ? (
@@ -115,7 +107,7 @@ export const Navbar = () => {
                           stiffness: 380,
                           damping: 30,
                         }}
-                        className="absolute -bottom-1 left-0 h-0.5 w-full rounded-full bg-foreground"
+                        className="absolute -bottom-1 start-0 h-0.5 w-full rounded-full bg-foreground"
                       />
                     ) : null}
                   </motion.div>
@@ -130,8 +122,8 @@ export const Navbar = () => {
           </>
         ) : (
           <>
-            <MobileNav isLoggedIn={isLoggedIn} role={user?.role} />
-            <MorphingText text={MORPHING_WORDS} loop />
+            <MobileNav links={links} />
+            {brand}
             <div className="flex items-center gap-2">
               <ModeToggle />
               {authControl}

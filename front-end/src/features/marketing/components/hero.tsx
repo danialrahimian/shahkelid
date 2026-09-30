@@ -5,19 +5,14 @@ import {
   useTransform,
   type MotionValue,
 } from "motion/react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 
 import { GradientText } from "@/components/animate-ui/primitives/texts/gradient";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  containerVariants,
-  CountUp,
-  riseVariants,
-  SHEEN,
-} from "@/components/ui/motion-primitives";
+import { containerVariants, riseVariants, SHEEN } from "@/components/ui/motion-primitives";
 import { paths } from "@/config/paths";
-import { STATS } from "@/features/marketing/constants";
+import { FACTS } from "@/features/marketing/constants";
 
 /**
  * The keyhole that glows behind the headline: the page's signature image.
@@ -89,6 +84,7 @@ const HeroBackdrop = () => (
 );
 
 export const Hero = () => {
+  const { t } = useTranslation();
   const { scrollY } = useScroll();
   // The glow sinks and swells as the page scrolls, giving the hero depth.
   const glowY = useTransform(scrollY, [0, 700], [0, 140]);
@@ -106,28 +102,10 @@ export const Hero = () => {
         animate="show"
         className="relative z-10 mx-auto flex max-w-4xl flex-col items-center gap-6 text-center"
       >
-        <motion.div variants={riseVariants}>
-          <motion.div
-            whileHover={{ scale: 1.04 }}
-            transition={{ type: "spring", stiffness: 300, damping: 18 }}
-          >
-            <Badge
-              variant="outline"
-              className="rounded-full border-border bg-muted/40 px-4 py-1.5 text-foreground/90"
-            >
-              <GradientText
-                gradient={SHEEN}
-                text="🔑 Limited-time offer — 75% off today"
-                className="text-sm font-medium"
-              />
-            </Badge>
-          </motion.div>
-        </motion.div>
-
         <motion.div variants={riseVariants} className="w-full">
           <GradientText
             gradient={SHEEN}
-            text="The master key to an open internet"
+            text={t("marketing.hero.title")}
             className="w-full text-4xl leading-[1.15] font-extrabold sm:text-5xl lg:text-6xl"
           />
         </motion.div>
@@ -136,8 +114,7 @@ export const Hero = () => {
           variants={riseVariants}
           className="max-w-2xl text-base leading-8 text-balance text-muted-foreground sm:text-lg"
         >
-          Real speeds, strong encryption, and 80+ servers in 50 countries.
-          Connect to anything, anywhere — no throttling, no limits.
+          {t("marketing.hero.subtitle")}
         </motion.p>
 
         <motion.div
@@ -151,8 +128,8 @@ export const Hero = () => {
           >
             <Button size="lg" asChild className="group gap-2 px-8">
               <Link to={paths.pricing.getHref()}>
-                Get Shah Kelid now
-                <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
+                {t("marketing.hero.cta")}
+                <ArrowRight className="size-4 transition-transform group-hover:-translate-x-1 rtl:rotate-180" />
               </Link>
             </Button>
           </motion.div>
@@ -163,7 +140,7 @@ export const Hero = () => {
             transition={{ type: "spring", stiffness: 320, damping: 20 }}
           >
             <Button size="lg" variant="ghost" asChild>
-              <a href="#plans">View plans</a>
+              <a href="#plans">{t("marketing.hero.plans")}</a>
             </Button>
           </motion.div>
         </motion.div>
@@ -172,26 +149,16 @@ export const Hero = () => {
           variants={containerVariants}
           className="mt-10 grid w-full grid-cols-2 gap-6 border-t border-border pt-8 sm:grid-cols-4"
         >
-          {STATS.map((stat) => (
+          {FACTS.map((fact) => (
             <motion.div
-              key={stat.label}
+              key={fact}
               variants={riseVariants}
               whileHover={{ y: -4, scale: 1.05 }}
               transition={{ type: "spring", stiffness: 300, damping: 20 }}
               className="flex flex-col items-center gap-1"
             >
-              <span className="font-mono text-2xl font-bold tabular-nums sm:text-3xl">
-                {stat.text ?? (
-                  <CountUp
-                    value={stat.value ?? 0}
-                    decimals={stat.decimals}
-                    suffix={stat.suffix}
-                  />
-                )}
-              </span>
-              <span className="text-xs text-muted-foreground sm:text-sm">
-                {stat.label}
-              </span>
+              <span className="text-base font-bold sm:text-lg">{t(`marketing.facts.${fact}.value`)}</span>
+              <span className="text-xs text-muted-foreground sm:text-sm">{t(`marketing.facts.${fact}.label`)}</span>
             </motion.div>
           ))}
         </motion.div>

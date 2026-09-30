@@ -7,7 +7,6 @@ import { FaqSection } from "@/features/marketing/components/faq-section";
 import { FeaturesSection } from "@/features/marketing/components/features-section";
 import { Hero } from "@/features/marketing/components/hero";
 import { PlanCards } from "@/features/shop/components/plan-cards";
-import { ServerMarquee } from "@/features/marketing/components/server-marquee";
 
 /**
  * The landing page, composed from sections rather than written as one piece.
@@ -36,7 +35,6 @@ const HomeRoute = () => {
       />
 
       <Hero />
-      <ServerMarquee />
       <FeaturesSection />
 
       <AppErrorBoundary>

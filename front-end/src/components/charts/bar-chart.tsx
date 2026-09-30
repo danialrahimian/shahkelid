@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import i18n from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 /**
@@ -36,7 +37,7 @@ export const BarChart = ({
   data,
   formatValue = (value) => String(value),
   max,
-  emptyMessage = "Nothing sold in this range.",
+  emptyMessage = i18n.t("charts.empty"),
   className,
 }: BarChartProps) => {
   const [hovered, setHovered] = React.useState<string | null>(null);

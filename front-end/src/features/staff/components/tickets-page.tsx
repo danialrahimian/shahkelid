@@ -27,6 +27,7 @@ import { Form } from "@/components/ui/form/form";
 import { paths } from "@/config/paths";
 import { errorText } from "@/lib/error-text";
 import { formatDateTime, formatNumber } from "@/lib/format";
+import i18n from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 import { showSaveError } from "../form-errors";
@@ -47,11 +48,11 @@ const queryOf = (view: View): { status?: TicketStatus; assignee: "me" | "none" |
 };
 
 /** How long a ticket has waited, in the largest unit that fits: "۳ ساعت". */
-const waited = (since: string, t: ReturnType<typeof useTranslation>["t"]) => {
+const waited = (since: string) => {
   const minutes = Math.max(0, Math.round((Date.now() - Date.parse(since)) / 60_000));
-  if (minutes < 60) return t("staff.tickets.waitedMinutes", { amount: formatNumber(minutes) });
-  if (minutes < 48 * 60) return t("staff.tickets.waitedHours", { amount: formatNumber(Math.floor(minutes / 60)) });
-  return t("staff.tickets.waitedDays", { amount: formatNumber(Math.floor(minutes / 1440)) });
+  if (minutes < 60) return i18n.t("staff.tickets.waitedMinutes", { amount: formatNumber(minutes) });
+  if (minutes < 48 * 60) return i18n.t("staff.tickets.waitedHours", { amount: formatNumber(Math.floor(minutes / 60)) });
+  return i18n.t("staff.tickets.waitedDays", { amount: formatNumber(Math.floor(minutes / 1440)) });
 };
 
 export const TicketsPage = ({ canManageCategories }: { canManageCategories: boolean }) => {
@@ -132,7 +133,7 @@ export const TicketsPage = ({ canManageCategories }: { canManageCategories: bool
                   </td>
                   <td className="whitespace-nowrap text-xs">
                     {ticket.waitingSince ? (
-                      <span className="font-medium">{waited(ticket.waitingSince, t)}</span>
+                      <span className="font-medium">{waited(ticket.waitingSince)}</span>
                     ) : (
                       <span className="text-muted-foreground">{formatDateTime(ticket.lastMessageAt)}</span>
                     )}

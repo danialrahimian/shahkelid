@@ -70,27 +70,3 @@ export const uniqueCredentials = () => {
     password: "Str0ng!Pass",
   };
 };
-
-/**
- * Credentials for a staff account, when the machine running the tests has
- * been given some.
- *
- * The reporting and CRM endpoints are staff-only, so a test that registers a
- * fresh account can prove it is refused but cannot prove the figures are
- * right. Rather than shipping a privileged account in the repository, those
- * cases are skipped unless credentials are supplied:
- *
- *   VITE_APP_TEST_STAFF_IDENTIFIER=owner
- *   VITE_APP_TEST_STAFF_PASSWORD=...
- *
- * This is the one place outside `config/env.ts` that reads the environment
- * directly, and it is test-only scaffolding rather than application code.
- */
-export const staffCredentials = () => {
-  const source = import.meta.env as Record<string, string | undefined>;
-  const identifier = source.VITE_APP_TEST_STAFF_IDENTIFIER;
-  const password = source.VITE_APP_TEST_STAFF_PASSWORD;
-
-  if (!identifier || !password) return null;
-  return { identifier, password };
-};

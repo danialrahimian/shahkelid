@@ -43,15 +43,14 @@ src/
     env.ts                 every environment variable, validated at startup
     paths.ts               every route, declared once
   features/                one folder per business area
-    admin/ auth/ cart/ crm/ dashboard/ marketing/ moderator/ orders/
-    posts/ pricing/ profile/
+    account/ journal/ marketing/ shop/ staff/ support/
       components/          UI scoped to that feature
-      hooks/               hooks scoped to that feature
   hooks/                   shared hooks
-  lib/                     preconfigured libraries: api client, auth, guards
+  lib/                     the API client, i18n, formatting, error sentences
+  locales/                 fa (the source of every key) and en
   stores/                  the Redux store and the small slice of client state
   testing/                 test helpers
-  types/                   shared types, including the API's own shapes
+  types/                   i18next's typing of the locale keys
   utils/                   shared helpers
 ```
 
@@ -83,22 +82,23 @@ and is deliberately tiny. Anything only one component cares about stays in that
 component, and filters live in the URL so a filtered view can be shared and
 reloaded.
 
-The signed-in user is not stored at all. `GET /login-status` is the source of
-truth, cached like any other query, so a reload restores the session and a role
-changed by a moderator is picked up on the next fetch.
+The signed-in account is not stored at all. `GET /api/v1/auth/session` is the
+source of truth, cached like any other query, so a reload restores the session
+and a role changed by an owner is picked up on the next fetch.
 
 ## Forms
 
 Every form is `Form` from `src/components/ui/form/form.tsx`, wrapping
 react-hook-form with a zod schema. The schemas live beside the requests they
-feed in `src/api`, so what the user sees while typing is exactly what the server
-enforces rather than a second copy that can drift.
+feed in `@shah-kelid/contracts`, the same ones the server validates with, so
+what the user sees while typing is exactly what the server enforces.
 
 ## Errors
 
 `src/lib/api-client.ts` is the single configured client. It sets the base URL
-and credentials, turns every failure into one predictable shape, and sends a
-visitor whose session expired back to sign in with a return address.
+and credentials and turns every failure into one predictable shape. The API
+answers with a stable code, never a sentence for the reader; `errorText` shows
+the reader's own sentence for it (`errors.codes.*` in the locales).
 
 Error boundaries are placed per area rather than once around the app, so a
 failure in the pricing table costs the pricing table and leaves the rest of the
@@ -108,8 +108,8 @@ page usable.
 
 `src/components/charts/` holds the primitives — a line chart with a crosshair,
 horizontal bars, and the frame they sit in. They take data and colours and know
-nothing about sales or customers, which is why both the dashboard and the CRM
-can use them without importing each other.
+nothing about sales or customers, so the reports page and anything after it
+can use them.
 
 Four rules are built into them rather than left to whoever draws the next
 chart.
@@ -131,7 +131,7 @@ chart lets whoever drew it decide where the lines cross by choosing the scales.
 order keyed on the entity, so a plan keeps its colour when a filter drops
 another one. Series hues live in `index.css` as `--chart-1` … `--chart-5`,
 stepped separately for the light and dark surfaces rather than flipped, and
-validated for colour-vision separation against both. Lifecycle stages use a
+validated for colour-vision separation against both. Customer stages use a
 separate status palette so a stage can never be mistaken for a plan.
 
 ## Routing and access
@@ -139,27 +139,17 @@ separate status palette so a stage can never be mistaken for a plan.
 Routes are declared in `src/app/router.tsx` and every screen is loaded lazily,
 so a first-time visitor downloads the landing page and nothing else.
 
-The staff screens — sales, customers, products, posts and users — live together
-under `/dashboard`, in their own frame: the shadcn sidebar from
-`components/ui/sidebar.tsx` instead of the public navigation bar. It sits beside
-the public shell in the route table rather than inside it, because a sidebar
-fixed to the full height of the window and a floating bar on top of it would
-fight for the same edge. The sidebar collapses to icons, becomes a sheet on a
-phone, remembers its state and toggles with Ctrl/Cmd+B. It lists only the
-screens the signed-in role may open, from `DASHBOARD_LINKS` in
-`components/layouts/nav-links.ts`. The old addresses (`/admin`, `/mod`, `/crm`)
-redirect to their new homes, parameters included.
+There is one kind of account (`/api/v1/auth`) and one session. Pages that
+need it ask `useAccountSessionQuery` and send a signed-out visitor to
+`/account/sign-in`, remembering where they were.
 
-Any member of staff may publish to the journal from **Posts**, and each may
-edit only their own. The list shows everyone's posts, with **Details** opening
-the whole post in a dialog. The server enforces the ownership rule; the screen
-only reflects it, hiding Edit where it would fail.
-
-`ProtectedRoute` requires a session; `RoleRoute` requires a role. Both wait for
-the session check before deciding, so reloading a private page does not bounce a
-signed-in visitor. The roles they accept mirror the server's own checks exactly,
-and a signed-in visitor without the right role is told so rather than being sent
-to a login form they do not need.
+The staff screens live under `/staff`, in their own frame: a sidebar instead
+of the public navigation bar. The layout lets in only a finished sign-in by
+staff; the sidebar (`features/staff/staff-links.ts`) lists only the pages the
+person's permissions open (the same permissions the API checks), and `/staff`
+itself leads to the first of them. The old addresses (`/dashboard`, `/admin`,
+`/mod`, `/crm`, `/auth`, `/profile`, `/invoices`, `/cart`) redirect to where
+the same thing lives now (`LEGACY_REDIRECTS` in `config/paths.ts`).
 
 ## Tests
 
@@ -168,20 +158,11 @@ npm test
 npm run typecheck   # tsc -b, the same check `npm run build` runs first
 ```
 
-Integration tests that drive the real API layer against a running backend. They
-check what mocks cannot: that the request declarations, the error handling and
-the server's actual responses still agree. Start the API first; if nothing is
-listening the suite skips rather than reporting a wall of failures.
-
-The reporting and CRM endpoints are staff-only, so those cases need an account
-that can reach them. They skip unless one is supplied:
-
-```bash
-VITE_APP_TEST_STAFF_IDENTIFIER=owner VITE_APP_TEST_STAFF_PASSWORD=... npm test
-```
-
-Anything they write is written to an account the test registered a moment
-earlier, so a run never edits a real customer's record.
+Unit tests for what can go wrong without a browser: formatting, the calendar
+arithmetic of the reports, error sentences, the staff area's landing page,
+share links, every locale having every key. The account endpoints are also
+driven against a running backend (`src/api/account.test.ts`); start the API
+first, or that file skips. The API's own behaviour is tested in `back-end`.
 
 ## Environment
 

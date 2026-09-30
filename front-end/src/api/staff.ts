@@ -12,7 +12,10 @@ import type {
   ReceiptReviewView,
   ReviewReceiptInput,
   CustomerDetail,
-  CustomerSummary,
+  CustomerPage,
+  CustomerSegments,
+  CustomerSort,
+  CustomerStage,
   LocationInput,
   LocationView,
   PanelGroup,
@@ -46,6 +49,9 @@ import { api } from "@/lib/api";
  */
 
 const STAFF = "/api/v1/staff";
+
+/** Customers per page of the list. */
+export const CUSTOMERS_PAGE = 50;
 
 export type StaffOrderView = OrderView & { customer: { id: string; email: string } };
 export type StaffPaymentCard = PaymentCardView & { isActive: boolean; sortOrder: number };
@@ -129,13 +135,54 @@ export const staffApi = api.injectEndpoints({
     }),
 
     // --------------------------------------------------------- customers
-    staffCustomers: builder.query<CustomerSummary[], { search?: string }>({
-      query: ({ search }) => ({ url: `${STAFF}/customers`, params: search ? { search } : {} }),
+    staffCustomers: builder.query<
+      CustomerPage,
+      { search?: string; stage?: CustomerStage; tagId?: string; sort: CustomerSort; offset: number }
+    >({
+      query: ({ search, stage, tagId, sort, offset }) => ({
+        url: `${STAFF}/customers`,
+        params: {
+          sort,
+          offset,
+          limit: CUSTOMERS_PAGE,
+          ...(search ? { search } : {}),
+          ...(stage ? { stage } : {}),
+          ...(tagId ? { tagId } : {}),
+        },
+      }),
+      providesTags: ["StaffCustomer"],
+    }),
+    staffCustomerSegments: builder.query<CustomerSegments, void>({
+      query: () => `${STAFF}/customers/segments`,
       providesTags: ["StaffCustomer"],
     }),
     staffCustomer: builder.query<CustomerDetail, string>({
       query: (id) => `${STAFF}/customers/${id}`,
       providesTags: (_result, _error, id) => [{ type: "StaffCustomer", id }, "StaffSubscription"],
+    }),
+    staffAddCustomerNote: builder.mutation<CustomerDetail, { id: string; body: string }>({
+      query: ({ id, body }) => ({ url: `${STAFF}/customers/${id}/notes`, method: "POST", body: { body } }),
+      invalidatesTags: (_result, _error, { id }) => [{ type: "StaffCustomer", id }],
+    }),
+    staffDeleteCustomerNote: builder.mutation<CustomerDetail, { id: string; noteId: string }>({
+      query: ({ id, noteId }) => ({ url: `${STAFF}/customers/${id}/notes/${noteId}`, method: "DELETE" }),
+      invalidatesTags: (_result, _error, { id }) => [{ type: "StaffCustomer", id }],
+    }),
+    staffSetCustomerStage: builder.mutation<CustomerDetail, { id: string; stage: CustomerStage | null }>({
+      query: ({ id, stage }) => ({ url: `${STAFF}/customers/${id}/stage`, method: "PUT", body: { stage } }),
+      invalidatesTags: ["StaffCustomer"],
+    }),
+    staffSetCustomerTags: builder.mutation<CustomerDetail, { id: string; tags: string[] }>({
+      query: ({ id, tags }) => ({ url: `${STAFF}/customers/${id}/tags`, method: "PUT", body: { tags } }),
+      invalidatesTags: ["StaffCustomer"],
+    }),
+    staffSetCustomerStatus: builder.mutation<CustomerDetail, { id: string; status: "active" | "suspended" }>({
+      query: ({ id, status }) => ({ url: `${STAFF}/customers/${id}/status`, method: "PUT", body: { status } }),
+      invalidatesTags: ["StaffCustomer"],
+    }),
+    staffDeleteCustomer: builder.mutation<{ services: number }, string>({
+      query: (id) => ({ url: `${STAFF}/customers/${id}`, method: "DELETE" }),
+      invalidatesTags: ["StaffCustomer", "StaffSubscription"],
     }),
 
     // ----------------------------------------------------- subscriptions
@@ -271,7 +318,14 @@ export const {
   useStaffSavePlanMutation,
   useStaffArchivePlanMutation,
   useStaffCustomersQuery,
+  useStaffCustomerSegmentsQuery,
   useStaffCustomerQuery,
+  useStaffAddCustomerNoteMutation,
+  useStaffDeleteCustomerNoteMutation,
+  useStaffSetCustomerStageMutation,
+  useStaffSetCustomerTagsMutation,
+  useStaffSetCustomerStatusMutation,
+  useStaffDeleteCustomerMutation,
   useStaffSubscriptionsQuery,
   useStaffSubscriptionQuery,
   useStaffCreateSubscriptionMutation,

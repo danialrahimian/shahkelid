@@ -1,4 +1,5 @@
 import type {
+  DeleteAccountInput,
   PasswordSignInInput,
   RequestCodeInput,
   ResetPasswordInput,
@@ -71,6 +72,15 @@ export const accountApi = api.injectEndpoints({
       onQueryStarted: (_input, { dispatch, queryFulfilled }) => storeSession(dispatch, queryFulfilled),
     }),
 
+    accountDeleteAccount: builder.mutation<void, DeleteAccountInput>({
+      query: (body) => ({ url: `${AUTH}/delete-account`, method: "POST", body }),
+      onQueryStarted: (_input, { dispatch, queryFulfilled }) =>
+        storeSession(
+          dispatch,
+          queryFulfilled.then(() => ({ data: { status: "signed_out" } as SessionView })),
+        ),
+    }),
+
     accountSignOut: builder.mutation<void, void>({
       query: () => ({ url: `${AUTH}/sign-out`, method: "POST" }),
       onQueryStarted: (_input, { dispatch, queryFulfilled }) =>
@@ -127,6 +137,7 @@ export const {
   useAccountSetPasswordMutation,
   useAccountUpdateProfileMutation,
   useAccountSignOutMutation,
+  useAccountDeleteAccountMutation,
   useAccountTwoFactorSetupMutation,
   useAccountTwoFactorEnableMutation,
   useAccountTwoFactorVerifyMutation,

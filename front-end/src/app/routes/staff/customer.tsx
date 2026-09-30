@@ -12,6 +12,7 @@ const CustomerRoute = () => {
       key={customerId}
       customerId={customerId}
       canSeeOrders={account.permissions.includes("orders:read")}
+      canManage={account.permissions.includes("customers:manage")}
     />
   );
 };
