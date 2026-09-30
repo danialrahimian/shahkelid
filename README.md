@@ -67,7 +67,9 @@ The customer's link is `{PUBLIC_API_URL}/s/{token}` (default `http://localhost:5
   - **USDT on TRON**: set `TRON_RECEIVE_ADDRESS` (the address only; the server never holds a wallet key). Each order is quoted an exact amount (for example 1.500347 USDT) and is paid when that amount arrives. Transfers that match no quote wait in `/staff/payments` for a decision. For the Nile testnet, also set `TRONGRID_URL=https://nile.trongrid.io` and `TRON_USDT_CONTRACT=TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf`.
   - **NOWPayments**: set `NOWPAYMENTS_API_KEY` and `NOWPAYMENTS_IPN_SECRET` (and `NOWPAYMENTS_SANDBOX=true` for its sandbox).
 
-The **worker** does the rest: it puts paid subscriptions on the panel, asks Zarinpal about payments whose customers never came back, reads the USDT rate and new USDT transfers, and lapses unpaid orders and quotes.
+- **Emails to customers** (service ready, payment received, renewed, and the reminders at 3 days and 1 day left and at 80% and 100% of the volume) are in Persian and can be rewritten, previewed or switched off in `/staff/notifications`. Each customer's page in `/staff` lists what they were sent, or why not.
+
+The **worker** does the rest: it puts paid subscriptions on the panel, asks Zarinpal about payments whose customers never came back, reads the USDT rate and new USDT transfers, queues the reminders that are due, sends emails, and lapses unpaid orders and quotes.
 
 To check the panel driver and Zarinpal against the real things (Zarinpal's sandbox, and your test panel, where test users named `sk-contract-...` and `sk_...` are created and deleted), fill the `PASARGUARD_TEST_*` values in `back-end/.env` and run:
 

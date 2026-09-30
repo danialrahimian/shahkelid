@@ -229,6 +229,15 @@ The new accounts live in PostgreSQL, with sessions in Redis (cookie `sk.sid`).
   The worker applies it to the same panel user (the link never changes); the
   new expiry and limit are worked out once and recorded, so a retry sets the
   same values instead of adding them again.
+- **Customer emails** (`src/modules/notifications`): the built-in Persian
+  templates live in `templates.ts`; a row in `notification_templates`
+  overrides one. A template may only use the variables it lists (checked on
+  save). Each email is recorded as queued inside the transaction that caused
+  it, with an outbox event; the worker renders it, sends it as text and
+  right-to-left HTML, and records sent, failed or skipped (switched off,
+  account suspended). Reminders are scanned every 15 minutes; "once per
+  cycle" is the primary key of `subscription_alerts_sent`, whose cycle is the
+  expiry (and, for volume, the limit), so a renewal starts a new one.
 - **Crypto**: the USDT rate comes from Nobitex (`bestBuy`, every minute);
   a rate older than ten minutes hides crypto at checkout. Direct USDT on
   TRON is matched by exact amount (the price rounded up to the cent, plus a
