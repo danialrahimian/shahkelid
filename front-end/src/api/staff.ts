@@ -1,5 +1,9 @@
 import type {
   CreateSubscriptionInput,
+  NotificationLogView,
+  NotificationTemplateInput,
+  NotificationTemplateKey,
+  NotificationTemplateView,
   CryptoTransferView,
   ReviewCryptoTransferInput,
   OrderView,
@@ -169,6 +173,25 @@ export const staffApi = api.injectEndpoints({
       query: ({ id, body }) => ({ url: `${STAFF}/crypto-transfers/${id}/review`, method: "POST", body }),
       invalidatesTags: ["StaffReceipt", "StaffOrder", "StaffCustomer", "StaffSubscription"],
     }),
+    staffTemplates: builder.query<NotificationTemplateView[], void>({
+      query: () => `${STAFF}/notification-templates`,
+      providesTags: ["StaffTemplate"],
+    }),
+    staffSaveTemplate: builder.mutation<NotificationTemplateView, { key: NotificationTemplateKey; body: NotificationTemplateInput }>({
+      query: ({ key, body }) => ({ url: `${STAFF}/notification-templates/${key}`, method: "PUT", body }),
+      invalidatesTags: ["StaffTemplate"],
+    }),
+    staffResetTemplate: builder.mutation<NotificationTemplateView, NotificationTemplateKey>({
+      query: (key) => ({ url: `${STAFF}/notification-templates/${key}`, method: "DELETE" }),
+      invalidatesTags: ["StaffTemplate"],
+    }),
+    staffPreviewTemplate: builder.mutation<{ subject: string; body: string }, { key: NotificationTemplateKey; body: NotificationTemplateInput }>({
+      query: ({ key, body }) => ({ url: `${STAFF}/notification-templates/${key}/preview`, method: "POST", body }),
+    }),
+    staffCustomerNotifications: builder.query<NotificationLogView[], string>({
+      query: (customerId) => `${STAFF}/customers/${customerId}/notifications`,
+      providesTags: ["StaffCustomer"],
+    }),
     staffPaymentCards: builder.query<StaffPaymentCard[], void>({
       query: () => `${STAFF}/payment-cards`,
       providesTags: ["StaffPaymentCard"],
@@ -221,6 +244,11 @@ export const {
   useStaffReviewCryptoTransferMutation,
   useStaffReviewReceiptMutation,
   useStaffPaymentCardsQuery,
+  useStaffTemplatesQuery,
+  useStaffSaveTemplateMutation,
+  useStaffResetTemplateMutation,
+  useStaffPreviewTemplateMutation,
+  useStaffCustomerNotificationsQuery,
   useStaffSavePaymentCardMutation,
   useStaffOrdersQuery,
   useStaffFulfilOrderMutation,

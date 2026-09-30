@@ -1,5 +1,5 @@
 import type { AccountView } from "@shah-kelid/contracts";
-import { Layers, Receipt, Server, ShieldCheck, Users, Waypoints } from "lucide-react";
+import { Layers, Mail, Receipt, Server, ShieldCheck, Users, Waypoints } from "lucide-react";
 
 import { paths } from "@/config/paths";
 
@@ -10,12 +10,12 @@ import { paths } from "@/config/paths";
 
 type StaffLink = {
   to: string;
-  label: "customers" | "subscriptions" | "payments" | "plans" | "servers" | "panels";
+  label: "customers" | "subscriptions" | "payments" | "plans" | "servers" | "panels" | "notifications";
   icon: typeof Users;
   permission: string;
 };
 
-export const STAFF_GROUPS: { label: "sales" | "infrastructure"; links: StaffLink[] }[] = [
+export const STAFF_GROUPS: { label: "sales" | "infrastructure" | "settings"; links: StaffLink[] }[] = [
   {
     label: "sales",
     links: [
@@ -30,6 +30,12 @@ export const STAFF_GROUPS: { label: "sales" | "infrastructure"; links: StaffLink
     links: [
       { to: paths.staffServers.getHref(), label: "servers", icon: Server, permission: "servers:manage" },
       { to: paths.staffPanels.getHref(), label: "panels", icon: ShieldCheck, permission: "servers:manage" },
+    ],
+  },
+  {
+    label: "settings",
+    links: [
+      { to: paths.staffNotifications.getHref(), label: "notifications", icon: Mail, permission: "settings:manage" },
     ],
   },
 ];

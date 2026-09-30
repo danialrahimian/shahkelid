@@ -32,6 +32,7 @@ export const api = createApi({
     "StaffReceipt",
     "StaffPaymentCard",
     "StaffOrder",
+    "StaffTemplate",
     "ShopPlan",
     "ShopOrder",
     "ShopSubscription",

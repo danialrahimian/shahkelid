@@ -20,6 +20,7 @@ import { paths } from "@/config/paths";
 import { formatDate, formatGb, formatNumber, formatToman } from "@/lib/format";
 import { showSaveError } from "../form-errors";
 import { FormActions, SelectField } from "./fields";
+import { NotificationLog } from "./notification-log";
 import { Button, FormDialog, PageHeader, Placeholder, Section, TableFrame } from "./staff-ui";
 import { SubscriptionTable } from "./subscription-table";
 
@@ -257,6 +258,8 @@ export const CustomerPage = ({ customerId, canSeeOrders }: { customerId: string;
       </Section>
 
       {canSeeOrders ? <OrdersSection userId={data.id} /> : null}
+
+      <NotificationLog customerId={data.id} />
 
       {adding ? <NewSubscriptionDialog userId={data.id} onClose={() => setAdding(false)} /> : null}
     </div>

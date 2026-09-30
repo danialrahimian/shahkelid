@@ -127,6 +127,10 @@ export const paths = {
     path: "/staff/payments",
     getHref: () => "/staff/payments",
   },
+  staffNotifications: {
+    path: "/staff/notifications",
+    getHref: () => "/staff/notifications",
+  },
   staffPlans: {
     path: "/staff/plans",
     getHref: () => "/staff/plans",
