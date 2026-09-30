@@ -40,7 +40,7 @@ Then open http://localhost:5173/account/sign-in and sign in with that address. W
 |---|---|
 | `/account/sign-in` | Email code (also creates the account), or password; then the authenticator code |
 | `/account/forgot-password` | A code by email, then a new password |
-| `/account` | The account: set a first password, turn on two-step sign-in, sign out |
+| `/account` | The customer panel: their services (volume and days left, the link and QR code, renew), orders and invoices, name, password, two-step sign-in |
 
 The old `/auth` page and `/dashboard` still use the old accounts (MongoDB) until the dashboard's sections move over, milestone by milestone.
 
