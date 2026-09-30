@@ -1,4 +1,11 @@
-import type { CheckoutMethodView, OrderView, PaymentCardView, PublicPlan } from "@shah-kelid/contracts";
+import type {
+  CheckoutMethodView,
+  InvoiceView,
+  MySubscriptionView,
+  OrderView,
+  PaymentCardView,
+  PublicPlan,
+} from "@shah-kelid/contracts";
 
 import { api } from "@/lib/api";
 
@@ -22,11 +29,14 @@ export const shopApi = api.injectEndpoints({
     shopPaymentMethods: builder.query<CheckoutMethodView[], void>({
       query: () => `${SHOP}/payment-methods`,
     }),
-    shopCreateOrder: builder.mutation<OrderView, { planId: string; idempotencyKey: string }>({
-      query: ({ planId, idempotencyKey }) => ({
+    shopCreateOrder: builder.mutation<
+      OrderView,
+      { planId: string; idempotencyKey: string; renewSubscriptionId?: string }
+    >({
+      query: ({ planId, idempotencyKey, renewSubscriptionId }) => ({
         url: `${SHOP}/orders`,
         method: "POST",
-        body: { planId },
+        body: renewSubscriptionId ? { planId, renewSubscriptionId } : { planId },
         headers: { "idempotency-key": idempotencyKey },
       }),
       invalidatesTags: ["ShopOrder"],
@@ -38,6 +48,13 @@ export const shopApi = api.injectEndpoints({
     shopOrder: builder.query<OrderView, string>({
       query: (id) => `${SHOP}/orders/${id}`,
       providesTags: (_result, _error, id) => [{ type: "ShopOrder", id }],
+    }),
+    shopSubscriptions: builder.query<MySubscriptionView[], void>({
+      query: () => `${SHOP}/subscriptions`,
+      providesTags: ["ShopSubscription"],
+    }),
+    shopInvoice: builder.query<InvoiceView, string>({
+      query: (orderId) => `${SHOP}/orders/${orderId}/invoice`,
     }),
     shopPayZarinpal: builder.mutation<{ payUrl: string }, string>({
       query: (orderId) => ({ url: `${SHOP}/orders/${orderId}/pay/zarinpal`, method: "POST" }),
@@ -58,6 +75,8 @@ export const shopApi = api.injectEndpoints({
 
 export const {
   useShopPlansQuery,
+  useShopSubscriptionsQuery,
+  useShopInvoiceQuery,
   useShopPaymentMethodsQuery,
   useShopPayUsdtMutation,
   useShopPayNowPaymentsMutation,

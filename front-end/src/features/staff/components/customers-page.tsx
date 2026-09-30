@@ -184,18 +184,24 @@ const OrdersSection = ({ userId }: { userId: string }) => {
                 <td>
                   {order.status === "paid" ? (
                     <div className="space-y-1.5">
-                      <p className="text-amber-700 dark:text-amber-300">{t("staff.orders.waitingForServer")}</p>
+                      <p className="text-amber-700 dark:text-amber-300">
+                        {order.kind === "renewal" ? t("staff.orders.waitingForRenewal") : t("staff.orders.waitingForServer")}
+                      </p>
                       <Button
                         tone="primary"
                         busy={isFulfilling}
                         onClick={() =>
                           fulfil(order.id)
                             .unwrap()
-                            .then(() => toast.success(t("staff.orders.fulfilled")))
+                            .then(() =>
+                              toast.success(
+                                order.kind === "renewal" ? t("staff.orders.renewalRequested") : t("staff.orders.fulfilled"),
+                              ),
+                            )
                             .catch((error: unknown) => toast.error(errorText(error)))
                         }
                       >
-                        {t("staff.orders.fulfil")}
+                        {order.kind === "renewal" ? t("staff.orders.applyRenewal") : t("staff.orders.fulfil")}
                       </Button>
                     </div>
                   ) : (

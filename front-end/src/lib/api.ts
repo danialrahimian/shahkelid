@@ -34,6 +34,7 @@ export const api = createApi({
     "StaffOrder",
     "ShopPlan",
     "ShopOrder",
+    "ShopSubscription",
     "Profile",
     "Product",
     "Cart",

@@ -35,7 +35,7 @@ const ICONS: Record<CheckoutMethod, typeof CreditCard> = {
   nowpayments: Bitcoin,
 };
 
-export const Checkout = ({ plan }: { plan: PublicPlan }) => {
+export const Checkout = ({ plan, renewSubscriptionId }: { plan: PublicPlan; renewSubscriptionId?: string }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const methods = useShopPaymentMethodsQuery();
@@ -68,7 +68,7 @@ export const Checkout = ({ plan }: { plan: PublicPlan }) => {
 
   const goOn = async () => {
     try {
-      const current = order ?? (await createOrder({ planId: plan.id, idempotencyKey }).unwrap());
+      const current = order ?? (await createOrder({ planId: plan.id, idempotencyKey, renewSubscriptionId }).unwrap());
       setOrder(current);
       switch (method) {
         case "card_transfer":

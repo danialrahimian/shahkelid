@@ -91,6 +91,14 @@ export const createAppRouter = () =>
           path: paths.order.path,
           element: lazyRoute(() => import("@/app/routes/order")),
         },
+        {
+          path: paths.invoice.path,
+          element: lazyRoute(() => import("@/app/routes/invoice")),
+        },
+        {
+          path: paths.renew.path,
+          element: lazyRoute(() => import("@/app/routes/renew")),
+        },
         // The new account screens, on /api/v1. They guard themselves: each
         // follows the session the server reports, step by step.
         {

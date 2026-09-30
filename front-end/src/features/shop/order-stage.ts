@@ -12,11 +12,19 @@ export type Stage =
   | "review"
   | "preparing"
   | "ready"
+  | "renewed"
   | "failed"
   | "expired";
 
 export const stageOf = (order: OrderView): Stage => {
-  if (order.subscription?.link) return "ready";
+  // A renewal's subscription (and link) exists from the start: it is done
+  // only when the order is, i.e. when the panel has the new date and volume.
+  if (order.kind === "renewal") {
+    if (order.status === "fulfilled") return "renewed";
+    if (order.status === "paid") return "preparing";
+  } else if (order.subscription?.link) {
+    return "ready";
+  }
   if (order.status === "paid" || order.status === "fulfilled") return "preparing";
   if (order.status === "expired" || order.status === "cancelled") return "expired";
   const payment = order.payment;

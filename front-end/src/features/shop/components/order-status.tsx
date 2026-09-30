@@ -114,6 +114,13 @@ export const OrderStatus = ({ orderId }: { orderId: string }) => {
               copiedLabel={t("shop.order.copied")}
             />
           </>
+        ) : stage === "renewed" ? (
+          <>
+            <Headline icon={CheckCircle2} tone="text-emerald-600 dark:text-emerald-400">
+              {t("shop.order.renewed")}
+            </Headline>
+            <p className="text-sm leading-6">{t("shop.order.renewedHint")}</p>
+          </>
         ) : stage === "preparing" ? (
           <Headline icon={Loader2} tone="[&_svg]:animate-spin">
             {slow ? t("shop.order.preparingSlow") : t("shop.order.preparing")}
@@ -172,7 +179,11 @@ export const OrderStatus = ({ orderId }: { orderId: string }) => {
           {order.invoiceNumber ? (
             <div>
               <dt className="text-muted-foreground">{t("shop.order.invoice")}</dt>
-              <dd className="tabular-nums">{formatNumber(order.invoiceNumber)}</dd>
+              <dd className="tabular-nums">
+                <Link to={paths.invoice.getHref(order.id)} className="underline underline-offset-4">
+                  {formatNumber(order.invoiceNumber)} · {t("shop.order.viewInvoice")}
+                </Link>
+              </dd>
             </div>
           ) : null}
         </dl>

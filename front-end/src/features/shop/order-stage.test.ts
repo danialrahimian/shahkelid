@@ -12,6 +12,7 @@ import { pollEvery, stageOf } from "./order-stage";
 const anOrder = (overrides: Partial<OrderView> = {}): OrderView => ({
   id: "o",
   number: 100001,
+  kind: "new",
   status: "pending",
   totalToman: 150000,
   plan: { id: "p", slug: "m", name: "ماهانه", description: "", dataLimitBytes: null, durationDays: 30, deviceLimit: null, priceToman: 150000 },
@@ -85,6 +86,18 @@ describe("The order page", () => {
     });
     expect(stageOf(order)).toBe("awaiting_transfer");
     expect(pollEvery("awaiting_transfer")).toBe(5000);
+  });
+
+  it("When a renewal is paid, then it is being prepared until the panel has it, though the link already exists", () => {
+    const renewal = anOrder({
+      kind: "renewal",
+      status: "paid",
+      payment: payment("succeeded"),
+      subscription: { id: "s", status: "active", link: "https://x/s/abc" },
+    });
+    expect(stageOf(renewal)).toBe("preparing");
+    expect(stageOf({ ...renewal, status: "fulfilled" })).toBe("renewed");
+    expect(pollEvery("renewed")).toBe(0);
   });
 
   it("When the order lapsed unpaid, then it is expired", () => {

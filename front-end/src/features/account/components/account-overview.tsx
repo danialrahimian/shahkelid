@@ -1,7 +1,9 @@
 import {
   setPasswordInput,
+  updateProfileInput,
   type AccountView,
   type SetPasswordInput,
+  type UpdateProfileInput,
 } from "@shah-kelid/contracts";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
@@ -12,8 +14,10 @@ import {
   setAccountSession,
   useAccountSetPasswordMutation,
   useAccountSignOutMutation,
+  useAccountUpdateProfileMutation,
 } from "@/api/account";
 import { Form } from "@/components/ui/form/form";
+import { InputField } from "@/components/ui/form/input-field";
 import { PasswordField } from "@/components/ui/form/password-field";
 import { errorText } from "@/lib/error-text";
 
@@ -108,6 +112,39 @@ const TwoFactorRow = ({ enabled }: { enabled: boolean }) => {
  * The account page: who is signed in, their password, two-step sign-in, and
  * signing out. Orders and subscriptions join it in later milestones.
  */
+/** The name on invoices and the one support sees. */
+const DisplayNameForm = ({ current }: { current: string }) => {
+  const { t } = useTranslation();
+  const [update, { isLoading }] = useAccountUpdateProfileMutation();
+
+  return (
+    <Form<UpdateProfileInput>
+      schema={updateProfileInput}
+      options={{ defaultValues: { displayName: current } }}
+      onSubmit={async (values, methods) => {
+        try {
+          await update(values).unwrap();
+          toast.success(t("account.profile.nameSaved"));
+        } catch (error) {
+          methods.setError("displayName", { message: errorText(error) });
+        }
+      }}
+    >
+      {() => (
+        <>
+          <InputField<UpdateProfileInput>
+            name="displayName"
+            label={t("account.profile.displayName")}
+            description={t("account.profile.displayNameHint")}
+            autoComplete="name"
+          />
+          <SubmitButton busy={isLoading} label={t("account.profile.saveName")} busyLabel={t("account.code.checking")} />
+        </>
+      )}
+    </Form>
+  );
+};
+
 export const AccountOverview = ({ account }: { account: AccountView }) => {
   const { t } = useTranslation();
   const [signOut, { isLoading: isSigningOut }] = useAccountSignOutMutation();
@@ -125,6 +162,10 @@ export const AccountOverview = ({ account }: { account: AccountView }) => {
             </span>
           ) : null}
         </p>
+      </Row>
+
+      <Row label={t("account.profile.displayName")}>
+        <DisplayNameForm current={account.displayName} />
       </Row>
 
       <Row label={t("account.profile.password")}>

@@ -5,6 +5,7 @@ import type {
   SecondFactorInput,
   SessionView,
   SetPasswordInput,
+  UpdateProfileInput,
   VerifyCodeInput,
 } from "@shah-kelid/contracts";
 
@@ -65,6 +66,11 @@ export const accountApi = api.injectEndpoints({
       invalidatesTags: ["AccountSession"],
     }),
 
+    accountUpdateProfile: builder.mutation<SessionView, UpdateProfileInput>({
+      query: (body) => ({ url: `${AUTH}/profile`, method: "PUT", body }),
+      onQueryStarted: (_input, { dispatch, queryFulfilled }) => storeSession(dispatch, queryFulfilled),
+    }),
+
     accountSignOut: builder.mutation<void, void>({
       query: () => ({ url: `${AUTH}/sign-out`, method: "POST" }),
       onQueryStarted: (_input, { dispatch, queryFulfilled }) =>
@@ -119,6 +125,7 @@ export const {
   useAccountForgotPasswordMutation,
   useAccountResetPasswordMutation,
   useAccountSetPasswordMutation,
+  useAccountUpdateProfileMutation,
   useAccountSignOutMutation,
   useAccountTwoFactorSetupMutation,
   useAccountTwoFactorEnableMutation,

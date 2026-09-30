@@ -85,6 +85,17 @@ export const paths = {
     getHref: (planId: string) => `/buy/${planId}`,
   },
 
+  /** Renewing one of the buyer's services: choose the plan, then pay. */
+  renew: {
+    path: "/renew/:subscriptionId",
+    getHref: (subscriptionId: string) => `/renew/${subscriptionId}`,
+  },
+
+  invoice: {
+    path: "/orders/:orderId/invoice",
+    getHref: (orderId: string) => `/orders/${orderId}/invoice`,
+  },
+
   /** An order's page: where Zarinpal brings the buyer back, and where the link appears. */
   order: {
     path: "/orders/:orderId",
