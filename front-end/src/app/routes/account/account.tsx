@@ -30,14 +30,22 @@ const AccountRoute = () => {
             {session.account.email}
           </p>
         </div>
-        {session.account.isStaff ? (
+        <div className="flex flex-wrap gap-2">
           <Link
-            to={paths.staff.getHref()}
+            to={paths.support.getHref()}
             className="inline-flex h-10 items-center rounded-md border px-4 text-sm font-medium hover:bg-accent"
           >
-            {t("shop.nav.staff")}
+            {t("shop.nav.support")}
           </Link>
-        ) : null}
+          {session.account.isStaff ? (
+            <Link
+              to={paths.staff.getHref()}
+              className="inline-flex h-10 items-center rounded-md border px-4 text-sm font-medium hover:bg-accent"
+            >
+              {t("shop.nav.staff")}
+            </Link>
+          ) : null}
+        </div>
       </header>
 
       <MyServices />

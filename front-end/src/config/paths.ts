@@ -102,6 +102,16 @@ export const paths = {
     getHref: (orderId: string) => `/orders/${orderId}`,
   },
 
+  /** The customer's tickets. */
+  support: {
+    path: "/support",
+    getHref: () => "/support",
+  },
+  supportTicket: {
+    path: "/support/:ticketId",
+    getHref: (ticketId: string) => `/support/${ticketId}`,
+  },
+
   /** The new staff area, on /api/v1/staff. */
   staff: {
     path: "/staff",
@@ -122,6 +132,14 @@ export const paths = {
   staffSubscription: {
     path: "/staff/subscriptions/:subscriptionId",
     getHref: (subscriptionId: string) => `/staff/subscriptions/${subscriptionId}`,
+  },
+  staffTickets: {
+    path: "/staff/tickets",
+    getHref: () => "/staff/tickets",
+  },
+  staffTicket: {
+    path: "/staff/tickets/:ticketId",
+    getHref: (ticketId: string) => `/staff/tickets/${ticketId}`,
   },
   staffPayments: {
     path: "/staff/payments",

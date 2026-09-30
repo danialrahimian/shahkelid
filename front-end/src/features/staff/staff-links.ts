@@ -1,5 +1,5 @@
 import type { AccountView } from "@shah-kelid/contracts";
-import { Layers, Mail, Receipt, Server, ShieldCheck, Users, Waypoints } from "lucide-react";
+import { Layers, LifeBuoy, Mail, Receipt, Server, ShieldCheck, Users, Waypoints } from "lucide-react";
 
 import { paths } from "@/config/paths";
 
@@ -10,12 +10,16 @@ import { paths } from "@/config/paths";
 
 type StaffLink = {
   to: string;
-  label: "customers" | "subscriptions" | "payments" | "plans" | "servers" | "panels" | "notifications";
+  label: "customers" | "subscriptions" | "payments" | "plans" | "servers" | "panels" | "notifications" | "tickets";
   icon: typeof Users;
   permission: string;
 };
 
-export const STAFF_GROUPS: { label: "sales" | "infrastructure" | "settings"; links: StaffLink[] }[] = [
+export const STAFF_GROUPS: { label: "support" | "sales" | "infrastructure" | "settings"; links: StaffLink[] }[] = [
+  {
+    label: "support",
+    links: [{ to: paths.staffTickets.getHref(), label: "tickets", icon: LifeBuoy, permission: "tickets:reply" }],
+  },
   {
     label: "sales",
     links: [

@@ -99,6 +99,14 @@ export const createAppRouter = () =>
           path: paths.renew.path,
           element: lazyRoute(() => import("@/app/routes/renew")),
         },
+        {
+          path: paths.support.path,
+          element: lazyRoute(() => import("@/app/routes/support")),
+        },
+        {
+          path: paths.supportTicket.path,
+          element: lazyRoute(() => import("@/app/routes/support-ticket")),
+        },
         // The new account screens, on /api/v1. They guard themselves: each
         // follows the session the server reports, step by step.
         {
@@ -219,6 +227,8 @@ export const createAppRouter = () =>
           path: paths.staffSubscription.path,
           element: lazyRoute(() => import("@/app/routes/staff/subscription")),
         },
+        { path: paths.staffTickets.path, element: lazyRoute(() => import("@/app/routes/staff/tickets")) },
+        { path: paths.staffTicket.path, element: lazyRoute(() => import("@/app/routes/staff/ticket")) },
         { path: paths.staffPayments.path, element: lazyRoute(() => import("@/app/routes/staff/payments")) },
         { path: paths.staffPlans.path, element: lazyRoute(() => import("@/app/routes/staff/plans")) },
         {

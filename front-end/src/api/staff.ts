@@ -27,6 +27,12 @@ import type {
   SubscriptionEventView,
   SubscriptionStatus,
   SubscriptionView,
+  StaffTicketSummary,
+  StaffTicketView,
+  TicketCategoryInput,
+  TicketCategoryView,
+  TicketStatus,
+  UpdateTicketInput,
 } from "@shah-kelid/contracts";
 
 import { api } from "@/lib/api";
@@ -212,6 +218,37 @@ export const staffApi = api.injectEndpoints({
       query: (id) => ({ url: `${STAFF}/orders/${id}/fulfil`, method: "POST" }),
       invalidatesTags: ["StaffOrder", "StaffCustomer", "StaffSubscription", "StaffServer"],
     }),
+    staffTickets: builder.query<StaffTicketSummary[], { status?: TicketStatus; assignee: "me" | "none" | "all" }>({
+      query: ({ status, assignee }) => ({ url: `${STAFF}/tickets`, params: status ? { status, assignee } : { assignee } }),
+      providesTags: ["StaffTicket"],
+    }),
+    staffTicket: builder.query<StaffTicketView, string>({
+      query: (id) => `${STAFF}/tickets/${id}`,
+      providesTags: (_result, _error, id) => [{ type: "StaffTicket", id }],
+    }),
+    staffTicketReply: builder.mutation<StaffTicketView, { ticketId: string; form: FormData }>({
+      query: ({ ticketId, form }) => ({ url: `${STAFF}/tickets/${ticketId}/messages`, method: "POST", body: form }),
+      invalidatesTags: (_result, _error, { ticketId }) => ["StaffTicket", { type: "StaffTicket", id: ticketId }],
+    }),
+    staffUpdateTicket: builder.mutation<StaffTicketView, { ticketId: string; body: UpdateTicketInput }>({
+      query: ({ ticketId, body }) => ({ url: `${STAFF}/tickets/${ticketId}`, method: "PATCH", body }),
+      invalidatesTags: (_result, _error, { ticketId }) => ["StaffTicket", { type: "StaffTicket", id: ticketId }],
+    }),
+    staffTicketAgents: builder.query<{ id: string; email: string }[], void>({
+      query: () => `${STAFF}/ticket-agents`,
+    }),
+    staffTicketCategories: builder.query<TicketCategoryView[], void>({
+      query: () => `${STAFF}/ticket-categories`,
+      providesTags: ["StaffTicketCategory"],
+    }),
+    staffSaveTicketCategory: builder.mutation<TicketCategoryView, { id?: string; body: TicketCategoryInput }>({
+      query: ({ id, body }) => ({
+        url: id ? `${STAFF}/ticket-categories/${id}` : `${STAFF}/ticket-categories`,
+        method: id ? "PUT" : "POST",
+        body,
+      }),
+      invalidatesTags: ["StaffTicketCategory"],
+    }),
   }),
 });
 
@@ -252,4 +289,11 @@ export const {
   useStaffSavePaymentCardMutation,
   useStaffOrdersQuery,
   useStaffFulfilOrderMutation,
+  useStaffTicketsQuery,
+  useStaffTicketQuery,
+  useStaffTicketReplyMutation,
+  useStaffUpdateTicketMutation,
+  useStaffTicketAgentsQuery,
+  useStaffTicketCategoriesQuery,
+  useStaffSaveTicketCategoryMutation,
 } = staffApi;
