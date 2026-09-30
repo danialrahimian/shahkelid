@@ -4,6 +4,9 @@ import config from "../config";
 import { accessRouter } from "../modules/access/routes";
 import { billingStaffRouter, shopRouter } from "../modules/billing/routes";
 import { catalogRouter } from "../modules/catalog/routes";
+import { contentStaffRouter, journalRouter } from "../modules/content/routes";
+import { crmRouter } from "../modules/crm/routes";
+import { reportsRouter } from "../modules/reports/routes";
 import { identityRouter } from "../modules/identity/routes";
 import { infrastructureRouter } from "../modules/infrastructure/routes";
 import { notificationsRouter } from "../modules/notifications/routes";
@@ -36,11 +39,15 @@ export const createV1Router = () => {
   router.use("/staff", accessRouter({ db }));
   router.use("/staff", infrastructureRouter({ db }));
   router.use("/staff", catalogRouter({ db }));
+  router.use("/staff", crmRouter({ db }));
+  router.use("/staff/reports", reportsRouter({ db }));
   router.use("/staff", subscriptionsRouter({ db }));
   router.use("/staff", billingStaffRouter({ db }));
   router.use("/staff", notificationsRouter({ db }));
   router.use("/staff", supportStaffRouter({ db }));
+  router.use("/staff", contentStaffRouter({ db }));
   router.use("/support", supportRouter({ db, redis }));
+  router.use("/posts", journalRouter({ db, redis }));
   router.use(shopRouter({ db, redis }));
 
   router.use(v1NotFound);

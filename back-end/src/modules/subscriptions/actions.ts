@@ -73,6 +73,23 @@ const record = async (
   });
 };
 
+/**
+ * Takes a service off its panel for good, after its owner's account was
+ * deleted (an outbox job, so it is retried while the panel is down).
+ */
+export const removeFromPanel = async (db: Db, id: string) => {
+  const [row] = await db.select().from(subscriptions).where(eq(subscriptions.id, id));
+  if (!row || row.status === "deleted") return "not_needed";
+  if (!NOT_ON_PANEL.has(row.status)) {
+    await driverFor(await findPanel(db, row.panelId)).deleteUser(row.panelUsername);
+  }
+  await db.transaction(async (tx) => {
+    await tx.update(subscriptions).set({ status: "deleted", lastError: null }).where(eq(subscriptions.id, id));
+    await recordHistory(tx, id, "account_deleted", "system");
+  });
+  return "removed";
+};
+
 export const performAction = async (
   db: Db,
   actor: StaffActor,

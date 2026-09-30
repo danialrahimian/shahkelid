@@ -24,6 +24,8 @@ export const TOPIC_ROUTES: TopicRoutes = {
   "subscription.provision_requested": QUEUES.provisioning,
   // M6: apply a paid renewal to the panel (src/modules/subscriptions/renewal.ts)
   "order.renewal_paid": QUEUES.provisioning,
+  // M9: take a deleted account's service off its panel (src/modules/identity/delete-account.ts)
+  "subscription.remove_requested": QUEUES.provisioning,
   // M4: tell owners and admins about trouble (src/modules/notifications/alerts.ts)
   "admin.alert": QUEUES.notifications,
   // M7: an email to a customer (src/modules/notifications/notify.ts)

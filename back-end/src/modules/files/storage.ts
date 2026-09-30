@@ -9,10 +9,11 @@ import type { Executor } from "../../platform/db/client";
 import { files, filePurpose } from "./schema";
 
 /**
- * Private files (card-transfer receipts now; ticket attachments later).
+ * Uploaded pictures: card-transfer receipts, ticket screenshots, post covers.
  *
- * Kept outside the public uploads folder and served only through routes that
- * check who is asking. Stored under a random name: the customer's file name
+ * Kept outside the public uploads folder and served only through routes: the
+ * private ones by routes that check who is asking, the public ones (covers)
+ * by a route that checks `is_public`. Stored under a random name: the customer's file name
  * is kept in the row, never used on disk.
  *
  * The type is read from the file's first bytes, not from what the browser
@@ -40,14 +41,21 @@ export const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).dige
 
 type Purpose = (typeof filePurpose.enumValues)[number];
 
-export const savePrivateImage = async (
+type NewImage = { bytes: Buffer; purpose: Purpose; originalName: string; uploadedBy: string };
+
+/** A receipt or a ticket's screenshot: served only through routes that check who asks. */
+export const savePrivateImage = (executor: Executor, image: NewImage) => saveImage(executor, image, { isPublic: false });
+
+/**
+ * A picture anyone may see (a post's cover). Stored the same way, beside the
+ * private ones; `is_public` is what lets the public route serve it.
+ */
+export const savePublicImage = (executor: Executor, image: NewImage) => saveImage(executor, image, { isPublic: true });
+
+const saveImage = async (
   executor: Executor,
-  {
-    bytes,
-    purpose,
-    originalName,
-    uploadedBy,
-  }: { bytes: Buffer; purpose: Purpose; originalName: string; uploadedBy: string },
+  { bytes, purpose, originalName, uploadedBy }: NewImage,
+  { isPublic }: { isPublic: boolean },
 ) => {
   const kind = imageTypeOf(bytes);
   if (!kind) throw new Error("Not an accepted image");
@@ -66,7 +74,7 @@ export const savePrivateImage = async (
       mimeType: kind.type,
       sizeBytes: bytes.length,
       sha256: sha256(bytes),
-      isPublic: false,
+      isPublic,
       uploadedBy,
     })
     .returning();
@@ -82,4 +90,10 @@ export const readPrivateFile = async (executor: Executor, fileId: string) => {
   const target = path.resolve(root, row.storageKey);
   if (!target.startsWith(root + path.sep)) return null;
   return { bytes: await readFile(target), mimeType: row.mimeType };
+};
+
+/** A public file's bytes and type (a post's cover), or null when there is none or it is private. */
+export const readPublicFile = async (executor: Executor, fileId: string) => {
+  const [row] = await executor.select({ isPublic: files.isPublic }).from(files).where(eq(files.id, fileId));
+  return row?.isPublic ? readPrivateFile(executor, fileId) : null;
 };

@@ -14,18 +14,14 @@ import { parseBody, parseId } from "../../platform/http/validate";
 import { performAction } from "./actions";
 import {
   createSubscription,
-  customerDetail,
   findSubscriptionView,
-  listCustomers,
   listSubscriptions,
   subscriptionHistory,
 } from "./service";
 
 /**
- * /api/v1/staff: customers and their subscriptions.
+ * /api/v1/staff: subscriptions (customers themselves are in src/modules/crm).
  *
- *   GET  /customers?search=              customers:read
- *   GET  /customers/:id                  customers:read, with subscriptions and usage
  *   GET  /subscriptions?status=&userId=  customers:read
  *   GET  /subscriptions/:id              customers:read, with its history
  *   POST /subscriptions                  subscriptions:manage — make one from a plan
@@ -37,7 +33,6 @@ const page = {
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 };
-const customersQuery = z.object({ search: z.string().max(200).optional(), ...page });
 const subscriptionsQuery = z.object({
   status: z.enum(SUBSCRIPTION_STATUSES).optional(),
   userId: z.string().uuid().optional(),
@@ -52,13 +47,6 @@ const query = <T extends z.ZodTypeAny>(schema: T, value: unknown): z.infer<T> =>
 
 export const subscriptionsRouter = ({ db }: { db: Db }) => {
   const router = Router();
-
-  router.get("/customers", requirePermission("customers:read"), async (req, res) => {
-    res.json(await listCustomers(db, query(customersQuery, req.query)));
-  });
-  router.get("/customers/:id", requirePermission("customers:read"), async (req, res) => {
-    res.json(await customerDetail(db, parseId(req.params.id)));
-  });
 
   router.get("/subscriptions", requirePermission("customers:read"), async (req, res) => {
     res.json(await listSubscriptions(db, query(subscriptionsQuery, req.query)));

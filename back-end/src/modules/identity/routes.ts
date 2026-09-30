@@ -3,6 +3,7 @@ import { Router, type Request } from "express";
 import type { Redis } from "ioredis";
 
 import {
+  deleteAccountInput,
   passwordSignInInput,
   requestCodeInput,
   resetPasswordInput,
@@ -32,6 +33,7 @@ import {
   signInWithCode,
   signInWithPassword,
 } from "./service";
+import { deleteAccount } from "./delete-account";
 import { users } from "./schema";
 import { beginSetup, enableTwoFactor, verifySecondFactor } from "./two-factor";
 
@@ -113,6 +115,20 @@ export const identityRouter = ({ db, redis }: { db: Db; redis: Redis }) => {
     const { displayName } = parseBody(updateProfileInput, req.body);
     await db.update(users).set({ displayName }).where(eq(users.id, req.account!.user.id));
     res.json(await sessionViewOf(db, req));
+  });
+
+  /** Deleting one's own account; the email typed must be the account's. */
+  router.post("/delete-account", requireSignedIn, async (req, res) => {
+    const { email } = parseBody(deleteAccountInput, req.body);
+    const user = req.account!.user;
+    if (email.toLowerCase() !== user.email.toLowerCase()) {
+      throw new ApiError(400, "CONFIRMATION_MISMATCH", "Type the account's email to confirm", {
+        fields: [{ path: "email", code: "CONFIRMATION_MISMATCH" }],
+      });
+    }
+    await deleteAccount(db, user.id, "self");
+    await endAccountSession(req, res);
+    res.status(204).end();
   });
 
   router.get("/session", async (req, res) => {

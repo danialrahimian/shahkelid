@@ -79,7 +79,7 @@ const roleByKey = async (executor: Executor, key: string) => {
   return { ...role, permissions: granted.map((row) => row.permission) };
 };
 
-type Actor = {
+export type Actor = {
   userId: string;
   permissions: Set<Permission>;
   roles: string[];

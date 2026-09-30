@@ -43,6 +43,13 @@
       "when": 1790774971382,
       "tag": "0005_subscription_on_hold_duration",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790778956343,
+      "tag": "0006_post_comment_moderation",
+      "breakpoints": true
     }
   ]
 }

@@ -1,13 +1,11 @@
 import { randomBytes } from "node:crypto";
 
 import type {
-  CustomerDetail,
-  CustomerSummary,
   SubscriptionEventView,
   SubscriptionStatus,
   SubscriptionView,
 } from "@shah-kelid/contracts";
-import { and, desc, eq, ilike, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, sql, type SQL } from "drizzle-orm";
 
 import config from "../../config";
 import type { Db, Executor } from "../../platform/db/client";
@@ -148,60 +146,7 @@ export const subscriptionHistory = async (db: Db, id: string): Promise<Subscript
   }));
 };
 
-// --------------------------------------------------------------- customers
-
-// Written out with table names: interpolated columns lose their table inside
-// a subquery, and "id" would then mean the subscription's id.
-const liveSubscriptionCount = sql<number>`(
-  select count(*)::int from subscriptions x
-  where x.user_id = "users"."id"
-    and x.status in ('provisioning', 'on_hold', 'active', 'limited')
-)`;
-
-const customerSummary = (row: {
-  user: typeof users.$inferSelect;
-  live: number;
-}): CustomerSummary => ({
-  id: row.user.id,
-  email: row.user.email,
-  displayName: row.user.displayName,
-  status: row.user.status,
-  createdAt: row.user.createdAt.toISOString(),
-  lastLoginAt: iso(row.user.lastLoginAt),
-  liveSubscriptions: Number(row.live),
-});
-
-export const listCustomers = async (
-  db: Db,
-  { search, limit, offset }: { search?: string; limit: number; offset: number },
-) => {
-  const term = search?.trim();
-  const rows = await db
-    .select({ user: users, live: liveSubscriptionCount })
-    .from(users)
-    .where(
-      and(
-        isNull(users.deletedAt),
-        term ? or(ilike(users.email, `%${term}%`), ilike(users.displayName, `%${term}%`)) : undefined,
-      ),
-    )
-    .orderBy(desc(users.createdAt))
-    .limit(limit)
-    .offset(offset);
-  return rows.map(customerSummary);
-};
-
-export const customerDetail = async (db: Db, id: string): Promise<CustomerDetail> => {
-  const [row] = await db
-    .select({ user: users, live: liveSubscriptionCount })
-    .from(users)
-    .where(eq(users.id, id));
-  if (!row) throw notFound("No such customer");
-  return {
-    ...customerSummary(row),
-    subscriptions: await listSubscriptions(db, { userId: id, limit: 100, offset: 0 }),
-  };
-};
+// Customers, with their CRM facts, are listed by src/modules/crm.
 
 // ---------------------------------------------------------------- history
 

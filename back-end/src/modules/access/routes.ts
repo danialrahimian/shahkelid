@@ -1,13 +1,14 @@
-import { and, desc, eq, lt, type SQL } from "drizzle-orm";
+import { addTeamMemberInput } from "@shah-kelid/contracts";
 import { Router, type Request } from "express";
 import { z } from "zod";
 
 import type { Db } from "../../platform/db/client";
 import { requirePermission } from "../../platform/http/account-session";
 import { ApiError } from "../../platform/http/api-error";
+import { parseBody } from "../../platform/http/validate";
 import { accessOf, grantRole, listRoles, revokeRole } from "./roles";
 import { PERMISSIONS } from "./permissions";
-import { auditLogs } from "./schema";
+import { addTeamMember, auditEntries, teamMembers } from "./team";
 
 /**
  * /api/v1/staff: who may do what, and the record of what they did.
@@ -17,7 +18,9 @@ import { auditLogs } from "./schema";
  *   GET    /users/:userId/access            one person's roles and permissions
  *   POST   /users/:userId/roles/:roleKey    give a role
  *   DELETE /users/:userId/roles/:roleKey    take it away
- *   GET    /audit                           the audit log, newest first
+ *   GET    /team                            everyone holding a role
+ *   POST   /team { email, roleKey }         add someone (an account is made if needed)
+ *   GET    /audit                           the audit log, newest first, with who did it
  */
 
 const uuid = z.string().uuid();
@@ -85,22 +88,17 @@ export const accessRouter = ({ db }: { db: Db }) => {
   router.get("/audit", requirePermission("audit:read"), async (req, res) => {
     const query = auditQuery.safeParse(req.query);
     if (!query.success) throw new ApiError(400, "VALIDATION_FAILED", "Invalid audit filter");
-    const { entityType, entityId, actorUserId, before, limit } = query.data;
+    res.json(await auditEntries(db, query.data));
+  });
 
-    const filters: SQL[] = [];
-    if (entityType) filters.push(eq(auditLogs.entityType, entityType));
-    if (entityId) filters.push(eq(auditLogs.entityId, entityId));
-    if (actorUserId) filters.push(eq(auditLogs.actorUserId, actorUserId));
-    if (before) filters.push(lt(auditLogs.id, before));
+  router.get("/team", requirePermission("users:read"), async (_req, res) => {
+    res.json(await teamMembers(db));
+  });
 
-    const entries = await db
-      .select()
-      .from(auditLogs)
-      .where(filters.length ? and(...filters) : undefined)
-      .orderBy(desc(auditLogs.id))
-      .limit(limit);
-
-    res.json({ entries, nextBefore: entries.length === limit ? entries.at(-1)!.id : null });
+  router.post("/team", requirePermission("users:manage_roles"), async (req, res) => {
+    const { email, roleKey } = parseBody(addTeamMemberInput, req.body);
+    await addTeamMember(db, actorOf(req), email, roleKey);
+    res.status(201).json(await teamMembers(db));
   });
 
   return router;

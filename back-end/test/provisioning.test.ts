@@ -608,8 +608,8 @@ describe("Customers", () => {
 
     const found = await store.staff.client.get(`${V1}/customers?search=${encodeURIComponent(customer.email)}`);
 
-    assert.equal(found.data.length, 1);
-    assert.equal(found.data[0].liveSubscriptions, 1);
+    assert.equal(found.data.customers.length, 1);
+    assert.equal(found.data.customers[0].liveSubscriptions, 1);
   });
 
   it("When someone who is not staff asks, then it is refused", async () => {

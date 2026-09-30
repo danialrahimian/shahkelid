@@ -5,6 +5,8 @@ import logger from "../../libraries/logger";
 import type { Db } from "../../platform/db/client";
 import { QUEUES } from "../../platform/queue/routes";
 import { createConsumerConnection, createProducerConnection } from "../../platform/redis";
+import { SUBSCRIPTION_REMOVE_TOPIC } from "../identity/delete-account";
+import { removeFromPanel } from "../subscriptions/actions";
 import { applyRenewal, RENEWAL_TOPIC } from "../subscriptions/renewal";
 import { PROVISION_TOPIC } from "../subscriptions/service";
 import { PanelRejectedError } from "./driver";
@@ -104,6 +106,7 @@ export const startProvisioningWorker = ({ db, prefix }: { db: Db; prefix?: strin
       if (job.name === PROVISION_TOPIC) return runProvisionJob(db, job as Job<OutboxJob>);
       if (job.name === RENEWAL_TOPIC) return runRenewalJob(db, job as Job<OutboxJob>);
       if (job.name === SYNC_JOB) return syncAllPanels(db);
+      if (job.name === SUBSCRIPTION_REMOVE_TOPIC) return removeFromPanel(db, (job.data as OutboxJob).aggregateId);
       throw new UnrecoverableError(`No handler for job "${job.name}"`);
     },
     {

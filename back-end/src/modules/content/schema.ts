@@ -78,6 +78,9 @@ export const postLikes = pgTable(
   (t) => [primaryKey({ columns: [t.postId, t.userId] })],
 );
 
+// A comment is shown only once staff approve it (M9).
+export const commentStatus = pgEnum("comment_status", ["pending", "approved", "rejected"]);
+
 export const postComments = pgTable(
   "post_comments",
   {
@@ -88,10 +91,17 @@ export const postComments = pgTable(
     userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
     authorName: text("author_name").notNull(),
     body: text("body").notNull(),
+    status: commentStatus("status").notNull().default("pending"),
+    moderatedBy: uuid("moderated_by").references(() => users.id, { onDelete: "set null" }),
+    moderatedAt: at("moderated_at"),
     createdAt: createdAt(),
   },
   (t) => [
     check("post_comments_body_length", sql`char_length(${t.body}) between 1 and 1000`),
     index("post_comments_post_idx").on(t.postId, t.createdAt.desc().nullsFirst()),
+    // the moderation queue: what waits, oldest first
+    index("post_comments_pending_idx")
+      .on(t.createdAt)
+      .where(sql`${t.status} = 'pending'`),
   ],
 );
