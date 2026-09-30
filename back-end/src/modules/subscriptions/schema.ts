@@ -64,6 +64,8 @@ export const subscriptions = pgTable(
     deviceLimit: integer("device_limit"),
     expiresAt: at("expires_at"),
     startsOnFirstUse: boolean("starts_on_first_use").notNull().default(false),
+    // While on hold: how long it runs once it starts (a renewal adds to it).
+    onHoldDurationSeconds: integer("on_hold_duration_seconds"),
     // A copy from the panel. The panel stays the source of truth for usage.
     usedBytes: wholeNumber("used_bytes").notNull().default(0),
     lifetimeUsedBytes: wholeNumber("lifetime_used_bytes").notNull().default(0),

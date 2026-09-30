@@ -22,6 +22,8 @@ export type TopicRoutes = Readonly<Record<string, QueueName>>;
 export const TOPIC_ROUTES: TopicRoutes = {
   // M3: put a subscription on its panel (src/modules/provisioning/worker.ts)
   "subscription.provision_requested": QUEUES.provisioning,
+  // M6: apply a paid renewal to the panel (src/modules/subscriptions/renewal.ts)
+  "order.renewal_paid": QUEUES.provisioning,
   // M4: tell owners and admins about trouble (src/modules/notifications/alerts.ts)
   "admin.alert": QUEUES.notifications,
 };

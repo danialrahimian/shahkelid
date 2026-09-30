@@ -64,6 +64,7 @@ const differs = (current: SubscriptionRow, user: PanelUser) => {
     next.onlineAt?.getTime() !== current.onlineAt?.getTime() ||
     next.panelSubscriptionUrl !== current.panelSubscriptionUrl ||
     next.panelUserId !== current.panelUserId ||
+    next.onHoldDurationSeconds !== current.onHoldDurationSeconds ||
     current.lastError !== null
   );
 };

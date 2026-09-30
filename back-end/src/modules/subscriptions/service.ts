@@ -242,6 +242,7 @@ export const fromPanel = (user: PanelUser) => ({
   usedBytes: user.usedBytes,
   lifetimeUsedBytes: Math.max(user.lifetimeUsedBytes, user.usedBytes),
   expiresAt: user.expiresAt,
+  onHoldDurationSeconds: user.onHoldDurationSeconds,
   onlineAt: user.onlineAt,
   panelSubscriptionUrl: user.subscriptionUrl,
   lastSyncedAt: new Date(),

@@ -219,6 +219,8 @@ export class PasarGuardDriver implements PanelDriver {
     }
     if (change.groupIds !== undefined) body.group_ids = change.groupIds;
     if (change.expiresAt !== undefined) body.expire = change.expiresAt?.toISOString() ?? 0;
+    if (change.onHoldDurationSeconds !== undefined) body.on_hold_expire_duration = change.onHoldDurationSeconds;
+    if (change.activate) body.status = "active";
 
     const response = await this.authorized(this.userPath(username), { method: "PUT", json: body });
     return this.toUser(await this.read<RawUser>(response, "change the user"));

@@ -29,7 +29,8 @@ import {
   saveCard,
   submitCardTransfer,
 } from "./card-transfer";
-import { createOrder, fulfilPaidOrder, myOrder, myOrders, plansOnSale, staffOrders } from "./orders";
+import { mySubscriptions } from "../subscriptions/customer";
+import { createOrder, fulfilPaidOrder, myInvoice, myOrder, myOrders, plansOnSale, staffOrders } from "./orders";
 import { handleNowPaymentsIpn, isNowPaymentsConfigured, isValidIpn, startNowPayments } from "./nowpayments";
 import { freshRate } from "./rates";
 import { cryptoTransfersFor, isUsdtConfigured, reviewCryptoTransfer, startUsdtTron } from "./usdt-checkout";
@@ -42,7 +43,8 @@ import { startZarinpal, zarinpalCallback } from "./zarinpal-checkout";
  *   GET  /shop/cards                       cards to transfer to
  *   GET  /shop/payment-methods             the ways to pay right now (crypto only with a fresh rate)
  *   POST /shop/orders                      { planId }, Idempotency-Key header
- *   GET  /shop/orders   GET /shop/orders/:id
+ *   GET  /shop/orders   GET /shop/orders/:id   GET /shop/orders/:id/invoice
+ *   GET  /shop/subscriptions               the buyer's services, usage read fresh
  *   POST /shop/orders/:id/pay/zarinpal     → { payUrl }
  *   POST /shop/orders/:id/pay/card         multipart: receipt (image) + fields
  *   POST /shop/orders/:id/pay/usdt         → the order, with the exact USDT amount and address
@@ -97,10 +99,10 @@ export const shopRouter = ({ db, redis }: { db: Db; redis: Redis }) => {
   });
 
   router.post("/shop/orders", requireSignedIn, perIp, async (req, res) => {
-    const { planId } = parseBody(createOrderInput, req.body);
+    const { planId, renewSubscriptionId } = parseBody(createOrderInput, req.body);
     const key = idempotencyKey.safeParse(req.get("idempotency-key") ?? undefined);
     if (!key.success) throw new ApiError(400, "VALIDATION_FAILED", "Idempotency-Key must be 8 to 100 characters");
-    res.status(201).json(await createOrder(db, req.account!.user.id, planId, key.data));
+    res.status(201).json(await createOrder(db, req.account!.user.id, planId, key.data, renewSubscriptionId));
   });
 
   router.get("/shop/orders", requireSignedIn, async (req, res) => {
@@ -109,6 +111,14 @@ export const shopRouter = ({ db, redis }: { db: Db; redis: Redis }) => {
 
   router.get("/shop/orders/:id", requireSignedIn, async (req, res) => {
     res.json(await myOrder(db, req.account!.user.id, parseId(req.params.id)));
+  });
+
+  router.get("/shop/orders/:id/invoice", requireSignedIn, async (req, res) => {
+    res.json(await myInvoice(db, req.account!.user.id, parseId(req.params.id)));
+  });
+
+  router.get("/shop/subscriptions", requireSignedIn, async (req, res) => {
+    res.json(await mySubscriptions(db, req.account!.user.id));
   });
 
   router.post("/shop/orders/:id/pay/zarinpal", requireSignedIn, perIp, async (req, res) => {

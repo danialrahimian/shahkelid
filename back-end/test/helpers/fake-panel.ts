@@ -26,6 +26,8 @@ export class FakePanel implements PanelDriver {
   /** Fail this many calls, then work again. */
   failNext = 0;
   calls: string[] = [];
+  /** Every limits change asked for, in order. */
+  updates: { username: string; change: LimitsChange }[] = [];
   private nextId = 1;
 
   private gate(call: string) {
@@ -105,6 +107,9 @@ export class FakePanel implements PanelDriver {
     if (change.deviceLimit !== undefined) user.deviceLimit = change.deviceLimit;
     if (change.groupIds !== undefined) user.groupIds = [...change.groupIds];
     if (change.expiresAt !== undefined) user.expiresAt = change.expiresAt;
+    if (change.onHoldDurationSeconds !== undefined) user.onHoldDurationSeconds = change.onHoldDurationSeconds;
+    if (change.activate && user.status !== "on_hold") user.status = "active";
+    this.updates.push({ username, change });
     return { ...user };
   }
 

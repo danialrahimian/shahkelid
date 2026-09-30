@@ -222,6 +222,13 @@ The new accounts live in PostgreSQL, with sessions in Redis (cookie `sk.sid`).
 - **Card to card**: the receipt image's type is read from its bytes; images
   go to `files/` and are served only to `payments:review`. Repeated images or
   tracking numbers and differing amounts are flagged, not refused.
+- **Renewal** (`src/modules/subscriptions/renewal.ts`) is an order of kind
+  `renewal` on an existing subscription, paid like any other. It applies at
+  once and loses nothing: the plan's days go on the current expiry, its
+  volume on what is left; an expired subscription starts again from today.
+  The worker applies it to the same panel user (the link never changes); the
+  new expiry and limit are worked out once and recorded, so a retry sets the
+  same values instead of adding them again.
 - **Crypto**: the USDT rate comes from Nobitex (`bestBuy`, every minute);
   a rate older than ten minutes hides crypto at checkout. Direct USDT on
   TRON is matched by exact amount (the price rounded up to the cent, plus a

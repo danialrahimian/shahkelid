@@ -5,6 +5,7 @@ import logger from "../../libraries/logger";
 import type { Db } from "../../platform/db/client";
 import { QUEUES } from "../../platform/queue/routes";
 import { createConsumerConnection, createProducerConnection } from "../../platform/redis";
+import { applyRenewal, RENEWAL_TOPIC } from "../subscriptions/renewal";
 import { PROVISION_TOPIC } from "../subscriptions/service";
 import { PanelRejectedError } from "./driver";
 import { alertStaff } from "../notifications/alerts";
@@ -59,12 +60,49 @@ export const runProvisionJob = async (
   }
 };
 
+/**
+ * One attempt at applying a paid renewal. A panel that is down is retried;
+ * when the attempts run out, staff are told (the order stays paid, and they
+ * can ask for it again from the customer's page).
+ */
+export const runRenewalJob = async (
+  db: Db,
+  job: Pick<Job<OutboxJob>, "data" | "attemptsMade" | "opts">,
+) => {
+  const orderId = job.data.aggregateId;
+  try {
+    return await applyRenewal(db, orderId);
+  } catch (error) {
+    const failure = error as Error;
+    const last = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+    if (failure instanceof PanelRejectedError || last || job.attemptsMade + 1 === ALERT_AFTER_ATTEMPTS) {
+      await alertStaff(
+        db,
+        {
+          subject: last || failure instanceof PanelRejectedError ? "تمدید روی پنل اعمال نشد" : "اعمال تمدید یک دقیقه است که شکست می‌خورد",
+          text: [
+            `تمدید سفارش ${orderId} پرداخت شده ولی هنوز روی پنل اعمال نشده است.`,
+            `خطا: ${failure.message.slice(0, 300)}`,
+            last || failure instanceof PanelRejectedError
+              ? "بعد از رفع مشکل پنل، در صفحه‌ی مشتری روی «ساخت اشتراک» همان سفارش بزنید."
+              : "تلاش خودکار ادامه دارد.",
+          ].join("\n"),
+        },
+        { type: "order", id: orderId },
+      );
+    }
+    if (failure instanceof PanelRejectedError || last) throw new UnrecoverableError(failure.message);
+    throw failure;
+  }
+};
+
 export const startProvisioningWorker = ({ db, prefix }: { db: Db; prefix?: string }) => {
   const connection = createConsumerConnection();
   const worker = new Worker(
     QUEUES.provisioning,
     async (job: Job) => {
       if (job.name === PROVISION_TOPIC) return runProvisionJob(db, job as Job<OutboxJob>);
+      if (job.name === RENEWAL_TOPIC) return runRenewalJob(db, job as Job<OutboxJob>);
       if (job.name === SYNC_JOB) return syncAllPanels(db);
       throw new UnrecoverableError(`No handler for job "${job.name}"`);
     },

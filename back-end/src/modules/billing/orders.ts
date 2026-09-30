@@ -1,4 +1,4 @@
-import type { OrderView, PublicPlan } from "@shah-kelid/contracts";
+import type { InvoiceView, OrderView, PublicPlan } from "@shah-kelid/contracts";
 import { and, asc, desc, eq, exists, inArray, isNull, lt, sql } from "drizzle-orm";
 
 import config from "../../config";
@@ -10,6 +10,7 @@ import { post } from "../ledger/ledger";
 import { alertStaff } from "../notifications/alerts";
 import { panels } from "../infrastructure/schema";
 import { subscriptions } from "../subscriptions/schema";
+import { assertRenewable, requestRenewal } from "../subscriptions/renewal";
 import { createSubscription, linkFor } from "../subscriptions/service";
 import { quoteForPayment } from "./crypto-quote";
 import { invoices, orderItems, orders, payments } from "./schema";
@@ -115,6 +116,7 @@ export const orderView = async (executor: Executor, order: OrderRow): Promise<Or
   return {
     id: order.id,
     number: order.number,
+    kind: order.kind === "renewal" ? "renewal" : "new",
     status: order.status,
     totalToman: order.totalToman,
     plan: await snapshotOf(executor, order.id),
@@ -162,6 +164,7 @@ export const createOrder = async (
   userId: string,
   planId: string,
   idempotencyKey?: string,
+  renewSubscriptionId?: string,
 ): Promise<OrderView> => {
   if (idempotencyKey) {
     const [existing] = await db
@@ -173,6 +176,8 @@ export const createOrder = async (
 
   const [plan] = await db.select().from(plans).where(and(eq(plans.id, planId), onSale));
   if (!plan) throw new ApiError(404, "PLAN_NOT_ON_SALE", "That plan is not on sale");
+  // A renewal is checked before paying: nobody should pay for one that cannot be applied.
+  if (renewSubscriptionId) await assertRenewable(db, userId, renewSubscriptionId, plan.id);
 
   try {
     const order = await db.transaction(async (tx) => {
@@ -180,7 +185,8 @@ export const createOrder = async (
         .insert(orders)
         .values({
           userId,
-          kind: "new",
+          kind: renewSubscriptionId ? "renewal" : "new",
+          subscriptionId: renewSubscriptionId ?? null,
           subtotalToman: plan.priceToman,
           totalToman: plan.priceToman,
           idempotencyKey: idempotencyKey ?? null,
@@ -256,6 +262,12 @@ const markPaidAndFulfil = async (tx: Executor, order: OrderRow, paymentId: strin
 
 /** Makes the order's subscription, or leaves the order paid and tells staff why not. */
 export const fulfil = async (tx: Executor, order: OrderRow, paymentId: string | null) => {
+  if (order.kind === "renewal") {
+    // Applied to the panel by the worker, which retries; the order stays
+    // "paid" until the panel has it.
+    await requestRenewal(tx, order);
+    return order;
+  }
   const plan = await snapshotOf(tx, order.id);
   try {
     const subscriptionId = await tx.transaction((savepoint) =>
@@ -436,8 +448,36 @@ export const fulfilPaidOrder = async (db: Db, orderId: string) =>
       throw new ApiError(409, "CONFLICT", `The order is ${order.status}, not waiting for its subscription`);
     }
     const after = await fulfil(tx, order, null);
+    if (order.kind === "renewal") return orderView(tx, after); // asked again of the worker
     if (after.status !== "fulfilled") {
       throw new ApiError(409, "NO_SERVER_AVAILABLE", "The subscription still could not be made");
     }
     return orderView(tx, after);
   });
+
+// ---------------------------------------------------------------- invoices
+
+/** The buyer's invoice for an order, once it is paid (issued invoices never change). */
+export const myInvoice = async (db: Db, userId: string, orderId: string): Promise<InvoiceView> => {
+  const order = await orderOf(db, userId, orderId);
+  const [invoice] = await db.select().from(invoices).where(eq(invoices.orderId, order.id));
+  if (!invoice) throw notFound("This order has no invoice yet");
+  const [payment] = await db
+    .select()
+    .from(payments)
+    .where(and(eq(payments.orderId, order.id), eq(payments.status, "succeeded")));
+  const customer = invoice.customerSnapshot as { email?: string; displayName?: string };
+  const lines = invoice.lines as { description: string; quantity: number; unitPriceToman: number }[];
+  return {
+    number: invoice.number,
+    orderId: order.id,
+    orderNumber: order.number,
+    issuedAt: invoice.issuedAt.toISOString(),
+    lines: lines.map(({ description, quantity, unitPriceToman }) => ({ description, quantity, unitPriceToman })),
+    subtotalToman: invoice.subtotalToman,
+    discountToman: invoice.discountToman,
+    totalToman: invoice.totalToman,
+    customer: { email: customer.email ?? "", displayName: customer.displayName ?? "" },
+    payment: payment ? { method: payment.method, refId: payment.providerRefId } : null,
+  };
+};

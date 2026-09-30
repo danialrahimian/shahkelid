@@ -1,0 +1,1 @@
+ALTER TABLE "subscriptions" ADD COLUMN "on_hold_duration_seconds" integer;

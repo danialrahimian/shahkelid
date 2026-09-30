@@ -54,7 +54,13 @@ export type NewPanelUser = Limits & {
     | { startsOnFirstUse: false; expiresAt: Date }
   );
 
-export type LimitsChange = Partial<Limits> & { expiresAt?: Date | null };
+export type LimitsChange = Partial<Limits> & {
+  expiresAt?: Date | null;
+  /** For a user still on hold: how long the plan runs once it starts. */
+  onHoldDurationSeconds?: number;
+  /** Bring a limited or expired user back to active (the new limits allow it). */
+  activate?: boolean;
+};
 
 export type PanelHealth = { version: string | null };
 

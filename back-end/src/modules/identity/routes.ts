@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { Router, type Request } from "express";
 import type { Redis } from "ioredis";
 
@@ -7,6 +8,7 @@ import {
   resetPasswordInput,
   secondFactorInput,
   setPasswordInput,
+  updateProfileInput,
   verifyCodeInput,
 } from "@shah-kelid/contracts";
 
@@ -30,6 +32,7 @@ import {
   signInWithCode,
   signInWithPassword,
 } from "./service";
+import { users } from "./schema";
 import { beginSetup, enableTwoFactor, verifySecondFactor } from "./two-factor";
 
 /**
@@ -41,6 +44,7 @@ import { beginSetup, enableTwoFactor, verifySecondFactor } from "./two-factor";
  *   POST /password/forgot  send a reset code
  *   POST /password/reset   set a new password with it
  *   PUT  /password         set a first password (accounts made by code)
+ *   PUT  /profile          the name shown on invoices and to staff
  *   GET  /session          where the session stands
  *   POST /sign-out
  *   POST /two-factor/setup    start authenticator setup
@@ -103,6 +107,12 @@ export const identityRouter = ({ db, redis }: { db: Db; redis: Redis }) => {
     const { newPassword } = parseBody(setPasswordInput, req.body);
     await setFirstPassword(db, req.account!.user, newPassword, requestInfo(req));
     res.status(204).end();
+  });
+
+  router.put("/profile", requireSignedIn, async (req, res) => {
+    const { displayName } = parseBody(updateProfileInput, req.body);
+    await db.update(users).set({ displayName }).where(eq(users.id, req.account!.user.id));
+    res.json(await sessionViewOf(db, req));
   });
 
   router.get("/session", async (req, res) => {
