@@ -52,6 +52,10 @@ export const API_ERROR_CODES = [
   "RATE_UNAVAILABLE",
   /** That payment method is not set up (or not available right now). */
   "METHOD_UNAVAILABLE",
+
+  // the customer panel (M6)
+  /** The subscription cannot be renewed now (still being made, deleted, or disabled by staff). */
+  "NOT_RENEWABLE",
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

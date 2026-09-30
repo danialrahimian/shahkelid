@@ -43,7 +43,11 @@ export type CryptoQuote = {
   expiresAt: string;
 };
 
-export const createOrderInput = z.object({ planId: z.string().uuid("REQUIRED") });
+export const createOrderInput = z.object({
+  planId: z.string().uuid("REQUIRED"),
+  /** Renew this subscription with the plan, instead of buying a new one. */
+  renewSubscriptionId: z.string().uuid().optional(),
+});
 export type CreateOrderInput = z.infer<typeof createOrderInput>;
 
 export type OrderStatus =
@@ -71,6 +75,8 @@ export type PaymentStatus =
 export type OrderView = {
   id: string;
   number: number;
+  /** A new subscription, or more time and volume on one the buyer has. */
+  kind: "new" | "renewal";
   status: OrderStatus;
   totalToman: number;
   plan: PublicPlan;
@@ -220,3 +226,45 @@ export const formatUsdtUnits = (units: number) => {
   const fraction = String(units % 10 ** USDT_DECIMALS).padStart(USDT_DECIMALS, "0");
   return `${whole}.${fraction}`;
 };
+
+// ------------------------------------------------------- the customer panel
+
+/** One of the buyer's own services, as their panel shows it. */
+export type MySubscriptionView = {
+  id: string;
+  plan: { id: string; name: string };
+  status: SubscriptionStatus;
+  /** null: unlimited. */
+  dataLimitBytes: number | null;
+  usedBytes: number;
+  /** What is left of the volume; null when unlimited. */
+  remainingBytes: number | null;
+  /** null while on hold (the clock has not started). */
+  expiresAt: string | null;
+  /** While on hold: the days that start at the first connection. */
+  daysOnHold: number | null;
+  deviceLimit: number | null;
+  /** The link to add to a VPN app, once the service is on the panel. */
+  link: string | null;
+  lastSyncedAt: string | null;
+  /** Whether it can be renewed now. */
+  renewable: boolean;
+};
+
+export type InvoiceView = {
+  number: number;
+  orderId: string;
+  orderNumber: number;
+  issuedAt: string;
+  lines: { description: string; quantity: number; unitPriceToman: number }[];
+  subtotalToman: number;
+  discountToman: number;
+  totalToman: number;
+  customer: { email: string; displayName: string };
+  payment: { method: string; refId: string | null } | null;
+};
+
+export const updateProfileInput = z.object({
+  displayName: z.string().trim().max(60, "TOO_LONG"),
+});
+export type UpdateProfileInput = z.input<typeof updateProfileInput>;
