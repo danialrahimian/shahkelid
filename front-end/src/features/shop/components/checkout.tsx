@@ -70,6 +70,11 @@ export const Checkout = ({ plan, renewSubscriptionId }: { plan: PublicPlan; rene
     try {
       const current = order ?? (await createOrder({ planId: plan.id, idempotencyKey, renewSubscriptionId }).unwrap());
       setOrder(current);
+      // A free plan is paid the moment it is ordered: straight to its page.
+      if (current.status !== "pending") {
+        void navigate(paths.order.getHref(current.id));
+        return;
+      }
       switch (method) {
         case "card_transfer":
           return; // the card details come next, on this page
