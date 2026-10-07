@@ -261,6 +261,26 @@ describe("Passwords", () => {
     );
   });
 
+  it("When a password is reset, then every device already signed in is signed out (a thief with the old one too)", async () => {
+    const { email, password } = await withPassword();
+    const elsewhere = createClient();
+    assert.equal((await signInByPassword(elsewhere, email, password)).status, 200);
+    assert.equal((await elsewhere.get(`${V1}/auth/session`)).data.status, "signed_in");
+    await forgetCodeCooldown(email);
+
+    await createClient().post(`${V1}/auth/password/forgot`, { email });
+    await createClient().post(`${V1}/auth/password/reset`, {
+      email,
+      code: emails.lastCodeFor(email),
+      newPassword: "a brand new long password",
+    });
+
+    assert.equal((await elsewhere.get(`${V1}/auth/session`)).data.status, "signed_out");
+    const fresh = createClient();
+    assert.equal((await signInByPassword(fresh, email, "a brand new long password")).status, 200);
+    assert.equal((await fresh.get(`${V1}/auth/session`)).data.status, "signed_in", "a sign-in after the reset counts");
+  });
+
   it("When a reset is asked for an unknown address, then the answer is the same and no email goes out", async () => {
     const response = await createClient().post(`${V1}/auth/password/forgot`, {
       email: uniqueEmail("nobody"),

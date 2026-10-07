@@ -5,7 +5,8 @@ import type { Db } from "../../platform/db/client";
 import { QUEUES } from "../../platform/queue/routes";
 import { createConsumerConnection, createProducerConnection } from "../../platform/redis";
 import { expireLapsedOrders } from "./orders";
-import { refreshRate } from "./rates";
+import { pruneOutbox } from "../../platform/outbox/outbox";
+import { pruneRates, refreshRate } from "./rates";
 import { expireUsdtInvoices, scanUsdt } from "./usdt-checkout";
 import { reconcileZarinpal } from "./zarinpal-checkout";
 
@@ -17,17 +18,21 @@ import { reconcileZarinpal } from "./zarinpal-checkout";
  *   still gets their service); unpaid orders and USDT quotes past their time
  *   lapse;
  * - every minute, the USDT rate is read from Nobitex;
- * - every 20 seconds, new USDT transfers into our wallet are read and matched.
+ * - every 20 seconds, new USDT transfers into our wallet are read and matched;
+ * - every six hours, month-old rates (unless an invoice used them) and
+ *   published outbox events are removed.
  */
 
 export const BILLING_TICK = "billing.tick";
 export const RATE_REFRESH = "billing.rate";
 export const USDT_SCAN = "billing.usdt_scan";
+export const HOUSEKEEPING = "billing.housekeeping";
 
 const SCHEDULES = [
   { id: "billing-tick", name: BILLING_TICK, every: 2 * 60 * 1000 },
   { id: "usdt-rate", name: RATE_REFRESH, every: 60 * 1000 },
   { id: "usdt-scan", name: USDT_SCAN, every: 20 * 1000 },
+  { id: "housekeeping", name: HOUSEKEEPING, every: 6 * 60 * 60 * 1000 },
 ];
 
 export const billingTick = async (db: Db) => ({
@@ -36,10 +41,17 @@ export const billingTick = async (db: Db) => ({
   expiredUsdtQuotes: await expireUsdtInvoices(db),
 });
 
+/** Every six hours: rows that only ever grow, thinned out. */
+export const housekeeping = async (db: Db) => ({
+  rates: await pruneRates(db),
+  outbox: await pruneOutbox(db),
+});
+
 const handlers: Record<string, (db: Db) => Promise<unknown>> = {
   [BILLING_TICK]: billingTick,
   [RATE_REFRESH]: refreshRate,
   [USDT_SCAN]: scanUsdt,
+  [HOUSEKEEPING]: housekeeping,
 };
 
 export const startBillingWorker = ({ db }: { db: Db }) => {

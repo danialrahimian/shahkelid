@@ -74,6 +74,16 @@ const statusOf = (user: User, access: AccessProfile, secondFactor: "pending" | "
  * or an account suspended, takes effect on the very next request, not when
  * the session happens to expire.
  */
+/**
+ * Whether a stored session still counts: the account exists and is active,
+ * and the session began after the last time its sessions were revoked (a
+ * password reset signs out every other device).
+ */
+const stillValid = (user: User | undefined, stored: { signedInAt: number }): user is User =>
+  Boolean(user) &&
+  user!.status === "active" &&
+  (user!.sessionsRevokedAt === null || stored.signedInAt > user!.sessionsRevokedAt.getTime());
+
 export const loadAccount =
   (db: Db): RequestHandler =>
   async (req, _res, next) => {
@@ -81,7 +91,7 @@ export const loadAccount =
     if (!stored) return next();
 
     const user = await findUserById(db, stored.userId);
-    if (!user || user.status !== "active") {
+    if (!stillValid(user, stored)) {
       delete req.session.account;
       return next();
     }
@@ -131,7 +141,7 @@ export const sessionViewOf = async (db: Db, req: Request): Promise<SessionView> 
   if (!stored) return { status: "signed_out" };
 
   const user = await findUserById(db, stored.userId);
-  if (!user || user.status !== "active") return { status: "signed_out" };
+  if (!stillValid(user, stored)) return { status: "signed_out" };
 
   const access = await accessOf(db, user.id);
   const status = statusOf(user, access, stored.secondFactor);

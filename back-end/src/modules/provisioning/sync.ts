@@ -28,12 +28,24 @@ const SYNCED = ["on_hold", "active", "limited", "expired", "disabled"] as const;
 
 const MISSING = "Not found on the panel";
 
+/**
+ * Only while the subscription is still in a state the panel decides. The
+ * sync reads our rows once and the panel page by page; staff (or an account
+ * being deleted) may have deleted a subscription in between, and the panel's
+ * older answer must not bring it back.
+ */
+const stillSynced = (id: string) => and(eq(subscriptions.id, id), inArray(subscriptions.status, [...SYNCED]));
+
 /** Applies what the panel says to one subscription; records a status change. */
 const apply = async (db: Db, current: SubscriptionRow, user: PanelUser) => {
   const next = fromPanel(user);
   await db.transaction(async (tx) => {
-    await tx.update(subscriptions).set(next).where(eq(subscriptions.id, current.id));
-    if (next.status !== current.status) {
+    const updated = await tx
+      .update(subscriptions)
+      .set(next)
+      .where(stillSynced(current.id))
+      .returning({ id: subscriptions.id });
+    if (updated.length > 0 && next.status !== current.status) {
       await recordHistory(tx, current.id, "status_changed", "system", {
         from: current.status,
         to: next.status,
@@ -46,10 +58,17 @@ const markMissing = async (db: Db, current: SubscriptionRow) => {
   // Said once, not every five minutes.
   if (current.lastError === MISSING) return;
   await db.transaction(async (tx) => {
-    await tx.update(subscriptions).set({ lastError: MISSING }).where(eq(subscriptions.id, current.id));
-    await recordHistory(tx, current.id, "missing_on_panel", "system");
+    const updated = await tx
+      .update(subscriptions)
+      .set({ lastError: MISSING })
+      .where(stillSynced(current.id))
+      .returning({ id: subscriptions.id });
+    if (updated.length > 0) await recordHistory(tx, current.id, "missing_on_panel", "system");
   });
 };
+
+/** PostgreSQL takes at most 65,535 parameters in one statement. */
+const CHUNK = 5000;
 
 /** Whether anything we keep differs, so unchanged rows are not rewritten. */
 const differs = (current: SubscriptionRow, user: PanelUser) => {
@@ -96,12 +115,14 @@ export const syncPanel = async (db: Db, panel: PanelRow): Promise<SyncResult> =>
     if (page.users.length < PAGE || offset + PAGE >= page.total) break;
   }
 
-  // One statement for "checked just now", rather than a write per unchanged row.
-  if (seen.length > 0) {
+  // A statement per few thousand for "checked just now", rather than a write
+  // per unchanged row (and never one statement too big for PostgreSQL).
+  const checkedAt = new Date();
+  for (let start = 0; start < seen.length; start += CHUNK) {
     await db
       .update(subscriptions)
-      .set({ lastSyncedAt: new Date() })
-      .where(and(eq(subscriptions.panelId, panel.id), inArray(subscriptions.panelUsername, seen)));
+      .set({ lastSyncedAt: checkedAt })
+      .where(and(eq(subscriptions.panelId, panel.id), inArray(subscriptions.panelUsername, seen.slice(start, start + CHUNK))));
   }
 
   const found = new Set(seen);

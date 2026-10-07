@@ -12,7 +12,7 @@ import type { z } from "zod";
 
 import config from "../../config";
 import logger from "../../libraries/logger";
-import type { Db, Executor } from "../../platform/db/client";
+import type { Db } from "../../platform/db/client";
 import { auditBy, type StaffActor } from "../../platform/http/actor";
 import { ApiError, notFound } from "../../platform/http/api-error";
 import { writeAudit } from "../access/audit";
@@ -137,16 +137,26 @@ const recordAndMatch = async (db: Db, transfer: IncomingTransfer, blockNumber: n
     // scan may run late). That counts, even if the invoice has since closed.
     const onTime = candidates.find((candidate) => transfer.blockTime <= candidate.invoice.expiresAt);
     if (onTime) {
-      await settlePayment(tx, onTime.payment.id, { refId: transfer.txHash, payload: { from: transfer.from } });
-      await tx
-        .update(cryptoTransfers)
-        .set({ match: "matched", paymentId: onTime.payment.id })
-        .where(eq(cryptoTransfers.id, row.id));
+      const settled = await settlePayment(tx, onTime.payment.id, { refId: transfer.txHash, payload: { from: transfer.from } });
       await tx
         .update(cryptoInvoices)
         .set({ closedAt: new Date(), amountReceivedUnits: transfer.units })
         .where(eq(cryptoInvoices.paymentId, onTime.payment.id));
-      return "matched" as const;
+      if (settled.settled || settled.reason === "already") {
+        await tx
+          .update(cryptoTransfers)
+          .set({ match: "matched", paymentId: onTime.payment.id })
+          .where(eq(cryptoTransfers.id, row.id));
+        return "matched" as const;
+      }
+      // The order was already paid another way (settlePayment has told staff
+      // the money must go back): the transfer waits in the review queue, where
+      // it is marked refunded once it is.
+      await tx
+        .update(cryptoTransfers)
+        .set({ match: "unmatched", suspectedPaymentId: onTime.payment.id })
+        .where(eq(cryptoTransfers.id, row.id));
+      return "unmatched" as const;
     }
 
     const late = candidates[0];

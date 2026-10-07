@@ -33,6 +33,18 @@ export const recordEvent = async (executor: Executor, event: NewEvent) => {
   return row!.id;
 };
 
+/**
+ * Published events older than a month go. Once on the queue an event's work
+ * is done or being retried there; the row was only ever the hand-over.
+ * Unpublished ones are never removed: they are work still to do.
+ */
+export const pruneOutbox = async (db: Db, keepDays = 30) => {
+  const { rowCount } = await db.execute(sql`
+    delete from ${outboxEvents}
+    where ${outboxEvents.publishedAt} < now() - make_interval(days => ${keepDays})`);
+  return rowCount ?? 0;
+};
+
 export type RelayResult = { published: number; failed: number; lastError?: string };
 
 /**

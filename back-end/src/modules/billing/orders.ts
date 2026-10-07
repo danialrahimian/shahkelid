@@ -335,16 +335,27 @@ export const settlePayment = async (
 
     const [order] = await tx.select().from(orders).where(eq(orders.id, payment.orderId)).for("update");
     if (order!.status !== "pending" && order!.status !== "expired") {
-      // Paid twice (two tabs, two methods): the money is real and must be returned.
+      // Paid twice (two tabs, two methods), or paid for an order that was
+      // cancelled or refunded: the money is real and must be returned.
+      const paidAlready = order!.status === "paid" || order!.status === "fulfilled";
       await tx
         .update(payments)
-        .set({ status: "failed", failureReason: "order_already_paid", providerRefId: confirmation.refId ?? null })
+        .set({
+          status: "failed",
+          failureReason: paidAlready ? "order_already_paid" : `order_${order!.status}`,
+          providerRefId: confirmation.refId ?? null,
+        })
         .where(eq(payments.id, paymentId));
       await alertStaff(
         tx,
         {
-          subject: "پرداخت دوباره برای یک سفارش",
-          text: `برای سفارش ${order!.number} دو پرداخت موفق رسید. پرداخت ${paymentId} (${payment.amountToman} تومان، کد پیگیری ${confirmation.refId ?? "-"}) باید به مشتری برگردانده شود.`,
+          subject: paidAlready ? "پرداخت دوباره برای یک سفارش" : "پرداخت برای سفارشی که دیگر باز نیست",
+          text: [
+            paidAlready
+              ? `برای سفارش ${order!.number} دو پرداخت موفق رسید.`
+              : `برای سفارش ${order!.number} پرداختی رسید، ولی وضعیت سفارش «${order!.status}» است.`,
+            `پرداخت ${paymentId} (${payment.amountToman} تومان، کد پیگیری ${confirmation.refId ?? "-"}) باید به مشتری برگردانده شود.`,
+          ].join(" "),
         },
         { type: "payment", id: paymentId },
       );

@@ -27,7 +27,7 @@ import { rolePermissions, userRoles } from "../access/schema";
 import { savePrivateImage } from "../files/storage";
 import { files } from "../files/schema";
 import { users } from "../identity/schema";
-import { sendEmail } from "../notifications/email";
+import { deliverEmail } from "../notifications/email";
 import { notifyCustomer } from "../notifications/notify";
 import { plans } from "../catalog/schema";
 import { subscriptions } from "../subscriptions/schema";
@@ -126,17 +126,29 @@ export const deliverTicketAlert = async (db: Db, payload: { ticketId: string; wh
     ? await db.select({ email: users.email }).from(users).where(eq(users.id, ticket.assignedToUserId))
     : await agents(db);
   const link = `${config.cors.origin}/staff/tickets/${ticket.id}`;
+  // One agent's mailbox failing does not keep the others from hearing; the
+  // job is retried only when nobody was reached, so nobody is told twice.
+  let delivered = 0;
+  const failures: unknown[] = [];
   for (const { email } of recipients) {
-    await sendEmail({
-      to: email,
-      subject:
-        payload.what === "new"
-          ? `[تیکت ${ticket.number}] تازه: ${ticket.subject}`
-          : `[تیکت ${ticket.number}] پاسخ مشتری: ${ticket.subject}`,
-      text: `تیکت ${ticket.number} (${ticket.priority}) منتظر پشتیبانی است:\n${link}`,
-    });
+    try {
+      await deliverEmail({
+        to: email,
+        subject:
+          payload.what === "new"
+            ? `[تیکت ${ticket.number}] تازه: ${ticket.subject}`
+            : `[تیکت ${ticket.number}] پاسخ مشتری: ${ticket.subject}`,
+        text: `تیکت ${ticket.number} (${ticket.priority}) منتظر پشتیبانی است:\n${link}`,
+      });
+      delivered += 1;
+    } catch (error) {
+      failures.push(error);
+    }
   }
-  return recipients.length;
+  if (delivered === 0 && failures.length > 0) {
+    throw new AggregateError(failures, "No agent could be emailed about the ticket");
+  }
+  return delivered;
 };
 
 // ----------------------------------------------------------------- reading

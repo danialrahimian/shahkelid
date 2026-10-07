@@ -7,7 +7,7 @@ import config from "../../config";
 import type { Db, Executor } from "../../platform/db/client";
 import { recordEvent } from "../../platform/outbox/outbox";
 import { users } from "../identity/schema";
-import { sendEmail } from "./email";
+import { deliverEmail } from "./email";
 import { notifications } from "./schema";
 import { asHtml, render, templateFor } from "./templates";
 
@@ -103,7 +103,7 @@ export const deliverNotification = async (db: Db, notificationId: number) => {
   const values = row.payload as Record<string, string>;
   const body = render(template.body, values);
   try {
-    await sendEmail({ to: row.recipient, subject: render(template.subject, values), text: body, html: asHtml(body) });
+    await deliverEmail({ to: row.recipient, subject: render(template.subject, values), text: body, html: asHtml(body) });
   } catch (error) {
     await db
       .update(notifications)

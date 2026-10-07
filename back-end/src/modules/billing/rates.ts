@@ -1,5 +1,5 @@
 import { rialToToman } from "@shah-kelid/contracts";
-import { and, desc, eq, gt } from "drizzle-orm";
+import { and, desc, eq, gt, sql } from "drizzle-orm";
 
 import config from "../../config";
 import type { Db, Executor } from "../../platform/db/client";
@@ -53,6 +53,19 @@ export const refreshRate = async (db: Db) => {
   }
   const [row] = await db.insert(exchangeRates).values({ source: "nobitex", asset: "USDT", bidToman, askToman }).returning();
   return row!;
+};
+
+/**
+ * Rates older than a month go, except the ones an invoice was quoted with
+ * (kept as the record of what was charged). Fetched every minute, the table
+ * would otherwise grow by half a million rows a year.
+ */
+export const pruneRates = async (db: Db, keepDays = 30) => {
+  const { rowCount } = await db.execute(sql`
+    delete from ${exchangeRates} r
+    where r.fetched_at < now() - make_interval(days => ${keepDays})
+      and not exists (select 1 from crypto_invoices i where i.exchange_rate_id = r.id)`);
+  return rowCount ?? 0;
 };
 
 /** The newest rate if it is fresh enough to quote with; otherwise null. */

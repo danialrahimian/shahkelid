@@ -205,7 +205,9 @@ export const resetPassword = async (
 
   const passwordHash = await hashPassword(newPassword);
   await db.transaction(async (tx) => {
-    await tx.update(users).set({ passwordHash }).where(eq(users.id, user.id));
+    // A password is reset when the old one is forgotten, or stolen. Whoever
+    // is signed in elsewhere, perhaps with the stolen one, is signed out.
+    await tx.update(users).set({ passwordHash, sessionsRevokedAt: new Date() }).where(eq(users.id, user.id));
     await writeAudit(tx, {
       actorKind: "customer",
       actorUserId: user.id,

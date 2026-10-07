@@ -7,6 +7,7 @@ import { and, eq } from "drizzle-orm";
 import { orders } from "../src/modules/billing/schema";
 import { setZarinpal } from "../src/modules/billing/zarinpal";
 import { users } from "../src/modules/identity/schema";
+import { setEmailSender } from "../src/modules/notifications/email";
 import { deliverNotification } from "../src/modules/notifications/notify";
 import { scanReminders } from "../src/modules/notifications/reminders";
 import { notifications } from "../src/modules/notifications/schema";
@@ -205,6 +206,26 @@ describe("Sending", () => {
     const [row] = await database().select().from(notifications).where(eq(notifications.userId, buyer.id));
 
     assert.equal(await deliverNotification(database(), row!.id), "skipped");
+  });
+
+  it("When the mail provider refuses an email, then the log says failed (not sent), and the queue tries again", async () => {
+    const store = await aStore();
+    const { buyer } = await aLiveService(store);
+    const [row] = await database().select().from(notifications).where(eq(notifications.userId, buyer.id));
+    setEmailSender(async () => {
+      throw new Error("SMTP: 554 rejected");
+    });
+    try {
+      await assert.rejects(deliverNotification(database(), row!.id), /554/, "thrown, so the queue retries");
+    } finally {
+      emails = captureEmails();
+    }
+    const [after] = await database().select().from(notifications).where(eq(notifications.id, row!.id));
+    assert.equal(after!.status, "failed");
+    assert.match(after!.error ?? "", /554/);
+
+    // The next attempt, with the provider back, sends it.
+    assert.equal(await deliverNotification(database(), row!.id), "sent");
   });
 
   it("When a template's text carries markup, then the HTML email shows it as text, and links are clickable", () => {

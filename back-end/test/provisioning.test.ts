@@ -10,7 +10,7 @@ import { auditLogs } from "../src/modules/access/schema";
 import { panels } from "../src/modules/infrastructure/schema";
 import { setDriverFactory } from "../src/modules/provisioning/drivers";
 import { provisionSubscription } from "../src/modules/provisioning/provision";
-import { syncAllPanels } from "../src/modules/provisioning/sync";
+import { syncAllPanels, syncSubscription } from "../src/modules/provisioning/sync";
 import { runProvisionJob, startProvisioningWorker } from "../src/modules/provisioning/worker";
 import { subscriptionEvents, subscriptions } from "../src/modules/subscriptions/schema";
 import { panelUsernameFor, PROVISION_TOPIC } from "../src/modules/subscriptions/service";
@@ -460,6 +460,35 @@ describe("Keeping usage in step with the panel", () => {
 
     assert.equal((await rowOf(subscription.id)).lastError, "Not found on the panel");
     assert.equal((await historyOf(subscription.id)).filter((kind) => kind === "missing_on_panel").length, 1);
+  });
+
+  it("When a subscription is deleted while a sync is reading the panel, then the sync does not bring it back", async () => {
+    const store = await aStore();
+    const subscription = await aLiveSubscription(store);
+    // The sync read our rows a moment ago, while it was still live...
+    const asTheSyncSawIt = await rowOf(subscription.id);
+    // ...and before it got to this one, staff deleted it.
+    await database().update(subscriptions).set({ status: "deleted" }).where(eq(subscriptions.id, subscription.id));
+
+    await syncSubscription(database(), asTheSyncSawIt);
+
+    assert.equal((await rowOf(subscription.id)).status, "deleted");
+  });
+
+  it("When a subscription is deleted while the panel is making its user, then that user is removed again", async () => {
+    const store = await aStore();
+    const { response } = await subscribe(store.staff, store.planId);
+    const id = response.data.id as string;
+    const createUser = store.fake.createUser.bind(store.fake);
+    store.fake.createUser = async (input) => {
+      // The account is deleted while the panel is answering.
+      await database().update(subscriptions).set({ status: "deleted" }).where(eq(subscriptions.id, id));
+      return createUser(input);
+    };
+
+    assert.equal(await provisionSubscription(database(), id), "not_waiting");
+    assert.equal(store.fake.users.has(panelUsernameFor(id)), false, "nothing left on the panel taking a place");
+    assert.equal((await rowOf(id)).status, "deleted");
   });
 
   it("When one panel is down, then the others still sync, and the down one says why", async () => {

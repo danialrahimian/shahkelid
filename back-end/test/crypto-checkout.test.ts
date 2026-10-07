@@ -243,6 +243,32 @@ describe("Paying USDT on TRON", () => {
     assert.equal(view.payment.refId, transfer.txHash);
   });
 
+  it("When USDT arrives in time for an order already paid another way, then it waits in the review queue to be returned", async () => {
+    const store = await aStore();
+    const buyer = await signedInCustomer(emails);
+    const { order, quote } = await payWithUsdt(buyer, store);
+    // Meanwhile the customer paid by Zarinpal in another tab.
+    await database().update(orders).set({ status: "fulfilled", paidAt: new Date() }).where(eq(orders.id, order.id));
+
+    const transfer = chain.send(quote.amountUnits);
+    await scanUsdt(database());
+
+    const row = (await transferRow(transfer.txHash))!;
+    assert.equal(row.match, "unmatched", "not counted as matched: the money must go back");
+    assert.ok(row.suspectedPaymentId, "with the order it was meant for");
+    const accountant = await signedInStaff(["accountant"]);
+    const waiting = (await accountant.client.get(`${STAFF}/crypto-transfers`)).data as { id: string }[];
+    assert.ok(waiting.some((entry) => entry.id === row.id), "staff see it");
+    const settle = await accountant.client.post(`${STAFF}/crypto-transfers/${row.id}/review`, { decision: "settle", note: "" });
+    assert.equal(settle.status, 409, "it cannot pay for the order a second time");
+    const refunded = await accountant.client.post(`${STAFF}/crypto-transfers/${row.id}/review`, {
+      decision: "refunded",
+      note: "returned to the sender",
+    });
+    assert.equal(refunded.status, 200, JSON.stringify(refunded.data));
+    assert.equal(refunded.data.match, "refunded");
+  });
+
   it("[acceptance] When a wrong amount arrives, then it waits in the review queue and staff are told", async () => {
     const store = await aStore();
     const buyer = await signedInCustomer(emails);

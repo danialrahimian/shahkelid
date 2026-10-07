@@ -1,5 +1,8 @@
 import { Queue } from "bullmq";
 
+import config from "../../config";
+import logger from "../../libraries/logger";
+import { sendEmail as sendWithSmtp } from "../../libraries/mailer";
 import { QUEUES } from "../../platform/queue/routes";
 import { createRequestConnection } from "../../platform/redis";
 
@@ -47,7 +50,30 @@ const queueSender: EmailSender = async (email) => {
 
 let sender: EmailSender = queueSender;
 
+/** Puts an email on the queue: for the API, where nobody should wait on SMTP. */
 export const sendEmail: EmailSender = (email) => sender(email);
+
+/**
+ * Sends an email now, through SMTP, and throws if the provider does not take
+ * it. Without SMTP credentials on a development machine, the email is
+ * written to the log instead, so a developer can read a sign-in code there.
+ */
+const sendNow: EmailSender = async (email) => {
+  if (!config.isProduction && !config.mail.user) {
+    logger.info({ to: email.to, subject: email.subject, text: email.text }, "Email (development: logged, not sent)");
+    return;
+  }
+  const result = await sendWithSmtp({ ...email, html: email.html });
+  if (!result.delivered) throw new Error(`The mail provider did not accept the email to ${email.to}`);
+};
+
+/**
+ * Sends an email from the worker, where a failure must be known: a customer
+ * email marked "sent" when SMTP refused it would mislead support, and an
+ * alert must know whether it reached anyone. Tests that capture emails
+ * capture these too.
+ */
+export const deliverEmail: EmailSender = (email) => (sender === queueSender ? sendNow(email) : sender(email));
 
 /** Test seam: capture emails instead of queueing them. */
 export const setEmailSender = (replacement: EmailSender | null) => {

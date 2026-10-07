@@ -114,5 +114,9 @@ export const ticketMessageFiles = pgTable(
       .notNull()
       .references(() => files.id, { onDelete: "restrict" }),
   },
-  (t) => [primaryKey({ columns: [t.messageId, t.fileId] })],
+  (t) => [
+    primaryKey({ columns: [t.messageId, t.fileId] }),
+    // serving an attachment starts from the file
+    index("ticket_message_files_file_idx").on(t.fileId),
+  ],
 );

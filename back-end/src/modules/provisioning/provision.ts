@@ -48,7 +48,7 @@ export const provisionSubscription = async (db: Db, id: string): Promise<Provisi
       ),
     }));
 
-  await db.transaction(async (tx) => {
+  const made = await db.transaction(async (tx) => {
     const updated = await tx
       .update(subscriptions)
       .set({ ...fromPanel(user), provisionedAt: new Date() })
@@ -68,7 +68,19 @@ export const provisionSubscription = async (db: Db, id: string): Promise<Provisi
         account_url: siteUrl.account(),
       });
     }
+    return updated.length > 0;
   });
+
+  // Deleted while the panel was answering (by staff, or with the customer's
+  // account): the user just made there belongs to nothing now, so it goes,
+  // rather than being left on the panel taking a place.
+  if (!made && existing === null) {
+    const [now] = await db.select({ status: subscriptions.status }).from(subscriptions).where(eq(subscriptions.id, id));
+    if (now?.status === "deleted") {
+      await driver.deleteUser(subscription.panelUsername).catch(() => undefined);
+    }
+    return "not_waiting";
+  }
   return "provisioned";
 };
 

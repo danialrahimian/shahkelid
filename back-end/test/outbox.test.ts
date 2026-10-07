@@ -8,7 +8,9 @@ import type { Redis } from "ioredis";
 import config from "../src/config";
 import { createDb, type Db } from "../src/platform/db/client";
 import { outboxEvents } from "../src/platform/db/platform-schema";
-import { recordEvent, relayOutbox } from "../src/platform/outbox/outbox";
+import { pruneRates } from "../src/modules/billing/rates";
+import { exchangeRates } from "../src/modules/billing/schema";
+import { pruneOutbox, recordEvent, relayOutbox } from "../src/platform/outbox/outbox";
 import { createPublisher, type Publisher } from "../src/platform/queue/publisher";
 import { createProducerConnection, whenReady } from "../src/platform/redis";
 import { resetTestDatabase } from "./helpers/postgres";
@@ -161,6 +163,59 @@ describe("Publishing exactly once", () => {
       const row = await rowOf(id);
       assert.equal(row.attempts, 1, `event ${id} was published by exactly one worker`);
     }
+  });
+});
+
+describe("Housekeeping", () => {
+  it("Published events older than a month go; waiting ones and recent ones stay", async () => {
+    const old = await recordEvent(db, aPing());
+    const recent = await recordEvent(db, aPing());
+    const waiting = await recordEvent(db, aPing());
+    const longAgo = new Date(Date.now() - 40 * 86_400_000);
+    await db.update(outboxEvents).set({ publishedAt: longAgo, createdAt: longAgo }).where(eq(outboxEvents.id, old));
+    await db.update(outboxEvents).set({ publishedAt: new Date() }).where(eq(outboxEvents.id, recent));
+    await db
+      .update(outboxEvents)
+      .set({ createdAt: longAgo })
+      .where(eq(outboxEvents.id, waiting)); // old, but never published: still work to do
+
+    await pruneOutbox(db);
+
+    const left = new Set((await db.select({ id: outboxEvents.id }).from(outboxEvents)).map((row) => row.id));
+    assert.equal(left.has(old), false);
+    assert.equal(left.has(recent), true);
+    assert.equal(left.has(waiting), true);
+  });
+
+  it("Rates older than a month go, unless an invoice was quoted with them", async () => {
+    const longAgo = new Date(Date.now() - 40 * 86_400_000);
+    const [unused, quoted, fresh] = await db
+      .insert(exchangeRates)
+      .values([
+        { bidToman: 100_000, askToman: 100_100, fetchedAt: longAgo },
+        { bidToman: 100_000, askToman: 100_100, fetchedAt: longAgo },
+        { bidToman: 100_000, askToman: 100_100 },
+      ])
+      .returning({ id: exchangeRates.id });
+    const user = (await db.execute<{ id: string }>(sql`
+      insert into users (email, email_normalized, referral_code)
+      values (${`rates-${randomUUID()}@example.com`}, 'x', ${randomBytes(5).toString("hex")}) returning id`)).rows[0]!;
+    const order = (await db.execute<{ id: string }>(sql`
+      insert into orders (user_id, kind, subtotal_toman, total_toman, expires_at)
+      values (${user.id}, 'new', 1000, 1000, now()) returning id`)).rows[0]!;
+    const payment = (await db.execute<{ id: string }>(sql`
+      insert into payments (order_id, user_id, method, amount_toman)
+      values (${order.id}, ${user.id}, 'usdt_tron', 1000) returning id`)).rows[0]!;
+    await db.execute(sql`
+      insert into crypto_invoices (payment_id, token_contract, amount_units, rate_toman_per_asset, exchange_rate_id, pay_address, expires_at)
+      values (${payment.id}, 'T', 10000, 100000, ${quoted!.id}, 'TAddr', now())`);
+
+    await pruneRates(db);
+
+    const left = new Set((await db.select({ id: exchangeRates.id }).from(exchangeRates)).map((row) => row.id));
+    assert.equal(left.has(unused!.id), false);
+    assert.equal(left.has(quoted!.id), true, "the record of what was charged");
+    assert.equal(left.has(fresh!.id), true);
   });
 });
 

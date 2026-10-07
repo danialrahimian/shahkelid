@@ -8,7 +8,7 @@ import type { Db, Executor } from "../../platform/db/client";
 import { recordEvent } from "../../platform/outbox/outbox";
 import { roles, userRoles } from "../access/schema";
 import { users } from "../identity/schema";
-import { sendEmail } from "./email";
+import { deliverEmail } from "./email";
 
 /**
  * Alerts to the people running the store: owners and admins, by email, and
@@ -80,7 +80,7 @@ export const deliverAlert = async (db: Db, alert: Alert) => {
 
   for (const email of await recipients(db)) {
     try {
-      await sendEmail({ to: email, subject: `[شاه‌کلید] ${alert.subject}`, text: alert.text });
+      await deliverEmail({ to: email, subject: `[شاه‌کلید] ${alert.subject}`, text: alert.text });
       delivered += 1;
     } catch (error) {
       failures.push(error);

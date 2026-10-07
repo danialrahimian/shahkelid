@@ -1,4 +1,4 @@
-import { and, eq, gt, lt } from "drizzle-orm";
+import { and, eq, gt, lt, or } from "drizzle-orm";
 
 import config from "../../config";
 import logger from "../../libraries/logger";
@@ -107,6 +107,37 @@ export const confirmZarinpal = async (db: Db, payment: PaymentRow) => {
   return "failed" as const;
 };
 
+/**
+ * A payment the customer came back from as cancelled: if Zarinpal says the
+ * money moved after all, it is verified and settled; otherwise it is marked
+ * as checked so the reconcile job leaves it alone from now on.
+ */
+const recheckCancelled = async (db: Db, payment: PaymentRow) => {
+  let status;
+  try {
+    status = await zarinpal().inquiry(payment.providerReference!);
+  } catch {
+    return "unreachable"; // asked again on the next pass, within the half hour
+  }
+  if (status === "PAID" || status === "VERIFIED") {
+    let result;
+    try {
+      result = await zarinpal().verify({ authority: payment.providerReference!, amountToman: payment.amountToman });
+    } catch {
+      return "unreachable";
+    }
+    if (result.outcome === "paid") {
+      await settlePayment(db, payment.id, { refId: result.refId, payload: { cardPan: result.cardPan } });
+      return "succeeded";
+    }
+  }
+  await db
+    .update(payments)
+    .set({ failureReason: "cancelled_checked" })
+    .where(and(eq(payments.id, payment.id), eq(payments.status, "failed"), eq(payments.failureReason, "cancelled")));
+  return "cancelled";
+};
+
 /** Zarinpal sent the customer back. Returns the order to show them. */
 export const zarinpalCallback = async (db: Db, authority: string, status: string) => {
   const [payment] = await db
@@ -118,7 +149,8 @@ export const zarinpalCallback = async (db: Db, authority: string, status: string
   if (status === "OK") {
     await confirmZarinpal(db, payment);
   } else {
-    // Cancelled at the bank. If money did move after all, reconcile finds it.
+    // Cancelled at the bank. If money did move after all, the reconcile job
+    // asks Zarinpal about it within the next half hour (recheckCancelled).
     await db
       .update(payments)
       .set({ status: "failed", failureReason: "cancelled" })
@@ -131,6 +163,11 @@ export const zarinpalCallback = async (db: Db, authority: string, status: string
  * The reconcile job: Zarinpal payments still pending a minute after they
  * started (the customer closed the tab, the callback was lost). Ones Zarinpal
  * reports paid are confirmed; ones it reports failed are closed.
+ *
+ * Payments the customer came back from as "cancelled" in the last half hour
+ * are asked about too: a bank can take the money and still send the customer
+ * back with NOK, and only Zarinpal's own word settles which it was. Once
+ * asked, they are marked so, and not asked again.
  */
 export const reconcileZarinpal = async (db: Db) => {
   const open = await db
@@ -140,14 +177,27 @@ export const reconcileZarinpal = async (db: Db) => {
     .where(
       and(
         eq(payments.method, "zarinpal"),
-        eq(payments.status, "pending"),
-        lt(payments.createdAt, new Date(Date.now() - 60_000)),
-        gt(payments.createdAt, new Date(Date.now() - 2 * 86400_000)),
+        or(
+          and(
+            eq(payments.status, "pending"),
+            lt(payments.createdAt, new Date(Date.now() - 60_000)),
+            gt(payments.createdAt, new Date(Date.now() - 2 * 86400_000)),
+          ),
+          and(
+            eq(payments.status, "failed"),
+            eq(payments.failureReason, "cancelled"),
+            gt(payments.createdAt, new Date(Date.now() - 30 * 60_000)),
+          ),
+        ),
       ),
     );
 
   const outcomes: Record<string, string> = {};
   for (const { payments: payment } of open) {
+    if (payment.status === "failed") {
+      outcomes[payment.id] = await recheckCancelled(db, payment);
+      continue;
+    }
     let status;
     try {
       status = await zarinpal().inquiry(payment.providerReference!);

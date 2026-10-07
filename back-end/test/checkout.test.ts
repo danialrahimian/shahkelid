@@ -249,6 +249,53 @@ describe("Paying with Zarinpal", () => {
     assert.equal(again.status, 200);
   });
 
+  it("When the bank took the money but sent the customer back as cancelled, then the reconcile job still settles it", async () => {
+    const store = await aStore();
+    const buyer = await signedInCustomer(emails);
+    const order = await anOrder(buyer, store);
+    await buyer.client.post(`${SHOP}/orders/${order.id}/pay/zarinpal`);
+    const authority = gateway.lastAuthority;
+    gateway.pay(authority);
+
+    await zarinpalReturns(authority, "NOK");
+    assert.equal((await orderRow(order.id)).status, "pending", "the customer is told it was cancelled");
+
+    await billingTick(database());
+    assert.equal((await orderRow(order.id)).status, "fulfilled", "Zarinpal's own word settles it");
+  });
+
+  it("When a cancelled payment really was cancelled, then it is checked once and left alone", async () => {
+    const store = await aStore();
+    const buyer = await signedInCustomer(emails);
+    const order = await anOrder(buyer, store);
+    await buyer.client.post(`${SHOP}/orders/${order.id}/pay/zarinpal`);
+    await zarinpalReturns(gateway.lastAuthority, "NOK");
+
+    await billingTick(database());
+    const [payment] = await database().select().from(payments).where(eq(payments.orderId, order.id));
+    assert.equal(payment!.status, "failed");
+    assert.equal(payment!.failureReason, "cancelled_checked");
+    assert.equal((await billingTick(database())).zarinpal[payment!.id], undefined, "not asked again");
+  });
+
+  it("When money arrives for an order that was cancelled, then it is not settled and staff are told to return it", async () => {
+    const store = await aStore();
+    const buyer = await signedInCustomer(emails);
+    const order = await anOrder(buyer, store);
+    await buyer.client.post(`${SHOP}/orders/${order.id}/pay/zarinpal`);
+    const authority = gateway.lastAuthority;
+    await database().update(orders).set({ status: "cancelled", cancelledAt: new Date() }).where(eq(orders.id, order.id));
+    gateway.pay(authority);
+
+    await zarinpalReturns(authority, "OK");
+
+    const [payment] = await database().select().from(payments).where(eq(payments.orderId, order.id));
+    assert.equal(payment!.status, "failed");
+    assert.equal(payment!.failureReason, "order_cancelled");
+    const [alert] = await alertsAbout(payment!.id);
+    assert.match((alert!.payload as { subject: string }).subject, /دیگر باز نیست/);
+  });
+
   it("When Zarinpal holds a different amount, then nothing is settled and staff are told", async () => {
     const store = await aStore();
     const buyer = await signedInCustomer(emails);

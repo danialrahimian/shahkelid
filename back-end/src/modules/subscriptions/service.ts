@@ -222,6 +222,9 @@ const placeOn = async (executor: Executor, planId: string): Promise<Placement> =
     join plan_panel_settings pps on pps.panel_id = s.panel_id and pps.plan_id = ${planId}
     join panels p on p.id = s.panel_id and p.is_active
     where s.accepting_new and s.status = 'online' and s.archived_at is null
+    -- Always locked in the same order: two purchases of different plans that
+    -- share servers then queue behind each other instead of deadlocking.
+    order by s.id
     for update of s
   `);
 

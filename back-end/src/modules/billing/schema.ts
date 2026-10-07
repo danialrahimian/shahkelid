@@ -198,6 +198,8 @@ export const payments = pgTable(
       .on(t.status, t.createdAt)
       .where(sql`${t.status} in ('initiated', 'pending', 'pending_review')`),
     index("payments_user_idx").on(t.userId, t.createdAt.desc().nullsFirst()),
+    // an order's payments, newest first: read every time an order is shown
+    index("payments_order_idx").on(t.orderId, t.createdAt.desc().nullsFirst()),
   ],
 );
 
@@ -312,6 +314,8 @@ export const cryptoInvoices = pgTable(
       .on(t.network, t.payAddress, t.amountUnits)
       .where(sql`${t.closedAt} is null`),
     index("crypto_invoices_open_idx").on(t.expiresAt).where(sql`${t.closedAt} is null`),
+    // matching a transfer by its exact amount, closed invoices included (a late payment)
+    index("crypto_invoices_amount_idx").on(t.payAddress, t.amountUnits),
   ],
 );
 

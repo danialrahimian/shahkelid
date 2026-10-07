@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
 
 import logger from "../../libraries/logger";
 import type { Db } from "../../platform/db/client";
@@ -47,11 +47,21 @@ export const dueReminders = (subscription: Row, now: Date): { alert: Alert; cycl
 };
 
 export const scanReminders = async (db: Db, now = new Date()) => {
+  // Only the ones a reminder could be due for: ending within three days, or
+  // at 80% of their volume. With thousands of customers, most are neither.
   const live = await db
     .select({ subscription: subscriptions, planName: plans.name })
     .from(subscriptions)
     .innerJoin(plans, eq(plans.id, subscriptions.planId))
-    .where(inArray(subscriptions.status, ["active", "limited"]));
+    .where(
+      and(
+        inArray(subscriptions.status, ["active", "limited"]),
+        or(
+          lte(subscriptions.expiresAt, new Date(now.getTime() + 3 * DAY)),
+          sql`${subscriptions.dataLimitBytes} > 0 and ${subscriptions.usedBytes} * 5 >= ${subscriptions.dataLimitBytes} * 4`,
+        ),
+      ),
+    );
 
   let sent = 0;
   for (const { subscription, planName } of live) {

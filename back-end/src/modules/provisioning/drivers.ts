@@ -10,7 +10,7 @@ import { PasarGuardDriver } from "./pasarguard";
  *
  * Drivers are kept between requests, so a panel account signs in once a day
  * rather than once a request. A kept driver is replaced when the panel row
- * changes (new address or credentials): the cache key is its update time.
+ * changes (new address or credentials): the cache key is what it is made from.
  */
 
 export type PanelRow = typeof panels.$inferSelect;
@@ -36,7 +36,10 @@ let factory = realFactory;
 const kept = new Map<string, { version: string; driver: PanelDriver }>();
 
 export const driverFor = (panel: PanelRow): PanelDriver => {
-  const version = panel.updatedAt.toISOString();
+  // Keyed on what the driver is made from, not on the row's update time: the
+  // usage sync touches the row every few minutes, and each new driver would
+  // sign in to the panel again.
+  const version = `${panel.driver}|${panel.baseUrl}|${panel.credentialsEnc.toString("base64")}`;
   const cached = kept.get(panel.id);
   if (cached?.version === version) return cached.driver;
 

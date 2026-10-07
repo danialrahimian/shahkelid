@@ -41,6 +41,8 @@ export const users = pgTable(
     // TOTP secret, AES-GCM encrypted with the app key; never stored in clear
     totpSecretEnc: bytea("totp_secret_enc"),
     totpEnabledAt: at("totp_enabled_at"),
+    // sessions signed in before this are over (set when the password is reset)
+    sessionsRevokedAt: at("sessions_revoked_at"),
     lastLoginAt: at("last_login_at"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
