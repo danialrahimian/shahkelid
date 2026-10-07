@@ -433,6 +433,16 @@ describe("The session", () => {
     assert.equal(response.status, 202);
   });
 
+  it("When the site is opened at another address it is served on (www, a backup domain), then that is accepted too", async () => {
+    const response = await createClient().post(
+      `${V1}/auth/code`,
+      { email: uniqueEmail() },
+      { headers: { origin: "https://www.shop.test" } },
+    );
+
+    assert.equal(response.status, 202);
+  });
+
   it("When an address under /api/v1 does not exist, then the answer is a JSON 404", async () => {
     const response = await createClient().get(`${V1}/nothing-here`);
 

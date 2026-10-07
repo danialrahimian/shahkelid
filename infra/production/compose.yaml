@@ -6,6 +6,7 @@
 #   worker  outbox relay, queues, schedules (provisioning, reminders, billing)
 #   migrate runs the migrations, then exits; app and worker wait for it
 #   backup  pg_dump + files → S3-compatible storage (restic), on a schedule
+#           (or a folder on this server, until a bucket is set up)
 #   postgres, redis
 #
 # Only web publishes ports (80 and 443). The database and Redis are on the
@@ -26,6 +27,8 @@ x-app: &app
     REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
     CLIENT_ORIGIN: https://${MAIN_DOMAIN}
     PUBLIC_API_URL: https://${MAIN_DOMAIN}
+    # Every address web answers on is one browsers may sign in and buy from.
+    SITE_ADDRESSES: ${SITE_ADDRESSES}
   volumes:
     - files:/app/back-end/files
   # public: the app calls out (panels, gateways, Nobitex, TronGrid, SMTP).
@@ -146,6 +149,9 @@ services:
     volumes:
       - files:/data/files
       - backup-state:/var/lib/backup
+      # Only used when RESTIC_REPOSITORY is a path under /backups (backups
+      # kept on this server); an S3 repository leaves it empty.
+      - ${BACKUP_LOCAL_DIR:-/var/backups/shah-kelid}:/backups
     depends_on:
       postgres: { condition: service_healthy }
     networks: [internal, public]

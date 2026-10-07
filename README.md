@@ -6,7 +6,7 @@ VPN subscription platform: the storefront and customer panel, the staff dashboar
 
 Production is one server with Docker Compose: Caddy (automatic HTTPS), the API, the worker, PostgreSQL, Redis and encrypted backups to S3-compatible storage. Everything is operated through `infra/production/sk`.
 
-- [docs/05-install.md](docs/05-install.md): installing from scratch on an empty Ubuntu server (in Persian).
+- [docs/05-install.md](docs/05-install.md): installing from scratch on an empty Ubuntu server (in Persian), with one command (`install.sh`) or step by step.
 - [docs/06-operations.md](docs/06-operations.md): everyday operations, backups and restoring, and what to do when the panel, a gateway, Nobitex or email is down.
 - [docs/04-security.md](docs/04-security.md): the security review.
 

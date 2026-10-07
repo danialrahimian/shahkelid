@@ -9,3 +9,6 @@
  * "test", and therefore only ever the test database.
  */
 process.env.NODE_ENV = "test";
+// The addresses the web server answers on, as in production: the site may be
+// used from any of them (see the cross-origin tests).
+process.env.SITE_ADDRESSES ??= "shop.test, www.shop.test";

@@ -3,9 +3,9 @@
 # SITE_ADDRESSES is every address the site answers on, comma separated: the
 # main domain and any backup domains ("shahkelid.com, www.shahkelid.com,
 # backup-domain.net"). Caddy takes and renews a certificate for each by
-# itself; adding a backup domain is adding it here (and to ALLOWED_ORIGINS in
-# the app) and restarting this container. "localhost" gets a certificate
-# from Caddy's own authority, for trying it out on one machine.
+# itself; adding a backup domain is adding it here and restarting. The app
+# reads the same list, so browsers may sign in from each. "localhost" gets a
+# certificate from Caddy's own authority, for trying it out on one machine.
 #
 # Behind Cloudflare, set TRUSTED_PROXIES to Cloudflare's address ranges (see
 # .env.example): the visitor's own address is then read from the header

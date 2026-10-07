@@ -57,25 +57,28 @@ case "${1:-help}" in
   create-owner)
     need_env
     shift
-    compose run --rm --no-deps app npx tsx scripts/create-owner.ts "$@"
+    compose run --rm -T --no-deps app npx tsx scripts/create-owner.ts "$@" < /dev/null
     ;;
   backup)
     need_env
-    compose exec backup backup.sh
+    compose exec -T backup backup.sh < /dev/null
     ;;
   snapshots)
     need_env
-    compose exec backup restore.sh --list
+    compose exec -T backup restore.sh --list < /dev/null
     ;;
   restore)
     need_env
     [ -n "${2:-}" ] || { echo "Which one? ./sk snapshots lists them; ./sk restore latest takes the newest." >&2; exit 2; }
     # Show what is about to come back: its time, and its accounts-N tag.
     compose exec -T backup sh -c '. /etc/backup.env; restic snapshots --host shah-kelid "$0"' "$2" < /dev/null
-    read -r -p "The database and files will be REPLACED by backup '$2'. Type yes to go on: " answer
-    [ "$answer" = "yes" ] || { echo "Nothing changed."; exit 1; }
+    # --yes is for the installer, which has asked already.
+    if [ "${3:-}" != "--yes" ]; then
+      read -r -p "The database and files will be REPLACED by backup '$2'. Type yes to go on: " answer
+      [ "$answer" = "yes" ] || { echo "Nothing changed."; exit 1; }
+    fi
     compose stop web app worker
-    compose exec backup restore.sh "$2" --yes
+    compose exec -T backup restore.sh "$2" --yes < /dev/null
     # Migrations first: a backup from an older release catches up here.
     compose up -d --wait
     compose ps
@@ -83,7 +86,14 @@ case "${1:-help}" in
   update)
     need_env
     git pull --ff-only
-    compose up -d --build --wait
+    compose build
+    # A rebuilt image does not always get its containers recreated (seen with
+    # Compose 5 on Docker's containerd image store: the new web app was built
+    # but the old one kept serving). So: the migrations first, then every
+    # container built from this code is recreated outright.
+    compose up -d --wait postgres redis
+    compose run --rm migrate
+    compose up -d --wait --no-deps --force-recreate app worker web backup
     docker image prune -f > /dev/null
     compose ps
     ;;

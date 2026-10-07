@@ -123,11 +123,16 @@ const config = {
   cors: {
     // The site's main address: links in emails and payment returns use it.
     origin: read("CLIENT_ORIGIN", { fallback: "http://localhost:5173" }).replace(/\/+$/, ""),
-    // Every address the site may be opened from: the main one, and any backup
-    // domains (ALLOWED_ORIGINS, comma separated), for when the main one is
-    // blocked. Browsers may change things only from these.
+    // Every address the site may be opened from: the main one, every address
+    // the web server answers on (SITE_ADDRESSES, the list Caddy takes
+    // certificates for: www, backup domains), and ALLOWED_ORIGINS for any
+    // other. Browsers may change things only from these.
     allowedOrigins: [
       read("CLIENT_ORIGIN", { fallback: "http://localhost:5173" }),
+      ...(read("SITE_ADDRESSES", { fallback: "" }) ?? "")
+        .split(/[\s,]+/)
+        .filter((address) => address && !address.includes("*"))
+        .map((address) => (address.includes("://") ? address : `https://${address}`)),
       ...(read("ALLOWED_ORIGINS", { fallback: "" }) ?? "").split(","),
     ]
       .map((origin) => origin.trim().replace(/\/+$/, ""))

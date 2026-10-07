@@ -17,6 +17,9 @@ const getTransport = () => {
     transport = nodemailer.createTransport({
       host: config.mail.host,
       port: config.mail.port,
+      // 465 speaks TLS from the first byte; every other port starts plain
+      // and is upgraded with STARTTLS when the server offers it.
+      secure: config.mail.port === 465,
       auth: { user: config.mail.user, pass: config.mail.password },
     });
   }
