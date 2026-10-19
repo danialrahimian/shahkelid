@@ -1,142 +1,248 @@
-# Shah Kelid
+# شاه‌کلید
 
-VPN subscription platform: the storefront and customer panel, the staff dashboard and CRM, and (later) the Telegram bot. Being rebuilt in phases; see [docs/03-roadmap.md](docs/03-roadmap.md).
+**فروشگاه و پنل فروش اشتراک VPN، روی پنل [PasarGuard](https://github.com/PasarGuard/panel).**
 
-## Running it on a server
+مشتری پلن را انتخاب می‌کند، پول را می‌پردازد و چند ثانیه بعد لینک اشتراک و QR کدش را می‌گیرد. شما از بخش مدیریت فروش، مشتری‌ها، تیکت‌ها و گزارش‌ها را می‌گردانید. همه‌چیز روی یک سرور و با یک دستور نصب می‌شود.
 
-Production is one server with Docker Compose: Caddy (automatic HTTPS), the API, the worker, PostgreSQL, Redis and encrypted backups to S3-compatible storage. Everything is operated through `infra/production/sk`.
+- فارسی و راست‌به‌چپ، با تقویم شمسی (انگلیسی هم دارد)
+- پرداخت با زرین‌پال، کارت‌به‌کارت، تتر (TRC20) و NOWPayments
+- ساخت و تمدید خودکار اشتراک روی پنل PasarGuard
+- پشتیبان‌گیری رمزگذاری‌شده‌ی خودکار، هر ۶ ساعت
 
-- [docs/05-install.md](docs/05-install.md): installing from scratch on an empty Ubuntu server (in Persian), with one command (`install.sh`) or step by step.
-- [docs/06-operations.md](docs/06-operations.md): everyday operations, backups and restoring, and what to do when the panel, a gateway, Nobitex or email is down.
-- [docs/04-security.md](docs/04-security.md): the security review.
+---
 
-## Setting up a development machine
+## فهرست
 
-You need **Node.js 24** and **Docker Desktop** (running).
+- [امکانات](#امکانات)
+- [پیش‌نیازها](#پیشنیازها)
+- [نصب](#نصب)
+- [مدیریت روزمره](#مدیریت-روزمره)
+- [به‌روزرسانی](#بهروزرسانی)
+- [پشتیبان‌گیری و بازیابی](#پشتیبانگیری-و-بازیابی)
+- [امنیت](#امنیت)
+- [مستندات](#مستندات)
+- [توسعه](#توسعه)
+- [ساختار پروژه](#ساختار-پروژه)
 
-```bash
-npm install                      # every package, from the root
-npm run services:up              # PostgreSQL 18 and Redis 7, waits until healthy
-npm run db:migrate -w back-end   # creates the tables
-```
+---
 
-Copy `back-end/.env.example` to `back-end/.env` and `front-end/.env.example` to `front-end/.env`. The defaults work as they are for development. PostgreSQL and Redis need no settings, because the defaults match `compose.yaml`.
+## امکانات
 
-## Running it
+### برای مشتری
 
-Each in its own terminal:
+- **خرید در چند ثانیه:** انتخاب پلن، پرداخت و تحویل فوری لینک اشتراک و QR کد.
+- **روش‌های پرداخت:**
+  - زرین‌پال
+  - کارت‌به‌کارت با بارگذاری رسید
+  - تتر روی شبکه‌ی ترون (TRC20): برای هر سفارش یک مبلغ دقیق اعلام می‌شود و پرداخت خودکار تشخیص داده می‌شود.
+  - NOWPayments برای ارزهای دیگر
+- **پنل مشتری:**
+  - سرویس‌ها با حجم و روزهای باقی‌مانده، و تمدید با یک کلیک
+  - سفارش‌ها و فاکتورها
+  - تیکت پشتیبانی با پیوست تصویر
+  - ورود دومرحله‌ای، و حذف حساب
+- **یادآوری‌های ایمیلی:** ۳ روز و ۱ روز مانده به پایان، و در ۸۰٪ و ۱۰۰٪ حجم.
+- **ورود بدون رمز** با کد ایمیلی؛ یا با رمز، برای کسی که رمز گذاشته.
+- **بلاگ** با لایک، و نظرهایی که بعد از تأیید کارمند نمایش داده می‌شوند.
 
-```bash
-npm run dev -w back-end          # the API, on :5000
-npm run dev:worker -w back-end   # the worker: outbox relay, queues
-npm run dev -w front-end         # the web app, on :5173
-```
+### برای شما و کارمندها
 
-## Signing in (the new accounts)
+- **نقش‌ها و دسترسی‌ها:** مالک، مدیر، حسابدار، پشتیبان و نویسنده. هر کس فقط صفحه‌هایی را می‌بیند که اجازه دارد.
+- **پنل‌ها، سرورها و پلن‌ها:** وصل کردن یک یا چند پنل PasarGuard، تعریف لوکیشن و سرور، و پلن‌هایی با حجم، مدت، تعداد دستگاه و قیمت.
+  - زمان پلن از اولین اتصال مشتری شروع می‌شود.
+  - مصرف هر ۵ دقیقه از پنل خوانده می‌شود.
+- **مشتری‌ها (CRM):**
+  - مرحله‌ی هر مشتری: سرنخ، فعال، در خطر ریزش، ریزش‌کرده، VIP
+  - برچسب، یادداشت، سابقه‌ی سفارش‌ها و ایمیل‌های فرستاده‌شده
+- **بررسی پرداخت‌ها:** رسیدهای کارت‌به‌کارت در صف بررسی می‌مانند. رسیدهای مشکوک علامت می‌خورند: تصویر یا شماره‌ی پیگیری تکراری، یا مبلغ متفاوت.
+- **تیکت‌ها:** صف پشتیبانی به ترتیب فوریت و زمان انتظار، با یادداشت داخلی و دسته‌بندی.
+- **گزارش فروش:**
+  - درآمد، سفارش‌ها، میانگین خرید، نرخ تکمیل و تمدید
+  - روزانه، هفتگی یا ماهانه‌ی شمسی، بر اساس پلن و روش پرداخت
+- **قالب ایمیل‌ها:** متن هر ایمیل را بازنویسی کنید، پیش‌نمایش ببینید، یا خاموشش کنید.
+- **گزارش فعالیت:** هر تغییری که کارمندها یا سیستم انجام داده‌اند، با نام انجام‌دهنده. این گزارش پاک‌شدنی نیست.
+- **هشدار به مدیرها** با ایمیل و تلگرام:
+  - پنل در دسترس نیست
+  - ساخت اشتراک شکست خورده
+  - پشتیبان‌گیری انجام نشده
 
-The new database starts empty. Make the first owner once:
+### پشت صحنه
 
-```bash
-npm run create-owner -w back-end -- you@example.com
-```
+- **هیچ پرداختی گم نمی‌شود.** اگر پنل یا Redis موقتاً قطع باشد، کار در صف می‌ماند و بعد انجام می‌شود (الگوی outbox).
+  - پرداخت زرین‌پالی که خریدار بعد از آن به سایت برنگشته، خودکار پیگیری می‌شود.
+  - حساب‌ها با دفتر دوطرفه ثبت می‌شوند.
+- **سریع:** با ۱۰٬۰۰۰ مشتری و بیش از ۴۴ هزار درخواست، هیچ خطایی رخ نداد و ۹۵٪ پاسخ‌های API زیر ۴ میلی‌ثانیه بودند.
+- **دامنه‌ی پشتیبان:** اگر دامنه‌ی اصلی مسدود شد، سایت و لینک‌های اشتراک روی دامنه‌ی دیگری هم کار می‌کنند.
+- **HTTPS خودکار** با Caddy و Let's Encrypt، پشت Cloudflare یا بدون آن.
 
-Then open http://localhost:5173/account/sign-in and sign in with that address. Without SMTP settings (`SMTP_USER` empty), emails are not sent: the **worker** writes them to its log, so the worker must be running to see the code. An owner is asked to set up an authenticator app (Google Authenticator, 2FAS, …) before anything else, and is shown ten recovery codes once.
+---
 
-| Page | What it is |
+## پیش‌نیازها
+
+| چه چیزی | توضیح |
 |---|---|
-| `/account/sign-in` | Email code (also creates the account), or password; then the authenticator code |
-| `/account/forgot-password` | A code by email, then a new password |
-| `/account` | The customer panel: their services (volume and days left, the link and QR code, renew), orders and invoices, name, password, two-step sign-in, deleting the account |
-| `/support` | The customer's tickets |
-| `/posts` | The journal: posts, likes, and comments (shown once staff approve them) |
+| **سرور مجازی خارج از ایران** | Ubuntu 24.04 یا 26.04. حداقل ۲ هسته، ۴ گیگ رم (۲ گیگ هم کار می‌کند) و ۴۰ گیگ دیسک. |
+| **دامنه** | رکورد `A` دامنه (و اگر می‌خواهید، `www`) به IP سرور |
+| **سرویس ایمیل (SMTP)** | مثل Brevo، Mailgun یا Amazon SES. کد ورود با ایمیل می‌رود. |
+| **مرچنت کد زرین‌پال** | از پنل زرین‌پال |
+| **پنل PasarGuard** | جایی که اشتراک‌ها ساخته می‌شوند. می‌تواند روی سرور دیگری باشد. |
+| اختیاری | فضای S3 برای پشتیبان‌ها (Backblaze B2، Cloudflare R2)، ربات تلگرام برای هشدارها، آدرس کیف پول تتر |
 
-The old site's addresses (`/auth`, `/profile`, `/invoices`, `/dashboard`, `/admin`, `/mod`, `/crm`, `/cart`) lead to where the same thing lives now.
+---
 
-## The staff area and the VPN panel
+## نصب
 
-`/staff` is the staff area (sign in on `/account/sign-in` first). Its sidebar shows each person only the pages their roles allow:
-
-| Page | Who | What |
-|---|---|---|
-| Tickets | support | The support queue (see below) |
-| Sales reports | accountant, admin | Revenue, orders, average, completion and renewals against the range before; revenue by day, Persian week or Persian month; by plan and by payment method; who paid most. Days are Tehran's. |
-| Customers | support, accountant | Each customer's value and stage (lead, active, at risk, churned; VIP and blocked by hand), tags, notes, services, orders and emails. Suspend or delete an account. |
-| Posts, Comments | editor | Write the journal; approve or reject comments |
-| Team and roles | admin (owners change roles) | Add someone by email with a role; their account is made if needed and they are emailed where to sign in |
-| Activity log | admin | Every change staff or the system made, and by whom |
-
-Setting up, in order:
-
-1. **Panels**: add the PasarGuard panel (its address and a panel account or API key). It is checked before it is saved.
-2. **Servers and locations**: add a location, then a server on that panel, choosing the panel group that gives access to it.
-3. **Plans**: volume, days, devices, price, and the panels it is sold on. Time starts at the customer's first connection (or after 30 days regardless).
-4. **Customers**: open a customer and make a subscription. The **worker** must be running: it puts the subscription on the panel and copies usage back every 5 minutes.
-
-The customer's link is `{PUBLIC_API_URL}/s/{token}` (default `http://localhost:5000`). To try it from a phone on the same network, set `PUBLIC_API_URL` in `back-end/.env` to this computer's address, for example `http://192.168.1.10:5000`.
-
-## Buying
-
-`/pricing` lists the plans on sale; buying one is `/buy/{planId}`: the buyer signs in there with an emailed code if needed, chooses online payment (Zarinpal) or card to card, and pays. `/orders/{id}` then shows the link and QR code as soon as the service is ready. The old cart and checkout pages are gone; their addresses lead to `/pricing`.
-
-- **Zarinpal** runs on its sandbox until `ZARINPAL_SANDBOX=false` and `ZARINPAL_MERCHANT_ID` are set in `back-end/.env`. In the sandbox the payment page has a "پرداخت" button that pays without a card.
-- **Card to card**: add the cards to show buyers in `/staff/payments` (owners and admins). Receipts wait there for review; suspicious ones (a repeated image or tracking number, a different amount) are flagged. Receipt images are stored in `back-end/files/`, which is never committed and never served publicly.
-- **Alerts** to owners and admins go by email, and to Telegram when `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ADMIN_CHAT_IDS` are set. Telegram is filtered in Iran, so from a machine there only the emails arrive; on the server abroad both do.
-
-- **Crypto** appears at checkout only once it is set up and the USDT rate (read from Nobitex every minute) is fresh:
-  - **USDT on TRON**: set `TRON_RECEIVE_ADDRESS` (the address only; the server never holds a wallet key). Each order is quoted an exact amount (for example 1.500347 USDT) and is paid when that amount arrives. Transfers that match no quote wait in `/staff/payments` for a decision. For the Nile testnet, also set `TRONGRID_URL=https://nile.trongrid.io` and `TRON_USDT_CONTRACT=TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf`.
-  - **NOWPayments**: set `NOWPAYMENTS_API_KEY` and `NOWPAYMENTS_IPN_SECRET` (and `NOWPAYMENTS_SANDBOX=true` for its sandbox).
-
-- **Emails to customers** (service ready, payment received, renewed, and the reminders at 3 days and 1 day left and at 80% and 100% of the volume) are in Persian and can be rewritten, previewed or switched off in `/staff/notifications`. Each customer's page in `/staff` lists what they were sent, or why not.
-
-## Support tickets
-
-Customers open tickets at `/support` (linked from `/account`): a subject, a category, how urgent (up to "high"), optionally which service, and up to three screenshots. Staff with `tickets:reply` (the support, admin and owner roles) answer them at `/staff/tickets`:
-
-- The default view is what waits for staff, most urgent first and then whichever has waited longest. Other views: mine, unassigned, waiting for the customer, resolved, closed.
-- A reply emails the customer (the "ticket reply" template in `/staff/notifications`) and sets the ticket to waiting for the customer. Whoever answers an unassigned ticket gets it.
-- Tick "internal note" to write something only staff see. It changes nothing and emails nobody.
-- New tickets are emailed to every support agent; a customer's reply goes to whoever has the ticket.
-- A ticket left waiting for the customer for a week is marked resolved. A reply from the customer reopens it.
-- Categories are edited at the bottom of `/staff/tickets` (needs `settings:manage`). A new installation starts with four.
-
-The **worker** does the rest: it puts paid subscriptions on the panel, asks Zarinpal about payments whose customers never came back, reads the USDT rate and new USDT transfers, queues the reminders that are due, sends emails, resolves tickets left quiet for a week, and lapses unpaid orders and quotes.
-
-To check the panel driver and Zarinpal against the real things (Zarinpal's sandbox, and your test panel, where test users named `sk-contract-...` and `sk_...` are created and deleted), fill the `PASARGUARD_TEST_*` values in `back-end/.env` and run:
+روی سرور، با دسترسی root:
 
 ```bash
-npm run test:contract -w back-end
+git clone https://github.com/danialrahimian/shahkelid.git /opt/shah-kelid
+bash /opt/shah-kelid/install.sh
 ```
 
-## Checking it
+یا بدون clone:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danialrahimian/shahkelid/main/install.sh | sudo bash
+```
+
+نصب‌کننده اول همه‌ی سؤال‌ها را یک‌جا می‌پرسد. هر جوابی را که بشود، همان لحظه بررسی می‌کند:
+- DNS دامنه به همین سرور اشاره کند.
+- ایمیل‌ها واقعاً برسند: یک کد به ایمیل شما می‌فرستد و باید آن را وارد کنید.
+- ربات تلگرام جواب بدهد.
+- فضای پشتیبان در دسترس باشد.
+
+تا وقتی خلاصه را تأیید نکنید، چیزی روی سرور تغییر نمی‌کند. بعد حدود ۱۰ دقیقه خودش کار می‌کند:
+1. به‌روزرسانی سیستم
+2. دیوار آتش (پورت SSH شما را خودش پیدا می‌کند)
+3. نصب Docker
+4. ساختن تنظیمات و راه‌اندازی
+5. حساب مالک
+6. اولین پشتیبان
+7. بررسی HTTPS
+
+در پایان، دو رمزی را که باید **بیرون از سرور** نگه دارید نشان می‌دهد و در `/root/shah-kelid-install.txt` هم ذخیره می‌کند.
+
+بعد از نصب:
+1. در `https://دامنه‌ی-شما/account/sign-in` وارد شوید.
+2. ورود دومرحله‌ای را با Google Authenticator یا 2FAS راه بیندازید.
+3. در `/staff` به ترتیب پنل PasarGuard، سرورها، پلن‌ها و کارت‌های کارت‌به‌کارت را اضافه کنید.
+4. یک خرید آزمایشی انجام دهید.
+
+جزئیات بیشتر، نصب دستی، نصب آزمایشی بدون دامنه و نصب بدون سؤال با فایل جواب: [راهنمای نصب](docs/05-install.md)
+
+---
+
+## مدیریت روزمره
+
+همه‌ی دستورها در پوشه‌ی `/opt/shah-kelid/infra/production` اجرا می‌شوند:
+
+| دستور | کار |
+|---|---|
+| `./sk status` | چه چیزی در حال اجراست و سالم است یا نه |
+| `./sk logs app` | لاگ‌ها (یا `worker`، `web`، `backup`) |
+| `./sk backup` | یک پشتیبان همین حالا |
+| `./sk snapshots` | فهرست پشتیبان‌ها |
+| `./sk restore latest` | بازیابی از آخرین پشتیبان |
+| `./sk update` | نصب نسخه‌ی تازه |
+| `./sk create-owner email --another` | یک مالک دیگر |
+| `./sk psql` | پوسته‌ی دیتابیس، برای موارد اضطراری |
+
+وقتی پنل، زرین‌پال، نوبیتکس یا ایمیل مشکل دارد چه کنید: [راهنمای عملیات](docs/06-operations.md)
+
+---
+
+## به‌روزرسانی
+
+```bash
+cd /opt/shah-kelid/infra/production
+./sk update
+```
+
+کد تازه را می‌گیرد، ایمیج‌ها را می‌سازد، تغییرات دیتابیس را اعمال می‌کند و سرویس‌ها را با نسخه‌ی تازه راه می‌اندازد. سایت چند ثانیه در دسترس نیست. اجرای دوباره‌ی `install.sh` روی سرور نصب‌شده هم همین کار را می‌کند.
+
+---
+
+## پشتیبان‌گیری و بازیابی
+
+- **زمان‌بندی:** هر ۶ ساعت از دیتابیس و فایل‌ها (رسیدها، تصویرهای تیکت) پشتیبان گرفته می‌شود.
+- **مقصد:** فضای سازگار با S3، یا تا وقتی آن را ندارید، روی خود سرور.
+- **امنیت و بررسی:** پشتیبان‌ها با [restic](https://restic.net) رمزگذاری می‌شوند. بعد از هر بار، بخشی از داده دوباره خوانده و بررسی می‌شود.
+- **نگهداری:** از هر روز یک نسخه تا ۷ روز، از هر هفته تا ۴ هفته، و از هر ماه تا ۶ ماه.
+- **خبر شکست:** اگر پشتیبان‌گیری شکست بخورد، به مدیرها ایمیل و پیام تلگرام می‌رود.
+
+**انتقال به سرور تازه:**
+1. روی سرور تازه `install.sh` را اجرا کنید.
+2. «انتقال از روی پشتیبان» را انتخاب کنید.
+3. دو رمز نگه‌داشته‌شده را بدهید.
+
+آخرین پشتیبان برمی‌گردد، حتی ورود دومرحله‌ای کارمندها با همان برنامه‌ی Authenticator. این مسیر روی دو سرور آزموده شده است.
+
+---
+
+## امنیت
+
+- **ورود دومرحله‌ای کارمندها:** برای همه‌ی کارمندها اجباری است.
+- **محدودیت تعداد درخواست:** روی ورود و پرداخت. نشانی واقعی بازدیدکننده پشت Cloudflare هم درست دیده می‌شود.
+- **حفاظت از داده‌ها:**
+  - رمز پنل‌ها و ورود دومرحله‌ای در دیتابیس رمزگذاری‌شده نگه داشته می‌شوند.
+  - سرور هرگز کلید کیف پول نمی‌خواهد و نگه نمی‌دارد.
+  - دیتابیس و Redis به اینترنت راه ندارند.
+- **فایل‌های خصوصی:** رسیدها و پیوست‌ها هرگز عمومی سرو نمی‌شوند.
+
+بررسی کامل امنیتی: [docs/04-security.md](docs/04-security.md)
+
+---
+
+## مستندات
+
+| سند | درباره‌ی |
+|---|---|
+| [docs/05-install.md](docs/05-install.md) | نصب، خودکار و دستی |
+| [docs/06-operations.md](docs/06-operations.md) | عملیات روزمره، پشتیبان و بازیابی، و روزهای بد |
+| [docs/04-security.md](docs/04-security.md) | بررسی امنیتی |
+| [docs/03-roadmap.md](docs/03-roadmap.md) | نقشه‌ی راه و آنچه در هر مرحله ساخته شد |
+| [docs/development.md](docs/development.md) | راهنمای توسعه (انگلیسی) |
+
+---
+
+## توسعه
+
+به **Node.js 24** و **Docker** نیاز دارید.
+
+```bash
+npm install                      # همه‌ی بسته‌ها، از ریشه
+npm run services:up              # PostgreSQL 18 و Redis 7
+npm run db:migrate -w back-end   # ساختن جدول‌ها
+```
+
+`back-end/.env.example` را به `back-end/.env` و `front-end/.env.example` را به `front-end/.env` کپی کنید. هر کدام در یک ترمینال:
+
+```bash
+npm run dev -w back-end          # API روی :5000
+npm run dev:worker -w back-end   # worker: صف‌ها و کارهای زمان‌بندی‌شده
+npm run dev -w front-end         # سایت روی :5173
+```
+
+بررسی کامل (lint، typecheck و همه‌ی آزمایش‌ها):
 
 ```bash
 npm run check
 ```
 
-Runs lint, typecheck and every test of every package. The back-end tests use their own database (`shah_kelid_test`) and Redis database (1), so they never touch development data, and they refuse to reset any database whose name does not end in `_test`.
+جزئیات بیشتر در [راهنمای توسعه](docs/development.md).
 
-## Layout
+---
+
+## ساختار پروژه
 
 ```
-back-end/            the API and the worker (Node, Express, TypeScript, PostgreSQL)
-  src/modules/       one folder per module, each owning its tables
-  src/platform/      database, queues, outbox
-  drizzle/           migrations
-front-end/           the web app (React, Vite)
-packages/contracts/  what the apps must agree on: units, conversions, shared schemas
-docs/                the design, the roadmap, the security review, install and operations guides
-infra/production/    the server: compose.yaml, .env.example, and ./sk
-infra/caddy/         the Caddyfile
-infra/backup/        the backup image: backup.sh, restore.sh
-infra/loadtest/      the 10,000-customer load test (seed, fake panel, k6)
-Dockerfile           the app image (API, worker, migrations) and the web image (Caddy + the built site)
-compose.yaml         local PostgreSQL and Redis, for development
+back-end/            API و worker (Node.js، Express 5، TypeScript، Drizzle روی PostgreSQL، BullMQ روی Redis)
+front-end/           سایت و پنل‌ها (React 19، Vite، Tailwind، RTK Query)
+packages/contracts/  چیزهایی که هر دو طرف باید رویش توافق داشته باشند: واحدها، تبدیل‌ها، اسکیماهای مشترک
+infra/production/    سرور: compose.yaml، .env.example و ./sk
+infra/caddy/         Caddyfile
+infra/backup/        ایمیج پشتیبان‌گیری
+infra/loadtest/      آزمون بار ۱۰٬۰۰۰ مشتری
+docs/                طراحی، نقشه‌ی راه، امنیت، نصب و عملیات
+install.sh           نصب‌کننده‌ی یک‌دستوری
 ```
-
-## Services
-
-| Command | What it does |
-|---|---|
-| `npm run services:up` | Start PostgreSQL and Redis |
-| `npm run services:down` | Stop them, keeping the data |
-| `npm run services:reset` | Stop them and **delete** the data |

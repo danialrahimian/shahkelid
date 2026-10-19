@@ -613,7 +613,7 @@ ask_code() {
     return 0
   fi
   section "$(L "کد" "The code")"
-  ask SK_REPO "$(L "نشانی مخزن git کد شاه‌کلید" "The git address of the Shah Kelid code")" "" v_repo
+  ask SK_REPO "$(L "نشانی مخزن git کد شاه‌کلید" "The git address of the Shah Kelid code")" https://github.com/danialrahimian/shahkelid.git v_repo
   ok "$(L "مخزن خوانده شد (شاخه‌ی $SK_BRANCH)" "Repository read (branch $SK_BRANCH)")"
 }
 
