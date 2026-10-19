@@ -5,7 +5,7 @@ import config from "../../config";
 import type { Db, Executor } from "../../platform/db/client";
 import { ApiError, notFound } from "../../platform/http/api-error";
 import { planPanelSettings, plans } from "../catalog/schema";
-import { users } from "../identity/schema";
+import { accountLabel, users } from "../identity/schema";
 import { post } from "../ledger/ledger";
 import { alertStaff } from "../notifications/alerts";
 import { format, notifyCustomer, siteUrl } from "../notifications/notify";
@@ -444,7 +444,7 @@ export const staffOrders = async (
   filter: { userId?: string; status?: OrderRow["status"]; limit: number },
 ): Promise<StaffOrderView[]> => {
   const rows = await db
-    .select({ order: orders, email: users.email })
+    .select({ order: orders, email: accountLabel() })
     .from(orders)
     .innerJoin(users, eq(users.id, orders.userId))
     .where(

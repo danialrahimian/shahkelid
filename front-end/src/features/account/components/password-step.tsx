@@ -18,7 +18,8 @@ import { errorText } from "@/lib/error-text";
 import { SubmitButton, TextButton } from "./account-card";
 
 /**
- * Signing in with a password, for accounts that have set one.
+ * Signing in with a password, for accounts that have set one: with the
+ * email, or with a staff username (the owner the installer made).
  *
  * Five wrong passwords close this door for a while; the emailed code still
  * works, and the message says so.
@@ -39,7 +40,7 @@ export const PasswordStep = ({
     <div className="space-y-5">
       <Form<PasswordSignInInput>
         schema={passwordSignInInput}
-        options={{ defaultValues: { email: defaultEmail, password: "" } }}
+        options={{ defaultValues: { login: defaultEmail, password: "" } }}
         onSubmit={async (values, methods) => {
           try {
             onSession(await signIn(values).unwrap());
@@ -56,11 +57,13 @@ export const PasswordStep = ({
         {(methods) => (
           <>
             <InputField<PasswordSignInInput>
-              name="email"
-              label={t("account.signIn.email")}
-              placeholder={t("account.signIn.emailPlaceholder")}
-              type="email"
+              name="login"
+              label={t("account.signIn.login")}
+              placeholder={t("account.signIn.loginPlaceholder")}
+              type="text"
               inputMode="email"
+              autoCapitalize="none"
+              spellCheck={false}
               autoComplete="username"
               dir="ltr"
               autoFocus={!defaultEmail}
@@ -88,7 +91,12 @@ export const PasswordStep = ({
               busyLabel={t("account.signIn.signingIn")}
             />
             <div className="text-center">
-              <TextButton onClick={() => onUseCode(methods.getValues("email"))}>
+              <TextButton
+                onClick={() => {
+                  const login = methods.getValues("login");
+                  onUseCode(login.includes("@") ? login : "");
+                }}
+              >
                 {t("account.signIn.useCode")}
               </TextButton>
             </div>

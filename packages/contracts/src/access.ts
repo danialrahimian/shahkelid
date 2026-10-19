@@ -18,7 +18,9 @@ export type RoleView = {
 
 export type TeamMember = {
   id: string;
+  /** Their email, or their username when they have none. */
   email: string;
+  username: string | null;
   displayName: string;
   status: string;
   roles: string[];

@@ -11,6 +11,7 @@ import { alias } from "drizzle-orm/pg-core";
 import type { z } from "zod";
 
 import config from "../../config";
+import { current } from "../settings/live";
 import logger from "../../libraries/logger";
 import type { Db } from "../../platform/db/client";
 import { auditBy, type StaffActor } from "../../platform/http/actor";
@@ -41,7 +42,10 @@ import { tronSource, type IncomingTransfer } from "./tron";
 const CENT = 10_000; // 0.01 USDT in units
 const RECENT_DAYS = 7;
 
-export const isUsdtConfigured = () => Boolean(config.crypto.tronAddress);
+/** Our receiving address, saved in the staff area (or .env). */
+const receiver = () => current("tron").address;
+
+export const isUsdtConfigured = () => Boolean(receiver());
 
 /** The price in USDT units, rounded up to a whole cent. */
 export const baseUnits = (totalToman: number, rateTomanPerUsdt: number) =>
@@ -72,7 +76,7 @@ export const startUsdtTron = async (db: Db, userId: string, orderId: string): Pr
               amountUnits: base + randomInt(1, 10_000),
               rateTomanPerAsset: rate.bidToman,
               exchangeRateId: rate.id,
-              payAddress: config.crypto.tronAddress,
+              payAddress: receiver(),
               expiresAt: new Date(Date.now() + config.crypto.invoiceTtlMs),
             })
             .returning(),
@@ -191,7 +195,7 @@ export const scanUsdt = async (db: Db) => {
   const [latest] = await db
     .select({ blockTime: cryptoTransfers.blockTime })
     .from(cryptoTransfers)
-    .where(and(eq(cryptoTransfers.network, "TRON"), eq(cryptoTransfers.toAddress, config.crypto.tronAddress)))
+    .where(and(eq(cryptoTransfers.network, "TRON"), eq(cryptoTransfers.toAddress, receiver())))
     .orderBy(desc(cryptoTransfers.blockTime))
     .limit(1);
   const since = latest
@@ -199,11 +203,11 @@ export const scanUsdt = async (db: Db) => {
     : new Date(Date.now() - 24 * 60 * 60_000);
 
   const source = tronSource();
-  const transfers = await source.incoming(config.crypto.tronAddress, config.crypto.usdtContract, since);
+  const transfers = await source.incoming(receiver(), config.crypto.usdtContract, since);
   const outcomes: Record<string, number> = {};
   for (const transfer of transfers) {
     // A token merely named USDT is not USDT: only the official contract, to our address.
-    if (transfer.tokenContract !== config.crypto.usdtContract || transfer.to !== config.crypto.tronAddress) {
+    if (transfer.tokenContract !== config.crypto.usdtContract || transfer.to !== receiver()) {
       continue;
     }
     const [known] = await db

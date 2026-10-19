@@ -27,7 +27,7 @@ const AccountRoute = () => {
         <div>
           <h1 className="text-2xl font-bold">{t("account.profile.title")}</h1>
           <p dir="ltr" className="text-start text-sm text-muted-foreground">
-            {session.account.email}
+            {session.account.email ?? session.account.username}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

@@ -4,6 +4,7 @@ import { formatUsdtUnits } from "@shah-kelid/contracts";
 import { and, eq } from "drizzle-orm";
 
 import config from "../../config";
+import { current } from "../settings/live";
 import logger from "../../libraries/logger";
 import type { Db } from "../../platform/db/client";
 import { ApiError } from "../../platform/http/api-error";
@@ -63,13 +64,13 @@ export interface NowPaymentsApi {
 
 class NowPaymentsHttp implements NowPaymentsApi {
   private get base() {
-    return config.crypto.nowpaymentsSandbox ? "https://api-sandbox.nowpayments.io/v1" : "https://api.nowpayments.io/v1";
+    return current("nowpayments").sandbox ? "https://api-sandbox.nowpayments.io/v1" : "https://api.nowpayments.io/v1";
   }
 
   private async call<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`${this.base}${path}`, {
       ...init,
-      headers: { "x-api-key": config.crypto.nowpaymentsApiKey, "content-type": "application/json", ...(init?.headers ?? {}) },
+      headers: { "x-api-key": current("nowpayments").apiKey, "content-type": "application/json", ...(init?.headers ?? {}) },
       signal: AbortSignal.timeout(15_000),
     });
     if (!response.ok) throw new Error(`NOWPayments answered HTTP ${response.status}: ${(await response.text()).slice(0, 200)}`);
@@ -106,7 +107,7 @@ export const setNowPayments = (replacement: NowPaymentsApi | null) => {
 };
 
 export const isNowPaymentsConfigured = () =>
-  Boolean(config.crypto.nowpaymentsApiKey && config.crypto.nowpaymentsIpnSecret);
+  Boolean(current("nowpayments").apiKey && current("nowpayments").ipnSecret);
 
 // --------------------------------------------------------------- signature
 
@@ -122,11 +123,11 @@ const sortKeys = (value: unknown): unknown =>
         )
       : value;
 
-export const ipnSignature = (body: unknown, secret = config.crypto.nowpaymentsIpnSecret) =>
+export const ipnSignature = (body: unknown, secret: string = current("nowpayments").ipnSecret) =>
   createHmac("sha512", secret).update(JSON.stringify(sortKeys(body))).digest("hex");
 
 export const isValidIpn = (body: unknown, signature: string | undefined) => {
-  if (!signature || !config.crypto.nowpaymentsIpnSecret) return false;
+  if (!signature || !current("nowpayments").ipnSecret) return false;
   const expected = Buffer.from(ipnSignature(body), "hex");
   const given = Buffer.from(signature, "hex");
   return given.length === expected.length && timingSafeEqual(given, expected);

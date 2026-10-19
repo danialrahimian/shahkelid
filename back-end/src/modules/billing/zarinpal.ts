@@ -1,4 +1,5 @@
 import config from "../../config";
+import { current } from "../settings/live";
 
 /**
  * Zarinpal, v4 REST API (https://www.zarinpal.com/docs/paymentGateway/).
@@ -155,11 +156,27 @@ export class ZarinpalGateway implements PaymentGateway {
 }
 
 let gateway: PaymentGateway | undefined;
+let gatewayFor: string | undefined;
+let replaced = false;
 
-export const zarinpal = (): PaymentGateway =>
-  (gateway ??= new ZarinpalGateway(config.checkout.zarinpalMerchantId, config.checkout.zarinpalSandbox));
+/** The merchant id saved in the staff area (or .env); without one, Zarinpal is off. */
+export const isZarinpalSetUp = () => Boolean(current("zarinpal").merchantId);
+
+/** A gateway for the merchant as it is now: a changed id takes effect at once. */
+export const zarinpal = (): PaymentGateway => {
+  if (replaced && gateway) return gateway;
+  const { merchantId, sandbox } = current("zarinpal");
+  const key = `${merchantId}|${sandbox}`;
+  if (!gateway || gatewayFor !== key) {
+    gateway = new ZarinpalGateway(merchantId, sandbox);
+    gatewayFor = key;
+  }
+  return gateway;
+};
 
 /** Test seam. */
 export const setZarinpal = (replacement: PaymentGateway | null) => {
   gateway = replacement ?? undefined;
+  gatewayFor = undefined;
+  replaced = Boolean(replacement);
 };

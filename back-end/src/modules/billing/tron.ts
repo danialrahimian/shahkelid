@@ -1,4 +1,5 @@
 import config from "../../config";
+import { current } from "../settings/live";
 
 /**
  * Reading USDT transfers into our TRON wallet, from TronGrid.
@@ -40,8 +41,13 @@ type Trc20Row = {
 export class TronGrid implements TronSource {
   constructor(
     private readonly baseUrl = config.crypto.tronGridUrl,
-    private readonly apiKey = config.crypto.tronGridApiKey,
+    private readonly fixedApiKey?: string,
   ) {}
+
+  /** The key as saved now (staff area or .env), unless one was given. */
+  private get apiKey() {
+    return this.fixedApiKey ?? current("tron").tronGridApiKey;
+  }
 
   private async get<T>(url: string, init?: RequestInit): Promise<T> {
     const response = await fetch(url, {

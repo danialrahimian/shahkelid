@@ -6,6 +6,7 @@ import type { Redis } from "ioredis";
 import type { AccountView } from "@shah-kelid/contracts";
 
 import config from "../../config";
+import { isMailSetUp } from "../settings/live";
 import type { Db } from "../../platform/db/client";
 import { decoyHash, hashPassword, needsRehash, verifyPassword } from "../../platform/crypto/password";
 import { ApiError, conflict } from "../../platform/http/api-error";
@@ -39,6 +40,15 @@ export const findUserByEmail = async (db: Db, email: string) => {
   const [user] = await db.select().from(users).where(eq(users.email, email.trim()));
   return user;
 };
+
+export const findUserByUsername = async (db: Db, username: string) => {
+  const [user] = await db.select().from(users).where(eq(users.username, username.trim().toLowerCase()));
+  return user;
+};
+
+/** What a person types to sign in with a password: their email, or a staff username. */
+export const findUserByLogin = (db: Db, login: string) =>
+  login.includes("@") ? findUserByEmail(db, login) : findUserByUsername(db, login);
 
 export const findUserById = async (db: Db, id: string) => {
   const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -118,7 +128,19 @@ const codeEmail = (to: string, code: string, purpose: "sign_in" | "reset_passwor
  * with a code is also how an account is created, so there is no "no such
  * account" answer to give away.
  */
+/**
+ * On a fresh install no mail service is set up yet: a code that can never
+ * arrive is refused at once, with a reason the page can show, rather than
+ * queued to fail. (The owner signs in with a username meanwhile.)
+ */
+export const assertMailSetUp = () => {
+  if (config.isProduction && !isMailSetUp()) {
+    throw new ApiError(503, "MAIL_NOT_CONFIGURED", "Email is not set up yet");
+  }
+};
+
 export const requestSignInCode = async ({ redis }: Context, email: string) => {
+  assertMailSetUp();
   const code = await issueCode(redis, email, "sign_in");
   await sendEmail(codeEmail(email.trim(), code, "sign_in"));
 };
@@ -149,26 +171,28 @@ export const signInWithCode = async ({ db, redis }: Context, email: string, code
  */
 export const signInWithPassword = async (
   { db, redis }: Context,
-  email: string,
+  login: string,
   password: string,
 ) => {
-  await assertNotLocked(redis, "password", email);
+  // The lock is per what was typed, so "Owner" and "owner" share one.
+  const key = login.trim().toLowerCase();
+  await assertNotLocked(redis, "password", key);
 
-  const user = await findUserByEmail(db, email);
+  const user = await findUserByLogin(db, key);
   const stored = user?.passwordHash ?? (await decoyHash());
   const matches = (await verifyPassword(password, stored)) && Boolean(user?.passwordHash);
 
   if (!user || !matches) {
-    const failures = await recordFailure(redis, "password", email);
+    const failures = await recordFailure(redis, "password", key);
     // The attempt that reaches the threshold is told about the lock at once,
     // rather than finding out on the next try.
     if (failures >= config.account.lockoutThreshold) {
-      await assertNotLocked(redis, "password", email);
+      await assertNotLocked(redis, "password", key);
     }
     throw new ApiError(401, "WRONG_CREDENTIALS", "Wrong email or password");
   }
 
-  await clearFailures(redis, "password", email);
+  await clearFailures(redis, "password", key);
   assertActive(user);
 
   if (needsRehash(user.passwordHash!)) {
@@ -183,6 +207,7 @@ export const signInWithPassword = async (
 
 /** Always the same answer, whether or not the address has an account. */
 export const requestPasswordReset = async ({ db, redis }: Context, email: string) => {
+  assertMailSetUp();
   // The code is issued (and throttled) either way, so the response time and
   // the rate limit behave the same for registered and unknown addresses.
   const code = await issueCode(redis, email, "reset_password");
@@ -255,6 +280,7 @@ export const setFirstPassword = async (
 export const accountView = (user: User, access: AccessProfile): AccountView => ({
   id: user.id,
   email: user.email,
+  username: user.username,
   displayName: user.displayName,
   locale: user.locale === "en" ? "en" : "fa",
   emailVerified: Boolean(user.emailVerifiedAt),

@@ -14,7 +14,7 @@ import { ApiError, notFound } from "../../platform/http/api-error";
 import { recordEvent } from "../../platform/outbox/outbox";
 import { writeAudit } from "../access/audit";
 import { planPanelSettings, plans } from "../catalog/schema";
-import { users } from "../identity/schema";
+import { accountLabel, optionalAccountLabel, users } from "../identity/schema";
 import { base32Encode } from "../identity/totp";
 import { locations, panels, servers } from "../infrastructure/schema";
 import type { PanelUser } from "../provisioning/driver";
@@ -53,7 +53,7 @@ const iso = (date: Date | null) => date?.toISOString() ?? null;
 
 const viewColumns = {
   subscription: subscriptions,
-  userEmail: users.email,
+  userEmail: accountLabel(),
   planName: plans.name,
   panelName: panels.name,
   subscriptionBaseUrl: panels.subscriptionBaseUrl,
@@ -130,7 +130,7 @@ export const listSubscriptions = async (
 
 export const subscriptionHistory = async (db: Db, id: string): Promise<SubscriptionEventView[]> => {
   const rows = await db
-    .select({ event: subscriptionEvents, actorEmail: users.email })
+    .select({ event: subscriptionEvents, actorEmail: optionalAccountLabel(users) })
     .from(subscriptionEvents)
     .leftJoin(users, eq(users.id, subscriptionEvents.actorUserId))
     .where(eq(subscriptionEvents.subscriptionId, id))

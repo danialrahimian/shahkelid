@@ -14,6 +14,7 @@
     "test:contract": "node --require ./test/setup-env.cjs --import tsx --test --test-concurrency=1 --require ./test/contract-env.cjs \"test/**/*.contract.test.ts\"",
     "test:watch": "node --require ./test/setup-env.cjs --import tsx --test --watch \"test/**/*.test.ts\"",
     "create-owner": "tsx scripts/create-owner.ts",
+    "owner": "tsx scripts/owner.ts",
     "audit": "npm audit --omit=dev",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/platform/db/migrate.ts",

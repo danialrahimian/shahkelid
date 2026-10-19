@@ -38,7 +38,7 @@ export const beginSetup = async (redis: Redis, user: User) => {
   }
   const secret = generateSecret();
   await redis.set(setupKey(user.id), seal(secret).toString("base64"), "EX", SETUP_TTL_SECONDS);
-  return { secret, otpauthUri: otpauthUri({ secret, account: user.email, issuer: ISSUER }) };
+  return { secret, otpauthUri: otpauthUri({ secret, account: user.email ?? user.username ?? user.id, issuer: ISSUER }) };
 };
 
 /** Recovery codes: XXXX-XXXX in base32, stored only as SHA-256 hashes. */

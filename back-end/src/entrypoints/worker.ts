@@ -1,3 +1,5 @@
+import { writeFileSync } from "node:fs";
+
 import config from "../config";
 import logger from "../libraries/logger";
 import { closeDb, getDb } from "../platform/db/client";
@@ -8,6 +10,8 @@ import { createProducerConnection } from "../platform/redis";
 import { scheduleReminders, startNotificationsWorker } from "../modules/notifications/email-worker";
 import { scheduleBilling, startBillingWorker } from "../modules/billing/worker";
 import { scheduleUsageSync, startProvisioningWorker } from "../modules/provisioning/worker";
+import { writeBackupEnvironment } from "../modules/settings/backup-control";
+import { startSettingsRefresh, stopSettingsRefresh } from "../modules/settings/live";
 
 /**
  * The worker process: everything that happens off the request path.
@@ -25,6 +29,27 @@ import { scheduleUsageSync, startProvisioningWorker } from "../modules/provision
 
 const main = async () => {
   const db = getDb();
+  // Mail, Telegram and payment settings saved in the staff area.
+  await startSettingsRefresh(db);
+  // The backup service reads its settings from a file the worker keeps in
+  // line with the panel (it cannot open the sealed values itself).
+  const keepBackupsInformed = () =>
+    writeBackupEnvironment().catch((error: unknown) => logger.warn({ err: error }, "Could not write backup.env"));
+  void keepBackupsInformed();
+  const backupTimer = setInterval(keepBackupsInformed, 15_000);
+  backupTimer.unref();
+  // The health check reads this: a worker whose event loop stops beating
+  // for a minute is reported unhealthy (docker compose ps, shahkelid status).
+  const beat = () => {
+    try {
+      writeFileSync(config.worker.heartbeatFile, String(Date.now()));
+    } catch (error) {
+      logger.debug({ err: error }, "Could not write the heartbeat");
+    }
+  };
+  beat();
+  const heartbeat = setInterval(beat, 10_000);
+  heartbeat.unref();
   const connection = createProducerConnection();
   // An idle connection error is logged here; publishing failures are
   // reported by the relay, which keeps the events and retries.
@@ -56,6 +81,9 @@ const main = async () => {
     logger.info({ signal }, "Worker stopping");
 
     // Finish the pass in progress, then let go of everything.
+    clearInterval(backupTimer);
+    clearInterval(heartbeat);
+    stopSettingsRefresh();
     await relay.stop();
     await emails.close();
     await provisioning.close();

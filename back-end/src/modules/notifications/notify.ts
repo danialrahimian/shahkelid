@@ -54,7 +54,8 @@ export const notifyCustomer = async (
     .select({ email: users.email, displayName: users.displayName })
     .from(users)
     .where(eq(users.id, userId));
-  if (!user) return null;
+  // No address (a username-only staff account): nothing to send to.
+  if (!user?.email) return null;
 
   const [row] = await executor
     .insert(notifications)

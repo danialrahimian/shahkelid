@@ -1,6 +1,7 @@
 import { Queue } from "bullmq";
 
 import config from "../../config";
+import { isMailSetUp } from "../settings/live";
 import logger from "../../libraries/logger";
 import { sendEmail as sendWithSmtp } from "../../libraries/mailer";
 import { QUEUES } from "../../platform/queue/routes";
@@ -59,9 +60,12 @@ export const sendEmail: EmailSender = (email) => sender(email);
  * written to the log instead, so a developer can read a sign-in code there.
  */
 const sendNow: EmailSender = async (email) => {
-  if (!config.isProduction && !config.mail.user) {
-    logger.info({ to: email.to, subject: email.subject, text: email.text }, "Email (development: logged, not sent)");
-    return;
+  if (!isMailSetUp()) {
+    if (!config.isProduction) {
+      logger.info({ to: email.to, subject: email.subject, text: email.text }, "Email (development: logged, not sent)");
+      return;
+    }
+    throw new Error("Mail is not set up yet (staff area → settings → mail)");
   }
   const result = await sendWithSmtp({ ...email, html: email.html });
   if (!result.delivered) throw new Error(`The mail provider did not accept the email to ${email.to}`);

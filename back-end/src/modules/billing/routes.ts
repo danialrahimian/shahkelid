@@ -34,6 +34,7 @@ import { createOrder, fulfilPaidOrder, myInvoice, myOrder, myOrders, plansOnSale
 import { handleNowPaymentsIpn, isNowPaymentsConfigured, isValidIpn, startNowPayments } from "./nowpayments";
 import { freshRate } from "./rates";
 import { cryptoTransfersFor, isUsdtConfigured, reviewCryptoTransfer, startUsdtTron } from "./usdt-checkout";
+import { isZarinpalSetUp } from "./zarinpal";
 import { startZarinpal, zarinpalCallback } from "./zarinpal-checkout";
 
 /**
@@ -91,7 +92,7 @@ export const shopRouter = ({ db, redis }: { db: Db; redis: Redis }) => {
 
   router.get("/shop/payment-methods", async (_req, res) => {
     const rate = await freshRate(db);
-    const methods: CheckoutMethodView[] = [{ method: "zarinpal" }];
+    const methods: CheckoutMethodView[] = isZarinpalSetUp() ? [{ method: "zarinpal" }] : [];
     if ((await activeCards(db)).length > 0) methods.push({ method: "card_transfer" });
     if (rate && isUsdtConfigured()) methods.push({ method: "usdt_tron", rateTomanPerUsdt: rate.bidToman });
     if (rate && isNowPaymentsConfigured()) methods.push({ method: "nowpayments", rateTomanPerUsdt: rate.bidToman });

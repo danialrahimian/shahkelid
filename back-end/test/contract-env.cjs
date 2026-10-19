@@ -6,5 +6,5 @@
  * (A file rather than `VAR=1 node ...`, which does not work on Windows.)
  */
 // The test panel lives in .env, which nothing else in the test run reads first.
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 process.env.PASARGUARD_CONTRACT = "1";

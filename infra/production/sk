@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
 # Everyday operations on the server, so no one has to remember compose flags.
+# `shahkelid` (the command the installer puts in /usr/local/bin) runs these.
 #
-#   ./sk init                    make .env with fresh secrets (once)
-#   ./sk up                      build and start everything
-#   ./sk status                  what is running, and is it healthy
-#   ./sk logs [service]          follow the logs (app, worker, web, backup…)
-#   ./sk create-owner <email>    the first owner (or --another)
-#   ./sk backup                  a backup now
-#   ./sk snapshots               the backups there are
-#   ./sk restore <id|latest>     replace the database and files with a backup
-#   ./sk update                  pull the code, rebuild, restart
-#   ./sk psql                    a database shell
+#   ./sk init                          make .env with fresh secrets (once)
+#   ./sk up | down | restart           start (building what changed), stop, restart
+#   ./sk status                        what is running, and is it healthy
+#   ./sk logs [service]                follow the logs (app, worker, web, backup…)
+#   ./sk owner create|password|reset-2fa <username>   the password comes on stdin
+#   ./sk owner list                    every owner
+#   ./sk create-owner <email>          an owner who signs in by email (or --another)
+#   ./sk backup                        a backup now, to every destination set up
+#   ./sk snapshots [s3]                the backups on this server (or in S3)
+#   ./sk restore <id|latest> [--from s3] [--yes]
+#   ./sk restore --file <backup.skb> [--yes]          a file from the Telegram bot
+#   ./sk update                        pull the code, rebuild, restart
+#   ./sk psql                          a database shell
+#
+# For a backup made on another server, give its backup password as
+# RESTORE_PASSWORD (and, for its bucket, SK_S3_REPOSITORY and its keys).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -21,6 +28,28 @@ need_env() {
 }
 
 secret() { openssl rand -base64 "$1" | tr -d '\n/+=' | cut -c1-"$2"; }
+
+env_value() { grep -E "^$1=" .env | head -n 1 | cut -d= -f2- | sed "s/^'//; s/'\$//"; }
+
+# set_env KEY VALUE: one line of .env replaced in place; its mode stays 600.
+set_env() {
+  local line="$1=$2"
+  [[ $2 =~ ^[A-Za-z0-9_./:@,+=%-]*$ ]] || line="$1='$2'"
+  KEY=$1 LINE=$line awk '
+    BEGIN { key = ENVIRON["KEY"] "="; line = ENVIRON["LINE"] }
+    index($0, key) == 1 { print line; done = 1; next }
+    { print }
+    END { if (!done) print line }
+  ' .env > .env.next
+  cat .env.next > .env
+  rm -f .env.next
+}
+
+# What restore.sh needs to reach a backup that is not this server's own.
+restore_env=()
+for name in RESTORE_PASSWORD SK_S3_REPOSITORY SK_S3_ACCESS_KEY_ID SK_S3_SECRET_ACCESS_KEY SK_S3_REGION; do
+  [ -z "${!name:-}" ] || restore_env+=(-e "$name")
+done
 
 case "${1:-help}" in
   init)
@@ -34,15 +63,23 @@ case "${1:-help}" in
       -e "s|^APP_ENCRYPTION_KEY=.*|APP_ENCRYPTION_KEY=$(openssl rand -base64 32)|" \
       -e "s|^RESTIC_PASSWORD=.*|RESTIC_PASSWORD=$(secret 48 40)|" \
       .env
-    echo "Made .env with fresh secrets. Now fill in the addresses, mail, payments and backups."
+    echo "Made .env with fresh secrets. Fill in MAIN_DOMAIN and SITE_ADDRESSES; the rest is set in the panel."
     echo
-    echo "Keep these two somewhere away from this server. Without them a backup cannot be read"
-    echo "and two-step sign-in cannot be restored:"
-    grep -E '^(RESTIC_PASSWORD|APP_ENCRYPTION_KEY)=' .env
+    echo "Keep the backup password somewhere away from this server. Without it no backup can be read:"
+    grep -E '^RESTIC_PASSWORD=' .env
     ;;
   up)
     need_env
     compose up -d --build --wait
+    compose ps
+    ;;
+  down)
+    need_env
+    compose down
+    ;;
+  restart)
+    need_env
+    compose restart
     compose ps
     ;;
   status)
@@ -53,6 +90,12 @@ case "${1:-help}" in
     need_env
     shift
     compose logs -f --tail=200 "$@"
+    ;;
+  owner)
+    need_env
+    shift
+    # The password, when there is one, comes on stdin: never in argv or history.
+    compose run --rm -T --no-deps app npx tsx scripts/owner.ts "$@"
     ;;
   create-owner)
     need_env
@@ -65,21 +108,64 @@ case "${1:-help}" in
     ;;
   snapshots)
     need_env
-    compose exec -T backup restore.sh --list < /dev/null
+    compose exec -T "${restore_env[@]}" backup restore.sh --list "${2:-local}" < /dev/null
     ;;
   restore)
     need_env
-    [ -n "${2:-}" ] || { echo "Which one? ./sk snapshots lists them; ./sk restore latest takes the newest." >&2; exit 2; }
-    # Show what is about to come back: its time, and its accounts-N tag.
-    compose exec -T backup sh -c '. /etc/backup.env; restic snapshots --host shah-kelid "$0"' "$2" < /dev/null
-    # --yes is for the installer, which has asked already.
-    if [ "${3:-}" != "--yes" ]; then
-      read -r -p "The database and files will be REPLACED by backup '$2'. Type yes to go on: " answer
+    shift
+    from=local file="" snapshot="" yes=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --from) from=$2; shift 2 ;;
+        --file) file=$2; shift 2 ;;
+        --yes) yes=1; shift ;;
+        *) snapshot=$1; shift ;;
+      esac
+    done
+    [ -n "$file$snapshot" ] || { echo "Which one? ./sk snapshots lists them; ./sk restore latest takes the newest." >&2; exit 2; }
+
+    if [ -n "$file" ]; then
+      [ -f "$file" ] || { echo "No such file: $file" >&2; exit 2; }
+      compose cp "$file" backup:/var/lib/backup/incoming.skb
+      what=(--file /var/lib/backup/incoming.skb)
+      shown="the file $file"
+    else
+      # Show what there is to choose from: times, and the accounts-N tags.
+      compose exec -T "${restore_env[@]}" backup restore.sh --list "$from" < /dev/null || true
+      what=("$snapshot" --from "$from")
+      shown="backup '$snapshot' ($from)"
+    fi
+    if [ "$yes" != 1 ]; then
+      read -r -p "The database and files will be REPLACED by $shown. Type yes to go on: " answer
       [ "$answer" = "yes" ] || { echo "Nothing changed."; exit 1; }
     fi
+
     compose stop web app worker
-    compose exec -T backup restore.sh "$2" --yes < /dev/null
-    # Migrations first: a backup from an older release catches up here.
+    compose exec -T "${restore_env[@]}" backup restore.sh "${what[@]}" --yes < /dev/null
+
+    # The key that came with the backup opens what its database keeps sealed.
+    restored_key=$(compose exec -T backup sh -c 'cat /control/restored-keys.env 2>/dev/null' < /dev/null \
+      | sed -n "s/^APP_ENCRYPTION_KEY='\(.*\)'\$/\1/p" | tr -d '\r')
+    if [ -n "$restored_key" ] && [ "$restored_key" != "$(env_value APP_ENCRYPTION_KEY)" ]; then
+      set_env APP_ENCRYPTION_KEY "$restored_key"
+      echo "The backup's app key is now this server's (APP_ENCRYPTION_KEY in .env)."
+    fi
+    # In .env now; no copy is left lying about.
+    compose exec -T backup rm -f /control/restored-keys.env < /dev/null || true
+    # Restored from another server's backup: its password goes on, so backups
+    # keep going to its bucket. This server's own copies so far were made
+    # with the other password; they are kept aside, not deleted.
+    if [ -n "${RESTORE_PASSWORD:-}" ] && [ "$RESTORE_PASSWORD" != "$(env_value RESTIC_PASSWORD)" ]; then
+      set_env RESTIC_PASSWORD "$RESTORE_PASSWORD"
+      local_dir=$(env_value BACKUP_LOCAL_DIR)
+      local_dir=${local_dir:-/var/lib/shahkelid/backups}
+      if [ -d "$local_dir/restic" ]; then
+        mv "$local_dir/restic" "$local_dir/restic-before-restore-$(date +%Y%m%d-%H%M%S)"
+      fi
+      echo "The backup password is now the restored server's (RESTIC_PASSWORD in .env)."
+    fi
+    # Migrations first: a backup from an older release catches up here. The
+    # app, the worker and the backup service pick up a changed .env.
     compose up -d --wait
     compose ps
     ;;
@@ -102,6 +188,6 @@ case "${1:-help}" in
     compose exec postgres psql -U shah_kelid shah_kelid
     ;;
   *)
-    sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
     ;;
 esac

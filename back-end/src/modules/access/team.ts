@@ -29,7 +29,8 @@ export const teamMembers = async (db: Db): Promise<TeamMember[]> => {
   for (const { user, roleKey } of rows) {
     const member = members.get(user.id) ?? {
       id: user.id,
-      email: user.email,
+      email: user.email ?? user.username ?? "",
+      username: user.username,
       displayName: user.displayName,
       status: user.status,
       roles: [],
@@ -49,7 +50,7 @@ export const addTeamMember = async (db: Db, actor: Actor, email: string, roleKey
   const after = await grantRole(db, actor, account.id, roleKey);
   if (after.length > before.length) {
     await sendEmail({
-      to: account.email,
+      to: email,
       subject: "دسترسی کارمندی شاه‌کلید",
       text: [
         "شما به تیم شاه‌کلید اضافه شدید.",

@@ -12,3 +12,4 @@ export * from "./content.ts";
 export * from "./crm.ts";
 export * from "./reports.ts";
 export * from "./access.ts";
+export * from "./settings.ts";

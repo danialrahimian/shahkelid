@@ -5,8 +5,8 @@
 #   app     the API
 #   worker  outbox relay, queues, schedules (provisioning, reminders, billing)
 #   migrate runs the migrations, then exits; app and worker wait for it
-#   backup  pg_dump + files → S3-compatible storage (restic), on a schedule
-#           (or a folder on this server, until a bucket is set up)
+#   backup  pg_dump + files + the app key → this server, S3 and Telegram,
+#           as set in the panel (settings → backups)
 #   postgres, redis
 #
 # Only web publishes ports (80 and 443). The database and Redis are on the
@@ -29,8 +29,12 @@ x-app: &app
     PUBLIC_API_URL: https://${MAIN_DOMAIN}
     # Every address web answers on is one browsers may sign in and buy from.
     SITE_ADDRESSES: ${SITE_ADDRESSES}
+    # The backup service's mailbox: the panel's backup settings go out
+    # through it, its reports come back.
+    BACKUP_CONTROL_DIR: /control
   volumes:
     - files:/app/back-end/files
+    - backup-control:/control
   # public: the app calls out (panels, gateways, Nobitex, TronGrid, SMTP).
   networks: [internal, public]
   logging: &logging
@@ -50,7 +54,9 @@ services:
       - "443:443/udp"
     environment:
       SITE_ADDRESSES: ${SITE_ADDRESSES}
-      ACME_EMAIL: ${ACME_EMAIL}
+      # "email you@example.com" when an address is given, else nothing:
+      # Let's Encrypt does not need one.
+      CADDY_EMAIL_OPTION: ${ACME_EMAIL:+email ${ACME_EMAIL}}
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1/32}
       CADDY_LOCAL_CERTS: ${CADDY_LOCAL_CERTS:-}
     volumes:
@@ -72,8 +78,15 @@ services:
   worker:
     <<: *app
     command: ["npx", "tsx", "src/entrypoints/worker.ts"]
+    # Its heartbeat file, touched every 10 s: a worker stuck for a minute is
+    # unhealthy. (Some Compose versions refuse --wait on a service with no
+    # health check at all.)
     healthcheck:
-      disable: true
+      test: ["CMD", "node", "-e", "process.exit(Date.now() - Number(require('fs').readFileSync('/tmp/worker-alive', 'utf8')) < 60000 ? 0 : 1)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
@@ -138,20 +151,24 @@ services:
       PGUSER: shah_kelid
       PGPASSWORD: ${POSTGRES_PASSWORD}
       PGDATABASE: shah_kelid
-      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY}
+      # The one secret to keep away from the server: it opens every backup.
       RESTIC_PASSWORD: ${RESTIC_PASSWORD}
-      AWS_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY}
+      # Goes inside each (encrypted) backup, so a restore needs nothing else.
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY}
+      # Before M11 an S3 bucket was set here; the panel's settings win.
+      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:-}
+      AWS_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:-}
       AWS_DEFAULT_REGION: ${BACKUP_S3_REGION:-auto}
-      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-15 */6 * * *}
       BACKUP_PING_URL: ${BACKUP_PING_URL:-}
       TZ: ${TZ:-Asia/Tehran}
     volumes:
       - files:/data/files
       - backup-state:/var/lib/backup
-      # Only used when RESTIC_REPOSITORY is a path under /backups (backups
-      # kept on this server); an S3 repository leaves it empty.
-      - ${BACKUP_LOCAL_DIR:-/var/backups/shah-kelid}:/backups
+      - backup-control:/control
+      # The copy kept on this server, always: a folder on the host, easy to
+      # find and to copy elsewhere.
+      - ${BACKUP_LOCAL_DIR:-/var/lib/shahkelid/backups}:/backups
     depends_on:
       postgres: { condition: service_healthy }
     networks: [internal, public]
@@ -171,3 +188,4 @@ volumes:
   caddy-data:
   caddy-config:
   backup-state:
+  backup-control:

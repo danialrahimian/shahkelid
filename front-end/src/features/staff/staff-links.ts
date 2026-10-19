@@ -9,6 +9,7 @@ import {
   MessageSquare,
   Receipt,
   Server,
+  Settings,
   ShieldCheck,
   UserCog,
   Users,
@@ -37,7 +38,8 @@ type StaffLink = {
     | "posts"
     | "comments"
     | "team"
-    | "audit";
+    | "audit"
+    | "storeSettings";
   icon: typeof Users;
   permission: string;
 };
@@ -77,6 +79,7 @@ export const STAFF_GROUPS: {
   {
     label: "settings",
     links: [
+      { to: paths.staffSettings.getHref(), label: "storeSettings", icon: Settings, permission: "settings:manage" },
       { to: paths.staffNotifications.getHref(), label: "notifications", icon: Mail, permission: "settings:manage" },
       { to: paths.staffTeam.getHref(), label: "team", icon: UserCog, permission: "users:read" },
       { to: paths.staffAudit.getHref(), label: "audit", icon: History, permission: "audit:read" },

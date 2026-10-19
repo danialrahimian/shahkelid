@@ -132,6 +132,10 @@ export const paths = {
     path: "/staff/notifications",
     getHref: () => "/staff/notifications",
   },
+  staffSettings: {
+    path: "/staff/settings",
+    getHref: () => "/staff/settings",
+  },
   staffPlans: {
     path: "/staff/plans",
     getHref: () => "/staff/plans",

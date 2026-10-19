@@ -2,7 +2,8 @@
 
 const path = require("node:path");
 
-require("dotenv").config();
+// quiet: dotenv 17 otherwise prints a tip line, into every command's output.
+require("dotenv").config({ quiet: true });
 
 /**
  * Environment-aware, validated configuration (best practice 1.4).
@@ -43,7 +44,10 @@ const readNumber = (key, fallback) => {
   return parsed;
 };
 
-const zarinpalMerchantId = read("ZARINPAL_MERCHANT_ID", { required: true });
+// Optional since M11: set in the staff area. Without one Zarinpal is off.
+const zarinpalMerchantId = read("ZARINPAL_MERCHANT_ID", { fallback: "" });
+// The sandbox is for development; a server takes real payments unless told otherwise.
+const zarinpalSandbox = read("ZARINPAL_SANDBOX", { fallback: isProduction ? "false" : "true" }) !== "false";
 
 const config = {
   env: NODE_ENV,
@@ -141,14 +145,10 @@ const config = {
 
   // Buying (src/modules/billing).
   checkout: {
-    // Zarinpal's v4 API. In the sandbox any merchant id is accepted, so
-    // development needs none; production refuses to start without one.
-    zarinpalSandbox: read("ZARINPAL_SANDBOX", { fallback: "true" }) !== "false",
-    zarinpalMerchantId:
-      zarinpalMerchantId ||
-      (read("ZARINPAL_SANDBOX", { fallback: "true" }) !== "false"
-        ? "00000000-0000-0000-0000-000000000000"
-        : ""),
+    // Zarinpal's v4 API, when no merchant id is saved in the staff area. In
+    // the sandbox any merchant id is accepted, so development needs none.
+    zarinpalSandbox,
+    zarinpalMerchantId: zarinpalMerchantId || (zarinpalSandbox ? "00000000-0000-0000-0000-000000000000" : ""),
     // An unpaid order lapses after this long; a card transfer gets longer,
     // since the customer has to go to their bank app and come back.
     orderTtlMs: readNumber("ORDER_TTL_MS", 60 * 60 * 1000),
@@ -190,6 +190,8 @@ const config = {
   alerts: {
     // A bot from @BotFather, and the chats (people or a group) it writes to.
     telegramBotToken: read("TELEGRAM_BOT_TOKEN", { fallback: "" }),
+    // The Bot API; a stand-in for it on a test machine.
+    telegramApiUrl: read("TELEGRAM_API_URL", { fallback: "https://api.telegram.org" }).replace(/\/+$/, ""),
     telegramChatIds: read("TELEGRAM_ADMIN_CHAT_IDS", { fallback: "" })
       .split(",")
       .map((id) => id.trim())
@@ -211,12 +213,26 @@ const config = {
   },
 
 
+  // Mail, when none is saved in the staff area (settings → mail), where it
+  // is normally set since M11. Empty on a server until then.
   mail: {
-    host: read("SMTP_HOST", { fallback: "sandbox.smtp.mailtrap.io" }),
-    port: readNumber("SMTP_PORT", 2525),
-    user: read("SMTP_USER", { required: true }),
-    password: read("SMTP_PASSWORD", { required: true }),
-    from: read("MAIL_FROM", { fallback: "no-reply@shahkelid.local" }),
+    host: read("SMTP_HOST", { fallback: isProduction ? "" : "sandbox.smtp.mailtrap.io" }),
+    port: readNumber("SMTP_PORT", isProduction ? 587 : 2525),
+    user: read("SMTP_USER", { fallback: "" }),
+    password: read("SMTP_PASSWORD", { fallback: "" }),
+    from: read("MAIL_FROM", { fallback: isProduction ? "" : "no-reply@shahkelid.local" }),
+  },
+
+  worker: {
+    // Touched every few seconds; the container's health check reads it.
+    heartbeatFile: read("WORKER_HEARTBEAT_FILE", { fallback: "/tmp/worker-alive" }),
+  },
+
+  // The backup service's mailbox, shared with it (docker volume): the
+  // settings it should use, its last report, and "back up now" requests.
+  // Unset on a development machine, where there is no backup service.
+  backups: {
+    controlDirectory: read("BACKUP_CONTROL_DIR", { fallback: "" }),
   },
 
   auth: {

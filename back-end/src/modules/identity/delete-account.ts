@@ -65,6 +65,7 @@ export const deleteAccount = async (db: Db, userId: string, by: "self" | StaffAc
       .update(users)
       .set({
         email: gone,
+        username: null,
         emailNormalized: gone,
         displayName: "",
         passwordHash: null,

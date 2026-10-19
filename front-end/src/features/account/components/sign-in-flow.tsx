@@ -1,6 +1,7 @@
 import type { SessionView } from "@shah-kelid/contracts";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router";
 import { toast } from "sonner";
 
 import { useAppDispatch } from "@/stores";
@@ -29,7 +30,12 @@ export const SignInFlow = () => {
   const { t } = useTranslation();
   const dispatch = useAppDispatch();
   const { data: session } = useAccountSessionQuery();
-  const [chosen, setChosen] = React.useState<SignInStep>();
+  const [searchParams] = useSearchParams();
+  // Headed for the staff area, or sent here by the installer: the password
+  // first, since a username has no email to send a code to.
+  const passwordFirst =
+    searchParams.get("with") === "password" || (searchParams.get("redirectTo") ?? "").startsWith("/staff");
+  const [chosen, setChosen] = React.useState<SignInStep | undefined>(passwordFirst ? { kind: "password" } : undefined);
   const [email, setEmail] = React.useState("");
   const [recovery, setRecovery] = React.useState<Recovery>();
 

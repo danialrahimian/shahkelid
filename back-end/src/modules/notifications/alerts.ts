@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import config from "../../config";
+import { current, isMailSetUp } from "../settings/live";
+import { sendTelegramMessage } from "./telegram";
 import logger from "../../libraries/logger";
 import type { Db, Executor } from "../../platform/db/client";
 import { recordEvent } from "../../platform/outbox/outbox";
@@ -36,19 +38,9 @@ export const alertStaff = (executor: Executor, alert: Alert, about?: { type: str
 
 export type TelegramSender = (chatId: string, text: string) => Promise<void>;
 
+// Through the token saved in the panel (or .env), as it is when sending.
 const telegramApi: TelegramSender = async (chatId, text) => {
-  const response = await fetch(
-    `https://api.telegram.org/bot${config.alerts.telegramBotToken}/sendMessage`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
-      signal: AbortSignal.timeout(10_000),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(`Telegram refused the message: HTTP ${response.status} ${await response.text()}`);
-  }
+  await sendTelegramMessage(current("telegram").botToken, chatId, text);
 };
 
 let telegram: TelegramSender = telegramApi;
@@ -67,7 +59,9 @@ const recipients = async (db: Db) =>
       .innerJoin(userRoles, eq(userRoles.userId, users.id))
       .innerJoin(roles, eq(roles.id, userRoles.roleId))
       .where(and(inArray(roles.key, ["owner", "admin"]), eq(users.status, "active"), isNull(users.deletedAt)))
-  ).map((row) => row.email);
+  )
+    // An owner with only a username has no mailbox yet; Telegram still reaches them.
+    .flatMap((row) => (row.email ? [row.email] : []));
 
 /**
  * Sends one alert. Telegram and email are tried separately, so Telegram
@@ -78,7 +72,9 @@ export const deliverAlert = async (db: Db, alert: Alert) => {
   const failures: unknown[] = [];
   let delivered = 0;
 
-  for (const email of await recipients(db)) {
+  // No mail service yet (a fresh install): Telegram is the only channel.
+  const emails = isMailSetUp() || !config.isProduction ? await recipients(db) : [];
+  for (const email of emails) {
     try {
       await deliverEmail({ to: email, subject: `[شاه‌کلید] ${alert.subject}`, text: alert.text });
       delivered += 1;
@@ -87,8 +83,9 @@ export const deliverAlert = async (db: Db, alert: Alert) => {
     }
   }
 
-  if (config.alerts.telegramBotToken) {
-    for (const chatId of config.alerts.telegramChatIds) {
+  const { botToken, chatIds } = current("telegram");
+  if (botToken) {
+    for (const chatId of chatIds) {
       try {
         await telegram(chatId, `⚠️ ${alert.subject}\n\n${alert.text}`);
         delivered += 1;

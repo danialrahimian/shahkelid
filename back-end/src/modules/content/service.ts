@@ -290,10 +290,10 @@ export const staffPost = async (db: Db, postId: string) => staffViewOf(await pos
 
 const authorNameOf = async (executor: Executor, userId: string) => {
   const [user] = await executor
-    .select({ displayName: users.displayName, email: users.email })
+    .select({ displayName: users.displayName, email: users.email, username: users.username })
     .from(users)
     .where(eq(users.id, userId));
-  return user?.displayName || user?.email.split("@")[0] || "شاه‌کلید";
+  return user?.displayName || user?.email?.split("@")[0] || user?.username || "شاه‌کلید";
 };
 
 export const createPost = async (db: Db, actor: StaffActor, input: z.output<typeof postInput>) =>

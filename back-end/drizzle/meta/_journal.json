@@ -57,6 +57,13 @@
       "when": 1791379132432,
       "tag": "0007_review_fixes",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792431142445,
+      "tag": "0008_owner_username",
+      "breakpoints": true
     }
   ]
 }

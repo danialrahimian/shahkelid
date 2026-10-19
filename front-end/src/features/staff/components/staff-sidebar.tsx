@@ -85,7 +85,7 @@ export const StaffSidebar = ({ account }: { account: AccountView }) => {
               <Link to={paths.account.getHref()}>
                 <UserRound aria-hidden />
                 <span className="truncate" dir="ltr">
-                  {account.email}
+                  {account.email ?? account.username}
                 </span>
               </Link>
             </SidebarMenuButton>

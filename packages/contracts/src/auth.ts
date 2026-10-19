@@ -32,6 +32,18 @@ export const emailSchema = z
  * passwords harder to guess.
  */
 export const PASSWORD_MIN = 8;
+
+/**
+ * A staff username, for signing in without an email (the owner the
+ * installer makes): 3 to 32 of a-z, 0-9, dot, dash and underscore. Never an
+ * @, so a username and an email can share one sign-in field.
+ */
+export const USERNAME_PATTERN = /^[a-z0-9._-]{3,32}$/;
+export const usernameSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(USERNAME_PATTERN, "USERNAME_INVALID");
 export const PASSWORD_MAX = 128;
 
 export const passwordSchema = z
@@ -62,7 +74,8 @@ export const verifyCodeInput = z.object({ email: emailSchema, code: signInCodeSc
 export type VerifyCodeInput = z.infer<typeof verifyCodeInput>;
 
 export const passwordSignInInput = z.object({
-  email: emailSchema,
+  /** An email, or a staff username. */
+  login: z.string().trim().min(3, "LOGIN_REQUIRED").max(254, "LOGIN_REQUIRED"),
   // Not held to the length rule: an old password that predates it must still
   // be accepted, and the answer should be "wrong password", not "too short".
   password: z.string().min(1, "PASSWORD_REQUIRED").max(PASSWORD_MAX, "PASSWORD_TOO_LONG"),
@@ -94,6 +107,8 @@ export const AUTH_ERROR_CODES = [
   "PASSWORD_TOO_SHORT",
   "PASSWORD_TOO_LONG",
   "PASSWORD_REQUIRED",
+  "LOGIN_REQUIRED",
+  "USERNAME_INVALID",
   "CODE_INVALID",
   "CODE_EXPIRED",
   "CODE_WRONG",
@@ -117,7 +132,9 @@ export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];
 /** What the API says about the signed-in account. */
 export type AccountView = {
   id: string;
-  email: string;
+  /** Null only for a staff account made with a username, until it adds one. */
+  email: string | null;
+  username: string | null;
   displayName: string;
   locale: "fa" | "en";
   emailVerified: boolean;

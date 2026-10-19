@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 
-import type { Db } from "../../platform/db/client";
+import type { Db, Executor } from "../../platform/db/client";
 import { createVerifiedAccount, findUserByEmail } from "../identity/service";
 import { writeAudit } from "./audit";
 import { rolesOf } from "./roles";
@@ -28,33 +28,40 @@ export class OwnerExistsError extends Error {
   }
 }
 
+/**
+ * Gives an account the owner role, inside the caller's transaction. Refuses
+ * when an owner exists already, unless `another`. True when it was granted
+ * now, false when the account was an owner already.
+ */
+export const grantOwner = async (tx: Executor, userId: string, { another = false } = {}) => {
+  // The role row is locked, not the owners: with no owners yet there is no
+  // row to lock, and two runs at once would both see "no owner yet".
+  const [ownerRole] = await tx.select().from(roles).where(eq(roles.key, "owner")).for("update");
+  if (!ownerRole) throw new Error("The owner role is missing: run the migrations first");
+
+  const owners = await tx
+    .select({ userId: userRoles.userId })
+    .from(userRoles)
+    .where(eq(userRoles.roleId, ownerRole.id));
+  const ownerIds = owners.map((row) => row.userId);
+  if (ownerIds.includes(userId)) return false;
+  if (ownerIds.length > 0 && !another) throw new OwnerExistsError();
+
+  const before = await rolesOf(tx, userId);
+  await tx.insert(userRoles).values({ userId, roleId: ownerRole.id });
+  await writeAudit(tx, {
+    actorKind: "system",
+    action: "access.role_granted",
+    entityType: "user",
+    entityId: userId,
+    before: { roles: before },
+    after: { roles: await rolesOf(tx, userId) },
+  });
+  return true;
+};
+
 export const appointOwner = async (db: Db, email: string, { another = false } = {}) => {
   const account = (await findUserByEmail(db, email)) ?? (await createVerifiedAccount(db, email));
-
-  return db.transaction(async (tx) => {
-    // The role row is locked, not the owners: with no owners yet there is no
-    // row to lock, and two runs at once would both see "no owner yet".
-    const [ownerRole] = await tx.select().from(roles).where(eq(roles.key, "owner")).for("update");
-    if (!ownerRole) throw new Error("The owner role is missing: run the migrations first");
-
-    const owners = await tx
-      .select({ userId: userRoles.userId })
-      .from(userRoles)
-      .where(eq(userRoles.roleId, ownerRole.id));
-    const ownerIds = owners.map((row) => row.userId);
-    if (ownerIds.includes(account.id)) return { userId: account.id, created: false };
-    if (ownerIds.length > 0 && !another) throw new OwnerExistsError();
-
-    const before = await rolesOf(tx, account.id);
-    await tx.insert(userRoles).values({ userId: account.id, roleId: ownerRole.id });
-    await writeAudit(tx, {
-      actorKind: "system",
-      action: "access.role_granted",
-      entityType: "user",
-      entityId: account.id,
-      before: { roles: before },
-      after: { roles: await rolesOf(tx, account.id) },
-    });
-    return { userId: account.id, created: true };
-  });
+  const created = await db.transaction((tx) => grantOwner(tx, account.id, { another }));
+  return { userId: account.id, created };
 };

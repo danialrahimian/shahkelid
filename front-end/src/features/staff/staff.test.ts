@@ -22,6 +22,7 @@ describe("Typing panel group ids", () => {
 const staff = (permissions: string[]): AccountView => ({
   id: "0190a0b4-0000-7000-8000-000000000000",
   email: "staff@example.com",
+  username: null,
   displayName: "",
   locale: "fa",
   emailVerified: true,

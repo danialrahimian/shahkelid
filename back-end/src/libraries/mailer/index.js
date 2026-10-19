@@ -1,7 +1,7 @@
 "use strict";
 
 const nodemailer = require("nodemailer");
-const config = require("../../config");
+const { current } = require("../../modules/settings/live");
 const logger = require("../logger");
 
 /**
@@ -11,17 +11,28 @@ const logger = require("../logger");
  */
 
 let transport;
+let transportFor;
+let fixedTransport = false;
 
+/**
+ * The transport for the mail settings as they are now (saved in the staff
+ * area, or .env): made again when they change, so a corrected password
+ * takes effect without a restart.
+ */
 const getTransport = () => {
-  if (!transport) {
+  if (fixedTransport) return transport;
+  const mail = current("mail");
+  const fingerprint = JSON.stringify([mail.host, mail.port, mail.user, mail.password]);
+  if (!transport || transportFor !== fingerprint) {
     transport = nodemailer.createTransport({
-      host: config.mail.host,
-      port: config.mail.port,
+      host: mail.host,
+      port: mail.port,
       // 465 speaks TLS from the first byte; every other port starts plain
       // and is upgraded with STARTTLS when the server offers it.
-      secure: config.mail.port === 465,
-      auth: { user: config.mail.user, pass: config.mail.password },
+      secure: mail.port === 465,
+      auth: { user: mail.user, pass: mail.password },
     });
+    transportFor = fingerprint;
   }
   return transport;
 };
@@ -34,7 +45,7 @@ const getTransport = () => {
 const sendEmail = async ({ to, subject, text, html }) => {
   try {
     const info = await getTransport().sendMail({
-      from: config.mail.from,
+      from: current("mail").from,
       to,
       subject,
       text,
@@ -44,13 +55,16 @@ const sendEmail = async ({ to, subject, text, html }) => {
     return { delivered: true, messageId: info.messageId };
   } catch (error) {
     logger.error({ err: error, to }, "Failed to send email");
-    return { delivered: false };
+    // The provider's own words ("535 Authentication failed"): the settings
+    // page shows them to staff testing their mail.
+    return { delivered: false, error: error instanceof Error ? error.message : String(error) };
   }
 };
 
 /** Test seam: lets a suite install a fake transport. */
 const setTransport = (fake) => {
   transport = fake;
+  fixedTransport = Boolean(fake);
 };
 
 module.exports = { sendEmail, setTransport };

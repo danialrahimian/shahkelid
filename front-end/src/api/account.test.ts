@@ -84,7 +84,7 @@ describe.skipIf(!backendUp)("Account API against the live backend", () => {
 
     const failure = await store
       .dispatch(
-        accountApi.endpoints.accountPasswordSignIn.initiate({ email, password: "not the password" }),
+        accountApi.endpoints.accountPasswordSignIn.initiate({ login: email, password: "not the password" }),
       )
       .unwrap()
       .catch((error: unknown) => error);

@@ -87,8 +87,8 @@ export const identityRouter = ({ db, redis }: { db: Db; redis: Redis }) => {
   });
 
   router.post("/password", perIp, async (req, res) => {
-    const { email, password } = parseBody(passwordSignInInput, req.body);
-    const user = await signInWithPassword(context, email, password);
+    const { login, password } = parseBody(passwordSignInInput, req.body);
+    const user = await signInWithPassword(context, login, password);
     await startAccountSession(req, user);
     res.json(await sessionViewOf(db, req));
   });
@@ -117,11 +117,12 @@ export const identityRouter = ({ db, redis }: { db: Db; redis: Redis }) => {
     res.json(await sessionViewOf(db, req));
   });
 
-  /** Deleting one's own account; the email typed must be the account's. */
+  /** Deleting one's own account; what is typed must be its email (or username). */
   router.post("/delete-account", requireSignedIn, async (req, res) => {
     const { email } = parseBody(deleteAccountInput, req.body);
     const user = req.account!.user;
-    if (email.toLowerCase() !== user.email.toLowerCase()) {
+    const confirmation = user.email ?? user.username ?? "";
+    if (email.toLowerCase() !== confirmation.toLowerCase()) {
       throw new ApiError(400, "CONFIRMATION_MISMATCH", "Type the account's email to confirm", {
         fields: [{ path: "email", code: "CONFIRMATION_MISMATCH" }],
       });

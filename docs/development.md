@@ -34,6 +34,20 @@ npm run create-owner -w back-end -- you@example.com
 
 Then open http://localhost:5173/account/sign-in and sign in with that address. Without SMTP settings (`SMTP_USER` empty), emails are not sent: the **worker** writes them to its log, so the worker must be running to see the code. An owner is asked to set up an authenticator app (Google Authenticator, 2FAS, …) before anything else, and is shown ten recovery codes once.
 
+Or, as the server installer does, an owner with a username and a password and no email (the password on stdin):
+
+```bash
+echo 'a long password' | npm run owner -w back-end -- create boss
+```
+
+They sign in on the same page, with the username in the email field.
+
+## Settings in the staff area
+
+Mail, Telegram, the payment accounts and backups are set at `/staff/settings` (owners and admins), each with a button that tries it for real. What is saved there is sealed with `APP_ENCRYPTION_KEY` in the `site_settings` table and wins over `.env`; a section never saved there falls back to `.env`, as before. Every process reads them again every 10 seconds, so a change needs no restart.
+
+To try the Telegram buttons against a stand-in for the Bot API, point `TELEGRAM_API_URL` at it.
+
 | Page | What it is |
 |---|---|
 | `/account/sign-in` | Email code (also creates the account), or password; then the authenticator code |
@@ -70,13 +84,13 @@ The customer's link is `{PUBLIC_API_URL}/s/{token}` (default `http://localhost:5
 
 `/pricing` lists the plans on sale; buying one is `/buy/{planId}`: the buyer signs in there with an emailed code if needed, chooses online payment (Zarinpal) or card to card, and pays. `/orders/{id}` then shows the link and QR code as soon as the service is ready. The old cart and checkout pages are gone; their addresses lead to `/pricing`.
 
-- **Zarinpal** runs on its sandbox until `ZARINPAL_SANDBOX=false` and `ZARINPAL_MERCHANT_ID` are set in `back-end/.env`. In the sandbox the payment page has a "پرداخت" button that pays without a card.
+- **Zarinpal** runs on its sandbox until a merchant id is saved in `/staff/settings` (or `ZARINPAL_SANDBOX=false` and `ZARINPAL_MERCHANT_ID` are set in `back-end/.env`). On a server the sandbox is off unless asked for, and without a merchant id Zarinpal is not offered. In the sandbox the payment page has a "پرداخت" button that pays without a card.
 - **Card to card**: add the cards to show buyers in `/staff/payments` (owners and admins). Receipts wait there for review; suspicious ones (a repeated image or tracking number, a different amount) are flagged. Receipt images are stored in `back-end/files/`, which is never committed and never served publicly.
-- **Alerts** to owners and admins go by email, and to Telegram when `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ADMIN_CHAT_IDS` are set. Telegram is filtered in Iran, so from a machine there only the emails arrive; on the server abroad both do.
+- **Alerts** to owners and admins go by email, and to Telegram once a bot and its chats are saved in `/staff/settings` (or `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ADMIN_CHAT_IDS` in `.env`). Telegram is filtered in Iran, so from a machine there only the emails arrive; on the server abroad both do.
 
 - **Crypto** appears at checkout only once it is set up and the USDT rate (read from Nobitex every minute) is fresh:
-  - **USDT on TRON**: set `TRON_RECEIVE_ADDRESS` (the address only; the server never holds a wallet key). Each order is quoted an exact amount (for example 1.500347 USDT) and is paid when that amount arrives. Transfers that match no quote wait in `/staff/payments` for a decision. For the Nile testnet, also set `TRONGRID_URL=https://nile.trongrid.io` and `TRON_USDT_CONTRACT=TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf`.
-  - **NOWPayments**: set `NOWPAYMENTS_API_KEY` and `NOWPAYMENTS_IPN_SECRET` (and `NOWPAYMENTS_SANDBOX=true` for its sandbox).
+  - **USDT on TRON**: save the receiving address in `/staff/settings` or set `TRON_RECEIVE_ADDRESS` (the address only; the server never holds a wallet key). Each order is quoted an exact amount (for example 1.500347 USDT) and is paid when that amount arrives. Transfers that match no quote wait in `/staff/payments` for a decision. For the Nile testnet, also set `TRONGRID_URL=https://nile.trongrid.io` and `TRON_USDT_CONTRACT=TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf`.
+  - **NOWPayments**: save its keys in `/staff/settings`, or set `NOWPAYMENTS_API_KEY` and `NOWPAYMENTS_IPN_SECRET` (and `NOWPAYMENTS_SANDBOX=true` for its sandbox).
 
 - **Emails to customers** (service ready, payment received, renewed, and the reminders at 3 days and 1 day left and at 80% and 100% of the volume) are in Persian and can be rewritten, previewed or switched off in `/staff/notifications`. Each customer's page in `/staff` lists what they were sent, or why not.
 

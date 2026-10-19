@@ -8,6 +8,8 @@ const { createApp } = require("./app");
 const { closeDb } = require("./platform/db/client");
 const { closeAppRedis } = require("./platform/redis");
 const { closeEmailQueue } = require("./modules/notifications/email");
+const { getDb } = require("./platform/db/client");
+const { startSettingsRefresh, stopSettingsRefresh } = require("./modules/settings/live");
 
 /**
  * Owns the process lifecycle.
@@ -20,6 +22,9 @@ const { closeEmailQueue } = require("./modules/notifications/email");
 let server;
 
 const start = async ({ port = config.server.port } = {}) => {
+  // The settings saved in the staff area (mail, payments…), before the
+  // first request needs them, and every few seconds after.
+  await startSettingsRefresh(getDb());
   const app = createApp();
   server = http.createServer(app);
 
@@ -42,6 +47,7 @@ const stop = async () => {
     await new Promise((resolve) => server.close(resolve));
   }
   server = undefined;
+  stopSettingsRefresh();
   // Each connection is opened only on first use, and closing one that was
   // never opened does nothing.
   await closeEmailQueue();

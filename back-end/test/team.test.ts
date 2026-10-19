@@ -126,7 +126,7 @@ describe("Deleting an account", () => {
     const [row] = await database().select().from(users).where(eq(users.id, customer.id));
     assert.equal(row!.status, "deleted");
     assert.notEqual(row!.email, customer.email);
-    assert.match(row!.email, /@deleted\.invalid$/);
+    assert.match(row!.email ?? "", /@deleted\.invalid$/);
     assert.equal(row!.passwordHash, null);
     assert.equal((await database().select().from(customerNotes).where(eq(customerNotes.userId, customer.id))).length, 0);
 

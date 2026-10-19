@@ -10,6 +10,7 @@ import { reportsRouter } from "../modules/reports/routes";
 import { identityRouter } from "../modules/identity/routes";
 import { infrastructureRouter } from "../modules/infrastructure/routes";
 import { notificationsRouter } from "../modules/notifications/routes";
+import { settingsRouter } from "../modules/settings/routes";
 import { subscriptionLinkRouter } from "../modules/subscriptions/link";
 import { subscriptionsRouter } from "../modules/subscriptions/routes";
 import { supportRouter, supportStaffRouter } from "../modules/support/routes";
@@ -44,6 +45,7 @@ export const createV1Router = () => {
   router.use("/staff", subscriptionsRouter({ db }));
   router.use("/staff", billingStaffRouter({ db }));
   router.use("/staff", notificationsRouter({ db }));
+  router.use("/staff/settings", settingsRouter({ db, redis }));
   router.use("/staff", supportStaffRouter({ db }));
   router.use("/staff", contentStaffRouter({ db }));
   router.use("/support", supportRouter({ db, redis }));

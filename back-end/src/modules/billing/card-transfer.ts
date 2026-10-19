@@ -16,7 +16,7 @@ import { auditBy, type StaffActor } from "../../platform/http/actor";
 import { ApiError, notFound } from "../../platform/http/api-error";
 import { writeAudit } from "../access/audit";
 import { savePrivateImage, sha256 } from "../files/storage";
-import { users } from "../identity/schema";
+import { accountLabel, optionalAccountLabel, users } from "../identity/schema";
 import { alertStaff } from "../notifications/alerts";
 import { payableOrder, settlePayment } from "./orders";
 import { cardTransferReceipts, orderItems, orders, paymentCards, payments } from "./schema";
@@ -176,11 +176,11 @@ const receiptRows = (db: Db) =>
       payment: payments,
       receipt: cardTransferReceipts,
       order: orders,
-      customerEmail: users.email,
+      customerEmail: accountLabel(),
       cardLabel: paymentCards.label,
       cardNumber: paymentCards.cardNumber,
       planName: orderItems.planSnapshot,
-      reviewerEmail: reviewer.email,
+      reviewerEmail: optionalAccountLabel(reviewer),
     })
     .from(payments)
     .innerJoin(cardTransferReceipts, eq(cardTransferReceipts.paymentId, payments.id))

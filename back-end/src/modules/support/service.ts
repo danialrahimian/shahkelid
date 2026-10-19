@@ -26,7 +26,7 @@ import { writeAudit } from "../access/audit";
 import { rolePermissions, userRoles } from "../access/schema";
 import { savePrivateImage } from "../files/storage";
 import { files } from "../files/schema";
-import { users } from "../identity/schema";
+import { accountLabel, optionalAccountLabel, users } from "../identity/schema";
 import { deliverEmail } from "../notifications/email";
 import { notifyCustomer } from "../notifications/notify";
 import { plans } from "../catalog/schema";
@@ -97,14 +97,14 @@ export const saveCategory = async (
 /** Everyone who may answer tickets: they are who a new ticket is announced to, and who it can be given to. */
 export const agents = async (executor: Executor) =>
   executor
-    .selectDistinct({ id: users.id, email: users.email })
+    .selectDistinct({ id: users.id, email: accountLabel(), address: users.email })
     .from(users)
     .innerJoin(userRoles, eq(userRoles.userId, users.id))
     .innerJoin(rolePermissions, eq(rolePermissions.roleId, userRoles.roleId))
     .where(
       and(eq(rolePermissions.permission, "tickets:reply"), eq(users.status, "active"), isNull(users.deletedAt)),
     )
-    .orderBy(asc(users.email));
+    .orderBy(asc(accountLabel()));
 
 /** Tells the agents about a ticket, through the outbox (sent by the worker). */
 const alertAgents = (executor: Executor, ticket: TicketRow, what: "new" | "reply") =>
@@ -123,17 +123,19 @@ export const deliverTicketAlert = async (db: Db, payload: { ticketId: string; wh
   const [ticket] = await db.select().from(tickets).where(eq(tickets.id, payload.ticketId));
   if (!ticket) return 0;
   const recipients = ticket.assignedToUserId
-    ? await db.select({ email: users.email }).from(users).where(eq(users.id, ticket.assignedToUserId))
+    ? await db.select({ address: users.email }).from(users).where(eq(users.id, ticket.assignedToUserId))
     : await agents(db);
   const link = `${config.cors.origin}/staff/tickets/${ticket.id}`;
   // One agent's mailbox failing does not keep the others from hearing; the
   // job is retried only when nobody was reached, so nobody is told twice.
   let delivered = 0;
   const failures: unknown[] = [];
-  for (const { email } of recipients) {
+  for (const { address } of recipients) {
+    // A username-only agent has no mailbox to tell.
+    if (!address) continue;
     try {
       await deliverEmail({
-        to: email,
+        to: address,
         subject:
           payload.what === "new"
             ? `[تیکت ${ticket.number}] تازه: ${ticket.subject}`
@@ -157,7 +159,7 @@ const author = alias(users, "author");
 
 const messagesOf = async (executor: Executor, ticketId: string, { withInternal }: { withInternal: boolean }) => {
   const rows = await executor
-    .select({ message: ticketMessages, authorEmail: author.email })
+    .select({ message: ticketMessages, authorEmail: optionalAccountLabel(author) })
     .from(ticketMessages)
     .leftJoin(author, eq(author.id, ticketMessages.authorUserId))
     .where(
@@ -346,8 +348,8 @@ const staffRows = (db: Executor) =>
     .select({
       ticket: tickets,
       categoryName: ticketCategories.nameFa,
-      customerEmail: customer.email,
-      assigneeEmail: assignee.email,
+      customerEmail: accountLabel(customer),
+      assigneeEmail: optionalAccountLabel(assignee),
     })
     .from(tickets)
     .innerJoin(customer, eq(customer.id, tickets.userId))

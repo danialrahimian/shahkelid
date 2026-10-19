@@ -224,7 +224,7 @@ export const AccountOverview = ({ account }: { account: AccountView }) => {
       <Row label={t("account.profile.email")}>
         <p className="flex flex-wrap items-center gap-2">
           <bdi dir="ltr" className="text-foreground">
-            {account.email}
+            {account.email ?? account.username}
           </bdi>
           {account.isStaff ? (
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
@@ -274,7 +274,7 @@ export const AccountOverview = ({ account }: { account: AccountView }) => {
 
       {account.isStaff ? null : (
         <div className="border-t pt-4">
-          <DeleteAccount email={account.email} />
+          <DeleteAccount email={account.email ?? account.username ?? ""} />
         </div>
       )}
     </div>

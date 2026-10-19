@@ -72,6 +72,7 @@ export const createAppRouter = () =>
         { path: paths.staffComments.path, element: lazyRoute(() => import("@/app/routes/staff/comments")) },
         { path: paths.staffPlans.path, element: lazyRoute(() => import("@/app/routes/staff/plans")) },
         { path: paths.staffNotifications.path, element: lazyRoute(() => import("@/app/routes/staff/notifications")) },
+        { path: paths.staffSettings.path, element: lazyRoute(() => import("@/app/routes/staff/settings")) },
         { path: paths.staffServers.path, element: lazyRoute(() => import("@/app/routes/staff/servers")) },
         { path: paths.staffPanels.path, element: lazyRoute(() => import("@/app/routes/staff/panels")) },
         { path: paths.staffTeam.path, element: lazyRoute(() => import("@/app/routes/staff/team")) },

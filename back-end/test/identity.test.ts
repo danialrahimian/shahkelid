@@ -58,7 +58,7 @@ const signInByCode = async (client: Client, email: string) => {
 };
 
 const signInByPassword = (client: Client, email: string, password: string) =>
-  client.post(`${V1}/auth/password`, { email, password });
+  client.post(`${V1}/auth/password`, { login: email, password });
 
 /** Stands in for the minute that must pass between two codes to one address. */
 const forgetCodeCooldown = (email: string) => getAppRedis().del(`code-cooldown:${email}`);

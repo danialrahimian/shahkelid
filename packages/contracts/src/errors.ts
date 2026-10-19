@@ -1,4 +1,5 @@
 import { AUTH_ERROR_CODES } from "./auth.ts";
+import { SETTINGS_ERROR_CODES } from "./settings.ts";
 
 /**
  * Every error code the API can answer with, and every code a shared schema
@@ -79,6 +80,9 @@ export const API_ERROR_CODES = [
   // accounts (M9)
   /** The email typed to confirm deleting an account is not the account's. */
   "CONFIRMATION_MISMATCH",
+
+  // settings in the staff area (M11)
+  ...SETTINGS_ERROR_CODES,
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

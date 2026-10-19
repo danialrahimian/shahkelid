@@ -8,7 +8,7 @@ import { users } from "../identity/schema";
 import { alertStaff } from "../notifications/alerts";
 import { payableOrder, settlePayment, type PaymentRow } from "./orders";
 import { orders, payments } from "./schema";
-import { GatewayRejectedError, GatewayUnavailableError, zarinpal } from "./zarinpal";
+import { GatewayRejectedError, GatewayUnavailableError, isZarinpalSetUp, zarinpal } from "./zarinpal";
 
 /**
  * Paying an order with Zarinpal:
@@ -24,6 +24,7 @@ import { GatewayRejectedError, GatewayUnavailableError, zarinpal } from "./zarin
 export const callbackUrl = () => `${config.provisioning.publicUrl}/api/v1/payments/zarinpal/callback`;
 
 export const startZarinpal = async (db: Db, userId: string, orderId: string) => {
+  if (!isZarinpalSetUp()) throw new ApiError(409, "METHOD_UNAVAILABLE", "Zarinpal is not set up");
   const order = await payableOrder(db, userId, orderId);
   const [customer] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId));
 
@@ -37,7 +38,7 @@ export const startZarinpal = async (db: Db, userId: string, orderId: string) => 
       amountToman: order.totalToman,
       callbackUrl: callbackUrl(),
       description: `سفارش ${order.number}`,
-      email: customer?.email,
+      email: customer?.email ?? undefined,
     });
     await db
       .update(payments)

@@ -17,7 +17,8 @@
 # gateway pick their own address and walk past every rate limit.
 
 {
-	email {$ACME_EMAIL}
+	# "email you@example.com" when ACME_EMAIL is set, else nothing.
+	{$CADDY_EMAIL_OPTION}
 	# "local_certs" on a trial install without real domains: every
 	# certificate then comes from Caddy's own authority. Empty in production.
 	{$CADDY_LOCAL_CERTS}

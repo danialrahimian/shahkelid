@@ -128,7 +128,7 @@ export const suspend = async (email: string) => {
 export const signedInStaff = async (roleKeys: string[]) => {
   const staff = await aStaffMember({ roleKeys, withAuthenticator: true });
   const client = createClient();
-  await client.post("/api/v1/auth/password", { email: staff.email, password: staff.password });
+  await client.post("/api/v1/auth/password", { login: staff.email, password: staff.password });
   const verified = await client.post("/api/v1/auth/two-factor/verify", {
     code: staff.authenticator!.next(),
   });

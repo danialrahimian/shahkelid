@@ -49,7 +49,8 @@ RUN npm ci --omit=dev --no-audit --no-fund -w back-end -w packages/contracts \
  && npm cache clean --force
 COPY back-end back-end
 # Private files (receipts, ticket screenshots, covers) live on a volume here.
-RUN mkdir -p back-end/files && chown -R node:node back-end/files
+# /control: the backup service's mailbox (a volume), writable by the app.
+RUN mkdir -p back-end/files /control && chown -R node:node back-end/files /control
 USER node
 WORKDIR /app/back-end
 EXPOSE 5000

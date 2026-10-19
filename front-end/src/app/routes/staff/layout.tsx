@@ -8,6 +8,7 @@ import { RouteFallback } from "@/components/ui/route-fallback";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { paths } from "@/config/paths";
+import { SetupBanner } from "@/features/staff/components/setup-banner";
 import { StaffSidebar } from "@/features/staff/components/staff-sidebar";
 
 /**
@@ -45,6 +46,7 @@ const StaffLayout = () => {
         </header>
         <AppErrorBoundary resetKeys={[pathname]}>
           <div className="min-w-0 flex-1 p-4 md:p-6">
+            {session.account.permissions.includes("settings:manage") ? <SetupBanner /> : null}
             <Outlet context={session.account} />
           </div>
         </AppErrorBoundary>

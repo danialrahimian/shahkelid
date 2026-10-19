@@ -1,5 +1,6 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import {
+  type AnyPgColumn as Column,
   bigint,
   check,
   index,
@@ -19,10 +20,16 @@ export const users = pgTable(
   "users",
   {
     id: id(),
-    // case-insensitive, so Ali@x.com and ali@x.com are one account
-    email: citext("email").notNull().unique(),
+    // case-insensitive, so Ali@x.com and ali@x.com are one account. Null
+    // only for a staff account made with a username (the owner the
+    // installer creates), until they add an address.
+    email: citext("email").unique(),
     // gmail dots and +tags stripped; what free-trial abuse is checked against
-    emailNormalized: text("email_normalized").notNull(),
+    emailNormalized: text("email_normalized"),
+    // Signs in with a password instead of an email; staff only. Lowercase
+    // letters, digits, dot, dash and underscore (no @, so it never looks
+    // like an address).
+    username: citext("username").unique(),
     emailVerifiedAt: at("email_verified_at"),
     // null for an account that only ever signs in with an emailed code
     passwordHash: text("password_hash"),
@@ -50,6 +57,8 @@ export const users = pgTable(
   },
   (t) => [
     check("users_display_name_length", sql`char_length(${t.displayName}) <= 80`),
+    check("users_email_or_username", sql`${t.email} is not null or ${t.username} is not null`),
+    check("users_username_format", sql`${t.username} ~ '^[a-z0-9._-]{3,32}$'`),
     check("users_locale", sql`${t.locale} in ('fa', 'en')`),
     check(
       "users_not_self_referred",
@@ -77,3 +86,14 @@ export const userRecoveryCodes = pgTable(
   },
   (t) => [index("user_recovery_codes_user_idx").on(t.userId)],
 );
+
+/**
+ * How staff screens name an account: its email, or its username when it has
+ * none (the owner the installer makes). Takes an alias of users, too.
+ */
+export const accountLabel = (table: { email: Column; username: Column } = users): SQL<string> =>
+  sql<string>`coalesce(${table.email}::text, ${table.username}::text)`;
+
+/** The same, for an account joined in that may not be there (left join). */
+export const optionalAccountLabel = (table: { email: Column; username: Column }): SQL<string | null> =>
+  sql<string | null>`coalesce(${table.email}::text, ${table.username}::text)`;
