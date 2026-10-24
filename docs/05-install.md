@@ -36,11 +36,10 @@ ssh root@203.0.113.10
 sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/danialrahimian/shahkelid/main/scripts/shahkelid.sh)" @ install
 ```
 
-نصب‌کننده این‌ها را می‌پرسد:
-1. **زبان:** فارسی یا انگلیسی. اگر ترمینال شما فارسی را به‌هم‌ریخته نشان می‌دهد، انگلیسی را انتخاب کنید.
-2. **دامنه:** مثل `shop.example.com`.
-3. **نام کاربری مالک:** حروف کوچک انگلیسی، عدد، `.` `-` `_`.
-4. **رمز مالک:** دو بار. هنگام تایپ دیده نمی‌شود.
+نصب‌کننده این‌ها را می‌پرسد (پیام‌های نصب‌کننده و دستور `shahkelid` انگلیسی‌اند، چون ترمینال سرور متن فارسی را به‌هم‌ریخته نشان می‌دهد):
+1. **دامنه:** مثل `shop.example.com`.
+2. **نام کاربری مالک:** حروف کوچک انگلیسی، عدد، `.` `-` `_`.
+3. **رمز مالک:** دو بار. هنگام تایپ دیده نمی‌شود.
 
 بعد خودش بررسی می‌کند که دامنه به همین سرور اشاره کند:
 - اگر نکند، می‌گوید چه چیزی را درست کنید و دوباره بررسی می‌کند.
@@ -230,7 +229,7 @@ Caddy برای دامنه‌ی تازه خودش گواهی می‌گیرد. و�
 
 ```bash
 printf '%s\n' 'رمز-مالک' | sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/danialrahimian/shahkelid/main/scripts/shahkelid.sh)" @ install \
-  --domain shop.example.com --username admin --password-stdin --yes --lang fa
+  --domain shop.example.com --username admin --password-stdin --yes
 ```
 
 ---
