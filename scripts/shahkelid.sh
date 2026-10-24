@@ -38,14 +38,12 @@ CONF=/etc/shahkelid/cli.conf
 LOG=/var/log/shahkelid-install.log
 REPORT=/root/shahkelid-install.txt
 APP_DIR=/opt/shahkelid
-UI_LANG=fa
 ASSUME_YES=0
 B='' G='' Y='' R='' C='' N=''
 STEP=0
 
 # ===================================================================== output
 
-L() { if [ "$UI_LANG" = en ]; then printf '%s' "$2"; else printf '%s' "$1"; fi; }
 ok() { printf '  %s✓%s %s\n' "$G" "$N" "$*"; }
 note() { printf '    %s\n' "$*"; }
 warn() { printf '  %s!%s %s\n' "$Y" "$N" "$*"; }
@@ -75,16 +73,15 @@ load_conf() {
     # shellcheck disable=SC1090
     . "$CONF"
   fi
-  UI_LANG=${SK_LANG:-${UI_LANG:-fa}}
   PROD="$APP_DIR/infra/production"
 }
 
 need_root() {
-  [ "$(id -u)" -eq 0 ] || die "$(L "با دسترسی root اجرا کنید: sudo shahkelid $*" "Run as root: sudo shahkelid $*")"
+  [ "$(id -u)" -eq 0 ] || die "Run as root: sudo shahkelid $*"
 }
 
 need_install() {
-  [ -f "$PROD/.env" ] || die "$(L "شاه‌کلید روی این سرور نصب نیست. نصب: shahkelid install" "Shah Kelid is not installed here. Install: shahkelid install")"
+  [ -f "$PROD/.env" ] || die "Shah Kelid is not installed here. Install: shahkelid install"
 }
 
 sk() { "$PROD/sk" "$@"; }
@@ -107,10 +104,10 @@ ask() {
   [ -z "$default" ] || printf ' [%s]' "$default"
   printf ': '
   if [ "$hidden" = hidden ]; then
-    IFS= read -r -s -u 3 __reply || die "$(L "پاسخی نرسید" "No answer came")"
+    IFS= read -r -s -u 3 __reply || die "No answer came"
     if [ -t 3 ]; then printf '\n'; else printf '****\n'; fi
   else
-    IFS= read -r -u 3 __reply || die "$(L "پاسخی نرسید" "No answer came")"
+    IFS= read -r -u 3 __reply || die "No answer came"
     [ -t 3 ] || printf '%s\n' "$__reply"
   fi
   __reply=$(trim "$__reply")
@@ -122,7 +119,7 @@ confirm() { # confirm "question" y|n
   local answer
   if [ "$ASSUME_YES" = 1 ]; then [ "$2" = y ]; return; fi
   ask answer "$1 (y/n)" "$2"
-  case ${answer,,} in y | yes | ب | بله | آره) return 0 ;; *) return 1 ;; esac
+  case ${answer,,} in y | yes) return 0 ;; *) return 1 ;; esac
 }
 
 valid_domain() { [[ ${1,,} =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$ ]]; }
@@ -132,7 +129,7 @@ valid_username() { [[ $1 =~ ^[a-z0-9._-]{3,32}$ ]]; }
 ask_domain() {
   local answer
   while :; do
-    ask answer "$(L "دامنه‌ی سایت (مثل shop.example.com؛ یا IP سرور برای نصب آزمایشی)" "The site's domain (like shop.example.com; or the server's IP for a trial)")" "${SERVER_IP:-}"
+    ask answer "The site's domain (like shop.example.com; or the server's IP for a trial)" "${SERVER_IP:-}"
     answer=${answer,,}
     answer=${answer#http://}
     answer=${answer#https://}
@@ -141,37 +138,37 @@ ask_domain() {
       DOMAIN=$answer
       return 0
     fi
-    warn "$(L "یک دامنه مثل shop.example.com، بدون https://" "A domain like shop.example.com, without https://")"
+    warn "A domain like shop.example.com, without https://"
   done
 }
 
 ask_username() {
   local answer
   while :; do
-    ask answer "$(L "نام کاربری مالک (حروف کوچک انگلیسی، عدد، . - _)" "The owner's username (lowercase letters, digits, . - _)")" "admin"
+    ask answer "The owner's username (lowercase letters, digits, . - _)" "admin"
     answer=${answer,,}
     if valid_username "$answer"; then
       OWNER_USERNAME=$answer
       return 0
     fi
-    warn "$(L "۳ تا ۳۲ نویسه از a-z، 0-9، نقطه، خط تیره و زیرخط" "3 to 32 of a-z, 0-9, dot, dash and underscore")"
+    warn "3 to 32 of a-z, 0-9, dot, dash and underscore"
   done
 }
 
 ask_password() { # VAR
   local first second
   while :; do
-    ask first "$(L "رمز عبور (دست‌کم ۸ نویسه؛ دیده نمی‌شود)" "Password (at least 8 characters; not shown)")" "" hidden
+    ask first "Password (at least 8 characters; not shown)" "" hidden
     if [ "${#first}" -lt 8 ] || [ "${#first}" -gt 128 ]; then
-      warn "$(L "رمز باید ۸ تا ۱۲۸ نویسه باشد." "The password needs 8 to 128 characters.")"
+      warn "The password needs 8 to 128 characters."
       continue
     fi
-    ask second "$(L "دوباره همان رمز" "The same password again")" "" hidden
+    ask second "The same password again" "" hidden
     if [ "$first" = "$second" ]; then
       printf -v "$1" '%s' "$first"
       return 0
     fi
-    warn "$(L "دو رمز یکی نبودند." "The two did not match.")"
+    warn "The two did not match."
   done
 }
 
@@ -218,34 +215,34 @@ is_cloudflare() {
 }
 
 preflight() {
-  section "$(L "بررسی سرور" "Checking the server")"
+  section "Checking the server"
   local os=unknown mem disk ports
   [ -r /etc/os-release ] && os=$(. /etc/os-release && printf '%s %s' "$ID" "${VERSION_ID:-}")
   case $os in
     ubuntu* | debian*) ok "$os" ;;
-    *) warn "$(L "روی Ubuntu آزموده شده است، نه $os." "Tested on Ubuntu, not $os.")" ;;
+    *) warn "Tested on Ubuntu, not $os." ;;
   esac
   case $(uname -m) in
     x86_64 | aarch64) ;;
-    *) die "$(L "پردازنده‌ی $(uname -m) پشتیبانی نمی‌شود." "The $(uname -m) processor is not supported.")" ;;
+    *) die "The $(uname -m) processor is not supported." ;;
   esac
   mem=$(awk '/MemTotal/ {print int($2 / 1024)}' /proc/meminfo)
-  if [ "$mem" -lt 1800 ]; then warn "$(L "رم $mem مگابایت است؛ ۲ گیگ لازم است." "Memory is $mem MB; 2 GB is needed.")"; else ok "$(L "رم: $mem مگابایت" "Memory: $mem MB")"; fi
+  if [ "$mem" -lt 1800 ]; then warn "Memory is $mem MB; 2 GB is needed."; else ok "Memory: $mem MB"; fi
   disk=$(df -Pm / | awk 'NR == 2 {print $4}')
-  [ "$disk" -ge 8000 ] || die "$(L "فقط $((disk / 1024)) گیگ دیسک آزاد است؛ دست‌کم ۸ گیگ لازم است." "Only $((disk / 1024)) GB of disk is free; at least 8 GB is needed.")"
-  ok "$(L "دیسک آزاد: $((disk / 1024)) گیگ" "Free disk: $((disk / 1024)) GB")"
+  [ "$disk" -ge 8000 ] || die "Only $((disk / 1024)) GB of disk is free; at least 8 GB is needed."
+  ok "Free disk: $((disk / 1024)) GB"
   ports=$(ss -Hltnp '( sport = :80 or sport = :443 )' 2> /dev/null | grep -v docker-proxy || true)
   if [ -n "$ports" ]; then
     printf '%s\n' "$ports"
-    die "$(L "پورت ۸۰ یا ۴۴۳ دست برنامه‌ی دیگری است (بالا). آن را متوقف کنید (مثلاً systemctl disable --now nginx)." "Port 80 or 443 is taken (above). Stop that program (systemctl disable --now nginx, say).")"
+    die "Port 80 or 443 is taken (above). Stop that program (systemctl disable --now nginx, say)."
   fi
-  ok "$(L "پورت‌های ۸۰ و ۴۴۳ آزادند" "Ports 80 and 443 are free")"
+  ok "Ports 80 and 443 are free"
   if ! command -v curl > /dev/null || ! command -v git > /dev/null || ! command -v openssl > /dev/null; then
     quietly apt-get -o DPkg::Lock::Timeout=600 update -q
     quietly apt-get -o DPkg::Lock::Timeout=600 install -y -q curl git openssl ca-certificates
   fi
   SERVER_IP=${SK_SERVER_IP:-$(public_ipv4 || true)}
-  [ -n "$SERVER_IP" ] && ok "$(L "IP سرور: $SERVER_IP" "Server IP: $SERVER_IP")"
+  [ -n "$SERVER_IP" ] && ok "Server IP: $SERVER_IP"
 }
 
 # Where the domain points. Sets CLOUDFLARE=1 when it is behind Cloudflare's
@@ -254,30 +251,30 @@ check_dns() {
   CLOUDFLARE=0 WWW=0 TRIAL=0
   if valid_ip "$DOMAIN" || [ "$DOMAIN" = localhost ]; then
     TRIAL=1
-    warn "$(L "نصب آزمایشی روی $DOMAIN: گواهی را خود سرور امضا می‌کند و مرورگر هشدار می‌دهد. برای فروش واقعی با دامنه نصب کنید." "A trial on $DOMAIN: the server signs its own certificate and browsers warn. For real sales, install with a domain.")"
+    warn "A trial on $DOMAIN: the server signs its own certificate and browsers warn. For real sales, install with a domain."
     return 0
   fi
-  section "$(L "بررسی DNS" "Checking DNS")"
+  section "Checking DNS"
   while :; do
     local found first
     found=$(ipv4_of "$DOMAIN")
     first=${found%% *}
     if [ -z "$found" ]; then
-      warn "$(L "$DOMAIN هنوز رکورد A ندارد." "$DOMAIN has no A record yet.")"
+      warn "$DOMAIN has no A record yet."
     elif [ "$found" = "$SERVER_IP" ]; then
       ok "$DOMAIN → $found"
       break
     elif is_cloudflare "$first"; then
       CLOUDFLARE=1
       ok "$DOMAIN → $found (Cloudflare)"
-      note "$(L "پشت Cloudflare است: نشانی‌های Cloudflare مورد اعتماد می‌شوند تا IP واقعی بازدیدکننده دیده شود." "It is behind Cloudflare: Cloudflare's ranges are trusted, so the visitor's real address is seen.")"
-      note "$(L "اگر گرفتن گواهی شکست خورد، «Always Use HTTPS» را در Cloudflare خاموش کنید یا تا پایان نصب ابر را خاکستری کنید." "If the certificate fails, turn off \"Always Use HTTPS\" in Cloudflare, or grey the cloud until the install is done.")"
+      note "It is behind Cloudflare: Cloudflare's ranges are trusted, so the visitor's real address is seen."
+      note "If the certificate fails, turn off \"Always Use HTTPS\" in Cloudflare, or grey the cloud until the install is done."
       break
     else
-      warn "$(L "$DOMAIN به $found اشاره می‌کند، ولی این سرور $SERVER_IP است." "$DOMAIN points at $found, but this server is $SERVER_IP.")"
+      warn "$DOMAIN points at $found, but this server is $SERVER_IP."
     fi
-    note "$(L "در DNS دامنه، رکورد A را روی $SERVER_IP بگذارید. بدون آن گواهی HTTPS گرفته نمی‌شود." "Point the domain's A record at $SERVER_IP. Without it no HTTPS certificate can be issued.")"
-    if [ "$ASSUME_YES" = 1 ] || ! confirm "$(L "دوباره بررسی کنم؟ (n: همین‌طور ادامه بده)" "Check again? (n: go on anyway)")" y; then
+    note "Point the domain's A record at $SERVER_IP. Without it no HTTPS certificate can be issued."
+    if [ "$ASSUME_YES" = 1 ] || ! confirm "Check again? (n: go on anyway)" y; then
       break
     fi
     sleep 3
@@ -286,7 +283,7 @@ check_dns() {
   www=$(ipv4_of "www.$DOMAIN")
   if [[ $DOMAIN != www.* ]] && [ -n "$www" ] && { [ "$www" = "$SERVER_IP" ] || is_cloudflare "${www%% *}"; }; then
     WWW=1
-    ok "$(L "www.$DOMAIN هم به همین سرور می‌آید و اضافه شد." "www.$DOMAIN comes here too, and was added.")"
+    ok "www.$DOMAIN comes here too, and was added."
   fi
 }
 
@@ -301,19 +298,19 @@ quietly() {
 }
 
 install_system() {
-  step "$(L "به‌روزرسانی سیستم" "Updating the system")"
+  step "Updating the system"
   local apt=(apt-get -o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold -y -q)
   quietly "${apt[@]}" update
   quietly "${apt[@]}" upgrade
   quietly "${apt[@]}" install git curl openssl ca-certificates ufw
-  ok "$(L "به‌روز شد" "Up to date")"
+  ok "Up to date"
 
   local mem
   mem=$(awk '/MemTotal/ {print int($2 / 1024)}' /proc/meminfo)
   if [ "$mem" -lt 3500 ] && [ -z "$(swapon --show --noheadings 2> /dev/null)" ]; then
     if { fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile; } > /dev/null 2>&1; then
       grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
-      ok "$(L "۲ گیگ swap ساخته شد (رم کم است)" "Made 2 GB of swap (memory is low)")"
+      ok "Made 2 GB of swap (memory is low)"
     else
       rm -f /swapfile
     fi
@@ -322,7 +319,7 @@ install_system() {
 
 install_firewall() {
   [ "${SK_FIREWALL:-y}" = y ] || return 0
-  step "$(L "دیوار آتش" "Firewall")"
+  step "Firewall"
   # Every port SSH may be on, asked four ways: the firewall must never lock
   # out the person running it. (Since Ubuntu 22.10 systemd, not sshd, holds
   # the listening socket, so the open sessions and sshd's settings count.)
@@ -344,9 +341,9 @@ install_firewall() {
   ufw allow 443/tcp > /dev/null
   ufw allow 443/udp > /dev/null
   if ufw --force enable < /dev/null > /dev/null 2>&1; then
-    ok "$(L "فقط SSH، ۸۰ و ۴۴۳ باز است" "Only SSH, 80 and 443 are open")"
+    ok "Only SSH, 80 and 443 are open"
   else
-    warn "$(L "دیوار آتش روشن نشد؛ از دیوار آتش سرویس‌دهنده استفاده کنید." "The firewall could not be turned on; use your provider's.")"
+    warn "The firewall could not be turned on; use your provider's."
   fi
 }
 
@@ -356,29 +353,29 @@ install_docker() {
     local script
     script=$(mktemp)
     if ! { curl -fsSL --retry 4 --retry-delay 3 --retry-all-errors -o "$script" https://get.docker.com && quietly sh "$script"; }; then
-      warn "$(L "get.docker.com کار نکرد؛ از مخزن Ubuntu نصب می‌شود." "get.docker.com failed; installing from Ubuntu's repository.")"
+      warn "get.docker.com failed; installing from Ubuntu's repository."
       quietly apt-get -o DPkg::Lock::Timeout=600 install -y -q docker.io docker-compose-v2
     fi
     rm -f "$script"
     systemctl enable --now docker > /dev/null 2>&1 || true
   fi
-  docker compose version > /dev/null 2>&1 || die "$(L "Docker نصب نشد." "Docker could not be installed.")"
+  docker compose version > /dev/null 2>&1 || die "Docker could not be installed."
   ok "$(docker compose version)"
 }
 
 install_code() {
-  step "$(L "کد" "The code")"
+  step "The code"
   local here
   here=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]:-/nonexistent}")")/.." 2> /dev/null && pwd || true)
   if [ -z "${SK_REPO:-}" ] && [ -n "$here" ] && [ -x "$here/infra/production/sk" ]; then
     APP_DIR=$here
-    ok "$(L "همین پوشه: $APP_DIR" "This checkout: $APP_DIR")"
+    ok "This checkout: $APP_DIR"
   elif [ -d "$APP_DIR/.git" ]; then
     git -C "$APP_DIR" pull --ff-only -q < /dev/null || true
     ok "$APP_DIR"
   else
     GIT_TERMINAL_PROMPT=0 git clone -q --branch "$BRANCH" "$REPO_URL" "$APP_DIR" < /dev/null ||
-      die "$(L "کد از $REPO_URL گرفته نشد." "Could not get the code from $REPO_URL.")"
+      die "Could not get the code from $REPO_URL."
     ok "$APP_DIR"
   fi
   PROD="$APP_DIR/infra/production"
@@ -387,7 +384,7 @@ install_code() {
 }
 
 configure() {
-  step "$(L "تنظیمات" "Settings")"
+  step "Settings"
   local sites="$DOMAIN"
   [ "$WWW" = 0 ] || sites="$DOMAIN, www.$DOMAIN"
   if [ "$TRIAL" = 1 ] && [ "$DOMAIN" != localhost ]; then sites="$DOMAIN, localhost"; fi
@@ -421,56 +418,56 @@ set_env() {
 env_value() { grep -E "^$1=" "$PROD/.env" | head -n 1 | cut -d= -f2- | sed "s/^'//; s/'\$//"; }
 
 start() {
-  step "$(L "ساختن و راه‌اندازی (بار اول چند دقیقه)" "Building and starting (a few minutes the first time)")"
+  step "Building and starting (a few minutes the first time)"
   # Three tries: the first build downloads a few hundred MB, and one dropped
   # connection should not end the install.
   local attempt
   for attempt in 1 2 3; do
     if sk up < /dev/null; then
-      ok "$(L "همه‌ی سرویس‌ها بالا هستند" "Every service is up")"
+      ok "Every service is up"
       return 0
     fi
-    [ "$attempt" = 3 ] || warn "$(L "راه‌اندازی کامل نشد؛ دوباره امتحان می‌کنم ($((attempt + 1)) از ۳)…" "Starting did not finish; trying again ($((attempt + 1)) of 3)…")"
+    [ "$attempt" = 3 ] || warn "Starting did not finish; trying again ($((attempt + 1)) of 3)…"
     sleep 10
   done
   sk status < /dev/null || true
-  die "$(L "راه‌اندازی کامل نشد (بالا). لاگ‌ها: shahkelid logs app — بعد از رفع مشکل، همان دستور نصب را دوباره اجرا کنید." "Starting did not finish (above). Logs: shahkelid logs app — once it is fixed, run the same install command again.")"
+  die "Starting did not finish (above). Logs: shahkelid logs app — once it is fixed, run the same install command again."
 }
 
 make_owner() {
-  step "$(L "حساب مالک" "The owner's account")"
+  step "The owner's account"
   local out
   if out=$(printf '%s\n' "$OWNER_PASSWORD" | sk owner create "$OWNER_USERNAME" 2>&1); then
     ok "$OWNER_USERNAME"
   elif [ "$RESUME" = 1 ] && grep -q "exists already" <<< "$out"; then
     # A resumed install whose owner was made the first time round.
-    ok "$(L "حساب مالک از قبل ساخته شده بود" "The owner's account was made already")"
+    ok "The owner's account was made already"
   else
     printf '%s\n' "$out"
-    die "$(L "حساب مالک ساخته نشد." "Could not make the owner's account.")"
+    die "Could not make the owner's account."
   fi
 }
 
 check_site() {
-  step "$(L "بررسی سایت" "Checking the site")"
+  step "Checking the site"
   # Asked of this server itself; a real domain with a real certificate check.
   local url="https://$DOMAIN/health" args=(--resolve "$DOMAIN:443:127.0.0.1")
   if [ "$TRIAL" = 1 ]; then url=https://localhost/health args=(-k); fi
   for _ in $(seq 1 30); do
     if curl -fsS -m 10 "${args[@]}" -o /dev/null "$url" < /dev/null 2> /dev/null; then
       SITE_OK=1
-      ok "$(L "سایت با HTTPS جواب می‌دهد" "The site answers over HTTPS")"
+      ok "The site answers over HTTPS"
       return 0
     fi
     sleep 4
   done
   SITE_OK=0
-  warn "$(L "سایت هنوز با گواهی معتبر جواب نمی‌دهد؛ معمولاً DNS هنوز نرسیده. Caddy خودش دوباره تلاش می‌کند: shahkelid logs web" "No valid certificate yet; usually the DNS has not arrived. Caddy keeps trying: shahkelid logs web")"
+  warn "No valid certificate yet; usually the DNS has not arrived. Caddy keeps trying: shahkelid logs web"
 }
 
 link_command() {
   mkdir -p /etc/shahkelid
-  printf "APP_DIR='%s'\nUI_LANG='%s'\n" "$APP_DIR" "$UI_LANG" > "$CONF"
+  printf "APP_DIR='%s'\n" "$APP_DIR" > "$CONF"
   chmod 644 "$CONF"
   ln -sf "$APP_DIR/scripts/shahkelid.sh" /usr/local/bin/shahkelid
 }
@@ -480,26 +477,26 @@ report() {
   password=$(env_value RESTIC_PASSWORD)
   umask 077
   {
-    printf '%s\n\n' "$(L "شاه‌کلید نصب شد" "Shah Kelid is installed") — $(date '+%Y-%m-%d %H:%M')"
-    printf '%s %s\n' "$(L "سایت:" "Site:")" "$site"
-    printf '%s %s/staff\n' "$(L "بخش مدیریت:" "Staff area:")" "$site"
-    printf '%s %s\n\n' "$(L "نام کاربری:" "Username:")" "$OWNER_USERNAME"
-    printf '%s\n' "$(L "۱. با نام کاربری و رمز وارد شوید و ورود دومرحله‌ای را با Google Authenticator یا 2FAS راه بیندازید." "1. Sign in with the username and password, and set up two-step sign-in with Google Authenticator or 2FAS.")"
-    printf '%s\n' "$(L "۲. در «تنظیمات» ایمیل (SMTP)، تلگرام، درگاه‌های پرداخت و پشتیبان‌گیری را تنظیم و آزمایش کنید." "2. In Settings, set up and test mail (SMTP), Telegram, the payment accounts and backups.")"
-    printf '%s\n\n' "$(L "۳. پنل PasarGuard، سرورها و پلن‌ها را اضافه کنید." "3. Add the PasarGuard panel, servers and plans.")"
-    printf '%s\n' "$(L "رمز پشتیبان‌ها — بیرون از این سرور نگه دارید (مدیر رمز). با همین یک رمز هر پشتیبان روی هر سرور تازه برمی‌گردد:" "The backup password — keep it away from this server (a password manager). With it alone, any backup comes back on any new server:")"
+    printf '%s\n\n' "Shah Kelid is installed — $(date '+%Y-%m-%d %H:%M')"
+    printf '%s %s\n' "Site:" "$site"
+    printf '%s %s/staff\n' "Staff area:" "$site"
+    printf '%s %s\n\n' "Username:" "$OWNER_USERNAME"
+    printf '%s\n' "1. Sign in with the username and password, and set up two-step sign-in with Google Authenticator or 2FAS."
+    printf '%s\n' "2. In Settings, set up and test mail (SMTP), Telegram, the payment accounts and backups."
+    printf '%s\n\n' "3. Add the PasarGuard panel, servers and plans."
+    printf '%s\n' "The backup password — keep it away from this server (a password manager). With it alone, any backup comes back on any new server:"
     printf '  %s\n\n' "$password"
-    [ "$TRIAL" = 0 ] || printf '%s\n\n' "$(L "این نصب آزمایشی است (گواهی خودامضا)." "This is a trial install (self-signed certificate).")"
-    [ "$CLOUDFLARE" = 0 ] || printf '%s\n\n' "$(L "Cloudflare: در SSL/TLS حالت Full (strict) را انتخاب کنید." "Cloudflare: choose Full (strict) under SSL/TLS.")"
-    [ "${SITE_OK:-1}" = 1 ] || printf '%s\n\n' "$(L "سایت هنوز با HTTPS جواب نداد: shahkelid logs web" "The site did not answer over HTTPS yet: shahkelid logs web")"
-    [ ! -f /var/run/reboot-required ] || printf '%s\n\n' "$(L "یک به‌روزرسانی سیستم راه‌اندازی دوباره می‌خواهد: reboot (سایت خودش بالا می‌آید)." "A system update wants a restart: reboot (the site comes back by itself).")"
-    printf '%s\n' "$(L "دستورها: shahkelid help" "Commands: shahkelid help")"
+    [ "$TRIAL" = 0 ] || printf '%s\n\n' "This is a trial install (self-signed certificate)."
+    [ "$CLOUDFLARE" = 0 ] || printf '%s\n\n' "Cloudflare: choose Full (strict) under SSL/TLS."
+    [ "${SITE_OK:-1}" = 1 ] || printf '%s\n\n' "The site did not answer over HTTPS yet: shahkelid logs web"
+    [ ! -f /var/run/reboot-required ] || printf '%s\n\n' "A system update wants a restart: reboot (the site comes back by itself)."
+    printf '%s\n' "Commands: shahkelid help"
   } > "$REPORT"
   {
     printf '\n%s%s%s\n' "$B$G" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" "$N"
     cat "$REPORT"
     printf '%s%s%s\n' "$B$G" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" "$N"
-    printf '%s\n' "$(L "همین متن در $REPORT هم هست (فقط root). بعد از برداشتن رمز، پاکش کنید." "The same is in $REPORT (root only). Delete it once the password is saved.")"
+    printf '%s\n' "The same is in $REPORT (root only). Delete it once the password is saved."
   } >&4
 }
 
@@ -512,9 +509,9 @@ cmd_install() {
       --domain) DOMAIN=$2; shift 2 ;;
       --username) OWNER_USERNAME=$2; shift 2 ;;
       --password-stdin) password_stdin=1; shift ;;
-      --lang) UI_LANG=$2; shift 2 ;;
+      --lang) shift 2 ;; # the output is English only; kept for old scripts
       --yes) ASSUME_YES=1; shift ;;
-      *) die "$(L "گزینه‌ی ناشناخته: $1" "Unknown option: $1")" ;;
+      *) die "Unknown option: $1" ;;
     esac
   done
   if [ "$password_stdin" = 1 ]; then IFS= read -r OWNER_PASSWORD || true; fi
@@ -523,13 +520,7 @@ cmd_install() {
   exec 4>&1
   exec > >(tee -a "$LOG") 2>&1
 
-  if [ -z "${SK_LANG:-}" ] && [ "$ASSUME_YES" = 0 ] && [ ! -r "$CONF" ]; then
-    printf '\n  Language / زبان:  1) فارسی   2) English\n'
-    local choice
-    ask choice "1/2" 1
-    [ "$choice" != 2 ] || UI_LANG=en
-  fi
-  printf '\n%s%s%s\n' "$B" "$(L "نصب شاه‌کلید" "Installing Shah Kelid")" "$N"
+  printf '\n%s%s%s\n' "$B" "Installing Shah Kelid" "$N"
 
   # Installed already (the command is in place): nothing to do here. A
   # .env without it is an install that stopped half way (a download that
@@ -537,35 +528,35 @@ cmd_install() {
   RESUME=0
   if [ -f "$PROD/.env" ]; then
     if [ -r "$CONF" ]; then
-      die "$(L "شاه‌کلید از قبل نصب است ($APP_DIR). برای نسخه‌ی تازه: shahkelid update" "Shah Kelid is installed already ($APP_DIR). For the latest: shahkelid update")"
+      die "Shah Kelid is installed already ($APP_DIR). For the latest: shahkelid update"
     fi
     RESUME=1
-    warn "$(L "نصب قبلی نیمه‌کاره ماند؛ از همان‌جا ادامه می‌دهم (رمزهای ساخته‌شده می‌مانند)." "An earlier install stopped half way; carrying on from there (the secrets it made are kept).")"
+    warn "An earlier install stopped half way; carrying on from there (the secrets it made are kept)."
   fi
   preflight
 
-  section "$(L "سه سؤال" "Three questions")"
+  section "Three questions"
   if [ -n "$DOMAIN" ]; then
     DOMAIN=${DOMAIN,,}
-    valid_domain "$DOMAIN" || valid_ip "$DOMAIN" || [ "$DOMAIN" = localhost ] || die "$(L "دامنه درست نیست: $DOMAIN" "Not a domain: $DOMAIN")"
+    valid_domain "$DOMAIN" || valid_ip "$DOMAIN" || [ "$DOMAIN" = localhost ] || die "Not a domain: $DOMAIN"
   else
     ask_domain
   fi
   if [ -n "$OWNER_USERNAME" ]; then
     OWNER_USERNAME=${OWNER_USERNAME,,}
-    valid_username "$OWNER_USERNAME" || die "$(L "نام کاربری درست نیست: $OWNER_USERNAME" "Not a username: $OWNER_USERNAME")"
+    valid_username "$OWNER_USERNAME" || die "Not a username: $OWNER_USERNAME"
   else
     ask_username
   fi
   if [ -n "${OWNER_PASSWORD:-}" ]; then
-    [ "${#OWNER_PASSWORD}" -ge 8 ] || die "$(L "رمز دست‌کم ۸ نویسه است." "The password needs at least 8 characters.")"
+    [ "${#OWNER_PASSWORD}" -ge 8 ] || die "The password needs at least 8 characters."
   else
     ask_password OWNER_PASSWORD
   fi
   check_dns
 
-  note "$(L "حالا حدود ۱۰ دقیقه بدون سؤال: به‌روزرسانی سیستم، دیوار آتش، Docker، ساختن و راه‌اندازی." "Now about 10 minutes with no questions: updates, firewall, Docker, building and starting.")"
-  confirm "$(L "شروع کنم؟" "Start?")" y || die "$(L "چیزی تغییر نکرد." "Nothing was changed.")"
+  note "Now about 10 minutes with no questions: updates, firewall, Docker, building and starting."
+  confirm "Start?" y || die "Nothing was changed."
 
   install_system
   install_firewall
@@ -584,9 +575,9 @@ cmd_install() {
 cmd_update() {
   need_root update
   need_install
-  section "$(L "به‌روزرسانی" "Updating")"
+  section "Updating"
   (cd "$PROD" && ./sk update)
-  ok "$(L "به آخرین نسخه رسید." "Now on the latest release.")"
+  ok "Now on the latest release."
 }
 
 cmd_restore() {
@@ -602,9 +593,9 @@ cmd_restore() {
   open_input
   own=$(env_value RESTIC_PASSWORD)
   if [ "$from" = s3 ] && [ -z "${SK_S3_REPOSITORY:-}" ]; then
-    note "$(L "اگر این سرور هنوز bucket را نمی‌شناسد (سرور تازه)، مشخصاتش را بدهید؛ وگرنه Enter." "If this server does not know the bucket yet (a new server), give it; otherwise Enter.")"
+    note "If this server does not know the bucket yet (a new server), give it; otherwise Enter."
     local endpoint bucket
-    ask endpoint "$(L "endpoint (مثل https://s3.us-west-004.backblazeb2.com)" "endpoint (like https://s3.us-west-004.backblazeb2.com)")" ""
+    ask endpoint "endpoint (like https://s3.us-west-004.backblazeb2.com)" ""
     if [ -n "$endpoint" ]; then
       ask bucket "bucket" ""
       export SK_S3_REPOSITORY="s3:${endpoint%/}/$bucket"
@@ -616,16 +607,16 @@ cmd_restore() {
   fi
   if [ -z "$what" ] || [ ! -f "$what" ]; then
     sk snapshots "$from" < /dev/null || true
-    [ -n "$what" ] || ask what "$(L "کدام پشتیبان؟ (latest یعنی آخرین، یا شناسه‌ی ستون اول)" "Which backup? (latest is the newest, or an id from the first column)")" latest
+    [ -n "$what" ] || ask what "Which backup? (latest is the newest, or an id from the first column)" latest
   fi
-  ask password "$(L "رمز پشتیبان‌ها (Enter: رمز همین سرور)" "The backup password (Enter: this server's)")" "" hidden
+  ask password "The backup password (Enter: this server's)" "" hidden
   if [ -n "$password" ] && [ "$password" != "$own" ]; then export RESTORE_PASSWORD=$password; fi
   if [ -f "$what" ]; then
     (cd "$PROD" && ./sk restore --file "$(readlink -f "$what")" < /dev/fd/3)
   else
     (cd "$PROD" && ./sk restore "$what" --from "$from" < /dev/fd/3)
   fi
-  ok "$(L "بازیابی شد." "Restored.")"
+  ok "Restored."
 }
 
 cmd_owner() {
@@ -663,19 +654,19 @@ cmd_domains() {
       domain=${domain,,}
       valid_domain "$domain" || die "shahkelid domains $action <domain>"
       if [ "$action" = add ]; then
-        [[ ", $sites," == *", $domain,"* ]] && die "$(L "$domain از قبل هست." "$domain is there already.")"
+        [[ ", $sites," == *", $domain,"* ]] && die "$domain is there already."
         SERVER_IP=$(public_ipv4 || true)
         [ "$(ipv4_of "$domain")" = "$SERVER_IP" ] || is_cloudflare "$(ipv4_of "$domain" | cut -d' ' -f1)" ||
-          warn "$(L "$domain هنوز به این سرور ($SERVER_IP) اشاره نمی‌کند؛ گواهی‌اش بعد از درست شدن DNS گرفته می‌شود." "$domain does not point here ($SERVER_IP) yet; its certificate comes once the DNS does.")"
+          warn "$domain does not point here ($SERVER_IP) yet; its certificate comes once the DNS does."
         sites="$sites, $domain"
       else
-        [ "$domain" != "$(env_value MAIN_DOMAIN)" ] || die "$(L "دامنه‌ی اصلی حذف نمی‌شود." "The main domain cannot be removed.")"
+        [ "$domain" != "$(env_value MAIN_DOMAIN)" ] || die "The main domain cannot be removed."
         sites=$(printf '%s' "$sites" | tr ',' '\n' | sed 's/^ *//' | grep -vx "$domain" | paste -sd, - | sed 's/,/, /g')
       fi
       set_env SITE_ADDRESSES "$sites"
       quietly sk up
-      ok "$(L "نشانی‌ها:" "Addresses:") $sites"
-      note "$(L "برای لینک‌های اشتراک تازه، دامنه را در «پنل‌ها» در بخش مدیریت هم بگذارید." "For new subscription links, set the domain under Panels in the staff area too.")"
+      ok "Addresses: $sites"
+      note "For new subscription links, set the domain under Panels in the staff area too."
       ;;
     *) die "shahkelid domains [list|add|remove] [domain]" ;;
   esac
@@ -686,42 +677,42 @@ cmd_edit_env() {
   need_install
   "${EDITOR:-$(command -v nano || command -v vi)}" "$PROD/.env"
   open_input
-  if confirm "$(L "با تنظیمات تازه راه‌اندازی شود؟" "Restart with the new settings?")" y; then sk up; fi
+  if confirm "Restart with the new settings?" y; then sk up; fi
 }
 
 cmd_uninstall() {
   need_root uninstall
   need_install
   open_input
-  warn "$(L "سایت، دیتابیس و فایل‌های این سرور پاک می‌شوند. پشتیبان‌های روی سرور ($(env_value BACKUP_LOCAL_DIR)) می‌مانند." "The site, its database and its files on this server are removed. The backups on this server ($(env_value BACKUP_LOCAL_DIR)) are kept.")"
+  warn "The site, its database and its files on this server are removed. The backups on this server ($(env_value BACKUP_LOCAL_DIR)) are kept."
   local answer
-  ask answer "$(L "برای ادامه بنویسید: uninstall" "Type uninstall to go on")" ""
-  [ "$answer" = uninstall ] || die "$(L "چیزی تغییر نکرد." "Nothing was changed.")"
+  ask answer "Type uninstall to go on" ""
+  [ "$answer" = uninstall ] || die "Nothing was changed."
   (cd "$PROD" && docker compose --env-file .env -f compose.yaml down -v --rmi local) || true
   rm -f /usr/local/bin/shahkelid "$CONF"
   [ "$APP_DIR" != / ] && rm -rf "$APP_DIR"
-  ok "$(L "حذف شد." "Removed.")"
+  ok "Removed."
 }
 
 usage() {
   cat << EOF
-${B}shahkelid${N} — $(L "نصب و مدیریت شاه‌کلید" "install and run Shah Kelid")
+${B}shahkelid${N} — install and run Shah Kelid
 
-  install                     $(L "نصب (دامنه، نام کاربری و رمز مالک)" "install (the domain, the owner's username and password)")
-  update                      $(L "آخرین نسخه: کد، ایمیج‌ها، دیتابیس" "the latest release: code, images, database")
-  status                      $(L "چه چیزی در حال اجراست" "what is running")
-  logs [app|worker|web|backup] $(L "لاگ‌ها" "the logs")
-  up | down | restart         $(L "راه‌اندازی، توقف، راه‌اندازی دوباره" "start, stop, restart")
-  backup                      $(L "یک پشتیبان همین حالا" "a backup now")
-  backups [s3]                $(L "پشتیبان‌های موجود" "the backups there are")
-  restore [latest|<id>|<file.skb>] [--s3]   $(L "بازیابی (فایل: همان که ربات تلگرام فرستاده)" "restore (a file: the one the Telegram bot sent)")
-  owner [list|password|reset-2fa|create] [username]   $(L "حساب‌های مالک" "the owners' accounts")
-  domains [list|add|remove] [domain]                 $(L "دامنه‌ها و دامنه‌های پشتیبان" "domains and backup domains")
-  edit-env                    $(L "ویرایش .env" "edit .env")
-  uninstall                   $(L "حذف" "remove it")
-  version                     $(L "نسخه" "the version")
+  install                     install (the domain, the owner's username and password)
+  update                      the latest release: code, images, database
+  status                      what is running
+  logs [app|worker|web|backup] the logs
+  up | down | restart         start, stop, restart
+  backup                      a backup now
+  backups [s3]                the backups there are
+  restore [latest|<id>|<file.skb>] [--s3]   restore (a file: the one the Telegram bot sent)
+  owner [list|password|reset-2fa|create] [username]   the owners' accounts
+  domains [list|add|remove] [domain]                 domains and backup domains
+  edit-env                    edit .env
+  uninstall                   remove it
+  version                     the version
 
-$(L "پوشه:" "Folder:") $APP_DIR
+Folder: $APP_DIR
 EOF
 }
 
@@ -755,7 +746,7 @@ main() {
 on_exit() {
   local code=$?
   if [ "$code" -ne 0 ] && [ -z "${DYING:-}" ]; then
-    printf '\n%s✗ %s%s\n' "$R" "$(L "کار نیمه‌کاره ماند. جزئیات: $LOG" "It stopped half way. Details: $LOG")" "$N" >&2
+    printf '\n%s✗ %s%s\n' "$R" "It stopped half way. Details: $LOG" "$N" >&2
   fi
 }
 trap on_exit EXIT
