@@ -17,6 +17,7 @@
 #   shahkelid owner [list|password|reset-2fa|create] [username]
 #   shahkelid domains [list|add|remove] [domain]
 #   shahkelid edit-env           edit .env, then restart
+#   shahkelid fix-dns            DNS inside the containers (for certificates)
 #   shahkelid uninstall          remove it (backups on this server are kept)
 #   shahkelid version | help
 #
@@ -361,6 +362,93 @@ install_docker() {
   fi
   docker compose version > /dev/null 2>&1 || die "Docker could not be installed."
   ok "$(docker compose version)"
+  container_dns
+}
+
+# ======================================================================== dns
+
+# The containers look names up through Docker's own DNS (127.0.0.11), which
+# asks the host's servers, or 8.8.8.8 and 8.8.4.4 when the host's are on
+# loopback (systemd-resolved, dnsmasq). Where those cannot be reached, every
+# lookup inside fails ("server misbehaving") and Caddy never gets a
+# certificate, though the host itself resolves fine. So it is checked, and
+# when it fails Docker is given DNS servers that answer from a container.
+DNS_PROBE=acme-v02.api.letsencrypt.org
+DNS_IMAGE=redis:7-alpine
+
+# Lookups on a network of its own, as the services do theirs.
+dns_works_inside() {
+  local ok=1
+  docker network create shahkelid-dns-check > /dev/null 2>&1 || true
+  timeout 60 docker run --rm --network shahkelid-dns-check "$DNS_IMAGE" getent hosts "$DNS_PROBE" > /dev/null 2>&1 || ok=0
+  docker network rm shahkelid-dns-check > /dev/null 2>&1 || true
+  [ "$ok" = 1 ]
+}
+
+# The host's own servers first (not loopback ones), then public ones.
+dns_candidates() {
+  {
+    local file
+    for file in /run/systemd/resolve/resolv.conf /etc/resolv.conf; do
+      [ ! -r "$file" ] || awk '$1 == "nameserver" {print $2}' "$file"
+    done
+    printf '%s\n' 1.1.1.1 8.8.8.8 9.9.9.9 1.0.0.1 8.8.4.4
+  } | grep -E '^[0-9]+(\.[0-9]+){3}$' | grep -v '^127\.' | awk '!seen[$0]++'
+}
+
+# write_daemon_dns "1.1.1.1" "8.8.8.8": the "dns" key of /etc/docker/daemon.json,
+# keeping whatever else is in it.
+write_daemon_dns() {
+  local file=/etc/docker/daemon.json
+  mkdir -p /etc/docker
+  if [ -s "$file" ]; then
+    command -v python3 > /dev/null || return 1
+    python3 - "$file" "$@" << 'PY' || return 1
+import json, sys
+path, servers = sys.argv[1], sys.argv[2:]
+with open(path) as f:
+    config = json.load(f)
+config["dns"] = servers
+with open(path, "w") as f:
+    json.dump(config, f, indent=2)
+    f.write("\n")
+PY
+  else
+    local list
+    list=$(printf '"%s", ' "$@")
+    printf '{\n  "dns": [%s]\n}\n' "${list%, }" > "$file"
+  fi
+}
+
+container_dns() {
+  quietly docker pull -q "$DNS_IMAGE" || { warn "Could not pull $DNS_IMAGE to check DNS inside containers."; return 0; }
+  if dns_works_inside; then
+    ok "DNS works inside containers"
+    return 0
+  fi
+  warn "Containers cannot look up names (Docker's DNS gets no answer); finding DNS servers that do."
+  local server working=()
+  for server in $(dns_candidates); do
+    if timeout 20 docker run --rm --dns "$server" "$DNS_IMAGE" getent hosts "$DNS_PROBE" > /dev/null 2>&1; then
+      working+=("$server")
+      [ "${#working[@]}" -lt 3 ] || break
+    fi
+  done
+  if [ "${#working[@]}" -eq 0 ]; then
+    warn "No DNS server answered from inside a container. Certificates cannot be issued until one does."
+    note "Put a DNS server that works on this network in /etc/docker/daemon.json, like {\"dns\": [\"1.1.1.1\"]}, then: systemctl restart docker"
+    return 0
+  fi
+  if ! write_daemon_dns "${working[@]}"; then
+    warn "Could not update /etc/docker/daemon.json; add \"dns\": [\"${working[0]}\"] to it, then: systemctl restart docker"
+    return 0
+  fi
+  systemctl restart docker
+  if dns_works_inside; then
+    ok "Docker now uses these DNS servers: ${working[*]} (/etc/docker/daemon.json)"
+  else
+    warn "Still no DNS inside containers, even with ${working[*]}. See /etc/docker/daemon.json."
+  fi
 }
 
 install_code() {
@@ -580,6 +668,16 @@ cmd_update() {
   ok "Now on the latest release."
 }
 
+cmd_fix_dns() {
+  need_root fix-dns
+  need_install
+  section "DNS inside containers"
+  container_dns
+  # A restarted Docker brings the services back by itself; this waits for it.
+  sk up < /dev/null > /dev/null && ok "Every service is up"
+  note "Caddy asks for the certificate again within a few minutes: shahkelid logs web"
+}
+
 cmd_restore() {
   need_root restore
   need_install
@@ -709,6 +807,7 @@ ${B}shahkelid${N} — install and run Shah Kelid
   owner [list|password|reset-2fa|create] [username]   the owners' accounts
   domains [list|add|remove] [domain]                 domains and backup domains
   edit-env                    edit .env
+  fix-dns                     fix DNS inside the containers (no certificate)
   uninstall                   remove it
   version                     the version
 
@@ -733,6 +832,7 @@ main() {
     owner) cmd_owner "$@" ;;
     domains) cmd_domains "$@" ;;
     edit-env) cmd_edit_env ;;
+    fix-dns) cmd_fix_dns ;;
     uninstall) cmd_uninstall ;;
     version) git -C "$APP_DIR" log -1 --format='%h %cd' --date=short 2> /dev/null || echo "not installed" ;;
     help | -h | --help) usage ;;

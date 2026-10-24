@@ -120,6 +120,7 @@ sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/danialrahimian/shah
 | `shahkelid domains add backup-domain.net` | یک دامنه‌ی پشتیبان (بخش «دامنه‌ی پشتیبان») |
 | `shahkelid restart` / `down` / `up` | راه‌اندازی دوباره، توقف، روشن کردن |
 | `shahkelid edit-env` | ویرایش تنظیمات سرور (`.env`) |
+| `shahkelid fix-dns` | درست کردن DNS داخل کانتینرها، وقتی گواهی HTTPS گرفته نمی‌شود |
 | `shahkelid uninstall` | حذف. پشتیبان‌های روی سرور می‌مانند. |
 | `shahkelid help` | همه‌ی دستورها |
 
@@ -240,6 +241,7 @@ printf '%s\n' 'رمز-مالک' | sudo bash -c "$(curl -fsSL https://raw.githubu
 |---|---|
 | نصب وسط کار متوقف شد | گزارش کامل در `/var/log/shahkelid-install.log` است. بعد از رفع مشکل، همان دستور نصب را دوباره اجرا کنید. |
 | صفحه باز نمی‌شود یا خطای گواهی می‌دهد | `shahkelid logs web`. معمولاً DNS هنوز به این سرور اشاره نمی‌کند، یا پورت ۸۰ در دیوار آتش سرویس‌دهنده بسته است (Let's Encrypt از آن استفاده می‌کند). |
+| در `shahkelid logs web` خطای `lookup acme-v02.api.letsencrypt.org on 127.0.0.11:53: server misbehaving` | کانتینرها به هیچ سرور DNS دسترسی ندارند (خود سرور دارد). `shahkelid fix-dns` سرورهای DNS که از داخل کانتینر جواب می‌دهند را پیدا می‌کند، در `/etc/docker/daemon.json` می‌گذارد و Docker را دوباره راه می‌اندازد. نصب‌کننده هم همین را خودش بررسی می‌کند. |
 | کد ورود به مشتری‌ها نمی‌رسد | **تنظیمات فروشگاه ← ایمیل**: کد آزمایشی بفرستید تا پاسخ سرویس ایمیل را ببینید. |
 | یادآوری «آخرین پشتیبان‌گیری شکست خورد» | **تنظیمات فروشگاه ← پشتیبان‌گیری** نشان می‌دهد کدام مقصد شکست خورده؛ جزئیات: `shahkelid logs backup`. |
 | رمز مالک فراموش شده | `shahkelid owner password <نام کاربری>` |
