@@ -8,6 +8,7 @@ import { ApiError } from "../../platform/http/api-error";
 import { limitPerIp } from "../../platform/http/rate-limit";
 import { panels } from "../infrastructure/schema";
 import { subscriptions } from "./schema";
+import { pageApps, pageInfo, renderPage, wantsPage } from "./page";
 import { linkFor } from "./service";
 
 /**
@@ -24,12 +25,12 @@ import { linkFor } from "./service";
  * and to choose a format (User-Agent) are passed on. Of the answer, only the
  * body and the headers apps read are returned: nothing that names the panel.
  *
- * Opened in a browser, the panel answers with its subscription page (a
- * custom PasarGuard template such as PGClock, if one is installed there).
- * That page reads the rest from beside itself, so these are passed through
- * too: /s/:token/info, /apps, /links, /raw and /usage. In the page and in
- * those answers, the panel's own subscription address (also URL-encoded, as
- * it is inside "import to v2rayN" links) is replaced with ours.
+ * Opened in a browser, the link is the shop's own subscription page
+ * (./page.ts: PGClock Pro with the shop's brand). The page reads the rest
+ * from beside itself, as it would from PasarGuard: /s/:token/info and /apps
+ * are answered here from our records; /links, /raw and /usage are the
+ * panel's, passed through with its own subscription address (also
+ * URL-encoded) replaced by ours.
  */
 
 const FORWARDED_REQUEST_HEADERS = [
@@ -57,9 +58,9 @@ const RETURNED_HEADERS = [
 const PARTS = new Set(["info", "apps", "links", "raw", "usage"]);
 
 /**
- * The page is the panel's, and its template is one HTML file with inline
- * script, a font and a QR code library from public CDNs, and a logo from
- * anywhere: allowed for it, and nothing else. It still talks only to us.
+ * The page is one HTML file with inline script, a font and a QR code
+ * library from public CDNs, and a logo from anywhere: allowed for it, and
+ * nothing else. It still talks only to us.
  */
 const PAGE_CSP = [
   "default-src 'self'",
@@ -115,6 +116,19 @@ export const subscriptionLinkRouter = ({ db, redis }: { db: Db; redis: Redis }) 
       .innerJoin(panels, eq(panels.id, subscriptions.panelId))
       .where(and(eq(subscriptions.accessToken, token), notInArray(subscriptions.status, [...GONE])));
     if (!found?.panelUrl) return notFound(res);
+    const ours = linkFor(token, found.subscriptionBaseUrl);
+
+    // The page and what it reads about the account: ours, not the panel's.
+    if (part === null && req.method === "GET" && wantsPage(req)) {
+      res.setHeader("content-security-policy", PAGE_CSP);
+      res.setHeader("cache-control", "no-store");
+      return res.type("html").send(renderPage());
+    }
+    if (part === "info") {
+      const info = await pageInfo(db, token);
+      return info ? res.setHeader("cache-control", "no-store").json(info) : notFound(res);
+    }
+    if (part === "apps") return res.setHeader("cache-control", "no-store").json(pageApps(ours));
 
     const headers = new Headers();
     for (const name of FORWARDED_REQUEST_HEADERS) {
@@ -146,7 +160,6 @@ export const subscriptionLinkRouter = ({ db, redis }: { db: Db; redis: Redis }) 
       if (value) res.setHeader(name, value);
     }
     // The panel names its own address here; the customer's page is our link.
-    const ours = linkFor(token, found.subscriptionBaseUrl);
     res.setHeader("profile-web-page-url", ours);
     res.setHeader("cache-control", "no-store");
     const type = upstream.headers.get("content-type") ?? "";

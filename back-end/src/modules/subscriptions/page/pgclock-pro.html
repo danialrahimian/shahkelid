@@ -1,0 +1,3434 @@
+<!DOCTYPE html>
+<!--
+  PGClock Pro, the subscription page by Mr.Clock (https://github.com/Mrclocks/PGClockPRO),
+  used in Shah Kelid with the author's permission. Upstream commit of Jul 18 2026.
+
+  Changes for Shah Kelid:
+  - Served by the shop at /s/:token (src/modules/subscriptions/link.ts), which
+    puts the shop's brand, support link and labels in window.MRCLOCK_BRAND and
+    window.PASARGUARD_CONFIG before the script below runs.
+  - Its data comes from beside it, as PasarGuard's would: /info and /apps from
+    the shop's own records, /links, /raw and /usage from the panel.
+  - "on_hold" reads as "starts on first use": a Shah Kelid service waits for
+    its first connection, it is not suspended.
+-->
+<html lang="fa" dir="rtl" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="dark light">
+  <title>پنل کاربری</title>
+  <style>
+    @font-face {
+      font-family: Vazirmatn;
+      src: url("https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn%5Bwght%5D.woff2") format("woff2-variations");
+      font-weight: 100 900;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    :root {
+      color-scheme: dark;
+      --ink: #f6f7fb;
+      --muted: rgba(246, 247, 251, 0.68);
+      --faint: rgba(246, 247, 251, 0.42);
+      --line: rgba(255, 255, 255, 0.18);
+      --line-soft: rgba(255, 255, 255, 0.10);
+      --glass: rgba(10, 12, 22, 0.82);
+      --glass-2: rgba(8, 10, 18, 0.72);
+      --glass-3: rgba(12, 15, 26, 0.88);
+      --surface: rgba(10, 12, 20, 0.72);
+      --surface-strong: rgba(10, 12, 20, 0.78);
+      --chip-bg: rgba(8, 10, 16, 0.65);
+      --nav-bg: rgba(10, 14, 26, 0.92);
+      --nav-border: rgba(143, 199, 255, 0.20);
+      --nav-tab-active: rgba(10, 12, 20, 0.40);
+      --accent-line: rgba(143, 199, 255, 0.20);
+      --accent-surface: rgba(143, 199, 255, 0.035);
+      --accent-surface-strong: rgba(143, 199, 255, 0.12);
+      --accent-border-mid: rgba(143, 199, 255, 0.36);
+      --chart-border: rgba(143, 199, 255, 0.18);
+      --chart-surface: rgba(143, 199, 255, 0.035);
+      --bar-border: rgba(143, 199, 255, 0.16);
+      --bar-fill-border: rgba(143, 199, 255, 0.38);
+      --bar-fill-surface: rgba(143, 199, 255, 0.12);
+      --good-line: rgba(112, 228, 157, 0.42);
+      --good-surface: rgba(112, 228, 157, 0.11);
+      --good-surface-strong: rgba(112, 228, 157, 0.12);
+      --good-line-soft: rgba(112, 228, 157, 0.38);
+      --warn-line: rgba(244, 200, 108, 0.42);
+      --warn-surface: rgba(244, 200, 108, 0.12);
+      --warn-line-soft: rgba(244, 200, 108, 0.36);
+      --bad-line: rgba(255, 143, 134, 0.42);
+      --bad-surface: rgba(255, 143, 134, 0.12);
+      --bad-line-soft: rgba(255, 143, 134, 0.36);
+      --bad-line-strong: rgba(255, 143, 134, 0.50);
+      --bad-surface-strong: rgba(255, 143, 134, 0.14);
+      --os-current-line: rgba(112, 228, 157, 0.58);
+      --os-current-surface: rgba(112, 228, 157, 0.10);
+      --modal-overlay: rgba(0, 0, 0, 0.58);
+      --modal-surface: rgba(10, 12, 22, 0.96);
+      --accent: #8fc7ff;
+      --good: #70e49d;
+      --warn: #f4c86c;
+      --bad: #ff8f86;
+      --border: 1px solid var(--line-soft);
+      --r-card: 22px;
+      --r-box: 16px;
+      --r-control: 14px;
+      --r-sm: 12px;
+      --r-group: 18px;
+      --page: 1120px;
+      --nav-height: 78px;
+      --nav-offset: 22px;
+      --nav-gap: 28px;
+      --page-bottom: calc(var(--nav-height) + var(--nav-offset) + env(safe-area-inset-bottom, 0px) + var(--nav-gap));
+      --stat-cyan: #22d3ee;
+      --stat-cyan-bg: rgba(34, 211, 238, 0.12);
+      --stat-violet: #c084fc;
+      --stat-violet-bg: rgba(192, 132, 252, 0.12);
+      --stat-teal: #2dd4bf;
+      --stat-teal-bg: rgba(45, 212, 191, 0.12);
+      --stat-orange: #fb923c;
+      --stat-orange-bg: rgba(251, 146, 60, 0.12);
+      --stat-rose: #f472b6;
+      --stat-rose-bg: rgba(244, 114, 182, 0.12);
+      --stat-indigo: #7b9cff;
+      --stat-indigo-bg: rgba(123, 156, 255, 0.12);
+      --stat-fuchsia: #f072ff;
+      --stat-fuchsia-bg: rgba(240, 114, 255, 0.12);
+      --stat-lime: #d4f06a;
+      --stat-lime-bg: rgba(212, 240, 106, 0.12);
+    }
+
+    html[data-theme="light"] {
+      color-scheme: light;
+      --ink: #0b1220;
+      --muted: rgba(11, 18, 32, 0.72);
+      --faint: rgba(11, 18, 32, 0.52);
+      --line: rgba(11, 18, 32, 0.14);
+      --line-soft: rgba(11, 18, 32, 0.10);
+      --glass: rgba(255, 255, 255, 0.92);
+      --glass-2: rgba(255, 255, 255, 0.85);
+      --glass-3: rgba(255, 255, 255, 0.96);
+      --surface: rgba(255, 255, 255, 0.88);
+      --surface-strong: rgba(255, 255, 255, 0.92);
+      --chip-bg: rgba(255, 255, 255, 0.82);
+      --nav-bg: rgba(255, 255, 255, 0.94);
+      --nav-border: rgba(0, 91, 181, 0.14);
+      --nav-tab-active: rgba(255, 255, 255, 0.42);
+      --accent-line: rgba(0, 91, 181, 0.18);
+      --accent-surface: rgba(0, 91, 181, 0.035);
+      --accent-surface-strong: rgba(0, 91, 181, 0.10);
+      --accent-border-mid: rgba(0, 91, 181, 0.30);
+      --chart-border: rgba(0, 91, 181, 0.16);
+      --chart-surface: rgba(0, 91, 181, 0.035);
+      --bar-border: rgba(0, 91, 181, 0.16);
+      --bar-fill-border: rgba(0, 91, 181, 0.30);
+      --bar-fill-surface: rgba(0, 91, 181, 0.10);
+      --good-line: rgba(8, 122, 57, 0.38);
+      --good-surface: rgba(8, 122, 57, 0.10);
+      --good-surface-strong: rgba(8, 122, 57, 0.10);
+      --good-line-soft: rgba(8, 122, 57, 0.30);
+      --warn-line: rgba(245, 130, 11, 0.34);
+      --warn-surface: rgba(245, 130, 11, 0.08);
+      --warn-line-soft: rgba(244, 200, 108, 0.36);
+      --bad-line: rgba(168, 40, 34, 0.32);
+      --bad-surface: rgba(168, 40, 34, 0.08);
+      --bad-line-soft: rgba(168, 40, 34, 0.34);
+      --bad-line-strong: rgba(168, 40, 34, 0.34);
+      --bad-surface-strong: rgba(168, 40, 34, 0.10);
+      --os-current-line: rgba(8, 122, 57, 0.42);
+      --os-current-surface: rgba(8, 122, 57, 0.08);
+      --modal-overlay: rgba(240, 245, 252, 0.78);
+      --modal-surface: rgba(255, 255, 255, 0.98);
+      --accent: #005bb5;
+      --good: #087a39;
+      --warn: #7a4b00;
+      --bad: #a82822;
+      --stat-cyan: #0284c7;
+      --stat-cyan-bg: rgba(2, 132, 199, 0.10);
+      --stat-violet: #7c3aed;
+      --stat-violet-bg: rgba(124, 58, 237, 0.10);
+      --stat-teal: #0d9488;
+      --stat-teal-bg: rgba(13, 148, 136, 0.10);
+      --stat-orange: #c2410c;
+      --stat-orange-bg: rgba(194, 65, 12, 0.10);
+      --stat-rose: #db2777;
+      --stat-rose-bg: rgba(219, 39, 119, 0.10);
+      --stat-indigo: #4338ca;
+      --stat-indigo-bg: rgba(67, 56, 202, 0.10);
+      --stat-fuchsia: #c026d3;
+      --stat-fuchsia-bg: rgba(192, 38, 211, 0.10);
+      --stat-lime: #65a30d;
+      --stat-lime-bg: rgba(101, 163, 13, 0.10);
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      padding:
+        max(38px, env(safe-area-inset-top))
+        26px
+        var(--page-bottom);
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 16% 0%, rgba(110, 150, 255, 0.11), transparent 30%),
+        radial-gradient(circle at 84% 8%, rgba(255, 255, 255, 0.045), transparent 26%),
+        linear-gradient(165deg, #020308 0%, #070a12 54%, #03040a 100%);
+      font-family: Vazirmatn, -apple-system, BlinkMacSystemFont, "Segoe UI", Tahoma, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    html[dir="rtl"] body {
+      text-align: right;
+    }
+
+    html[dir="ltr"] body {
+      text-align: left;
+    }
+
+    html[data-theme="light"] body {
+      background:
+        radial-gradient(circle at 12% 0%, rgba(120, 170, 240, 0.12), transparent 34%),
+        radial-gradient(circle at 88% 6%, rgba(255, 255, 255, 0.98), transparent 32%),
+        linear-gradient(165deg, #ffffff 0%, #f6f9fd 52%, #fbfcfe 100%);
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      opacity: 0.55;
+      background:
+        linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.014) 1px, transparent 1px);
+      background-size: 44px 44px;
+    }
+
+    html[data-theme="light"] body::before {
+      background:
+        linear-gradient(rgba(12, 24, 48, 0.028) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(12, 24, 48, 0.022) 1px, transparent 1px);
+    }
+
+    button,
+    input,
+    a {
+      font: inherit;
+    }
+
+    button {
+      color: inherit;
+      cursor: pointer;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+      max-width: 100%;
+    }
+
+    button,
+    input {
+      max-width: 100%;
+    }
+
+    .brand-title,
+    .brand-sub,
+    .username,
+    .subline,
+    .title,
+    .note,
+    .k,
+    .v,
+    .item-title,
+    .os-name,
+    .app-name,
+    .app-name-text,
+    .app-desc,
+    .sheet-title,
+    .sheet-sub,
+    .qr-title,
+    .bar-wrap span,
+    #status-label,
+    #alert-text,
+    #notice-text,
+    .toast {
+      max-width: 100%;
+    }
+
+    .shell {
+      width: min(100%, var(--page));
+      margin: 0 auto;
+    }
+
+    .glass {
+      position: relative;
+      border: var(--border);
+      border-radius: var(--r-card);
+      background: var(--glass);
+      contain: layout style paint;
+    }
+
+    .topbar {
+      position: relative;
+      z-index: 40;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      min-height: 64px;
+      padding: 12px;
+      margin-bottom: 20px;
+      border-radius: var(--r-card);
+    }
+
+    .brand {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-logo {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      overflow: hidden;
+      border-radius: var(--r-control);
+      border: var(--border);
+      background: var(--surface-strong);
+      color: var(--ink);
+    }
+
+    .brand-logo img {
+      width: 100%;
+      height: 100%;
+      display: none;
+      object-fit: contain;
+    }
+
+    .brand-logo.has-image img {
+      display: block;
+    }
+
+    .brand-logo.has-image svg {
+      display: none;
+    }
+
+    .brand-logo svg,
+    .icon svg,
+    .nav-tab svg,
+    .icon-btn svg,
+    .ghost [data-svg] svg,
+    .os-icon svg,
+    .app-icon svg {
+      width: 19px;
+      height: 19px;
+      display: block;
+    }
+
+    .brand-text {
+      min-width: 0;
+    }
+
+    .brand-text,
+    .item-main,
+    .os-info,
+    .app-info,
+    .sheet-head > div,
+    .status-line,
+    .chip-row,
+    .section-head > div {
+      min-width: 0;
+    }
+
+    .brand-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 760;
+      letter-spacing: -0.025em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .brand-sub {
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 520;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .nav-tab span:last-child,
+    .small-btn span:last-child,
+    .ghost span:last-child,
+    .chip,
+    .badge {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    body[data-view="account"] .mobile-nav .nav-tab[data-view="account"] {
+      color: #fff;
+      border-color: var(--accent-border-mid);
+      background: var(--accent-surface-strong);
+    }
+
+    body[data-view="account"] .mobile-nav .nav-tab[data-view="account"] svg {
+      color: var(--accent);
+    }
+
+    body[data-view="configs"] .mobile-nav .nav-tab[data-view="configs"] {
+      color: #fff;
+      border-color: var(--warn-line-soft);
+      background: var(--warn-surface);
+    }
+
+    body[data-view="configs"] .mobile-nav .nav-tab[data-view="configs"] svg {
+      color: var(--stat-orange);
+    }
+
+    body[data-view="apps"] .mobile-nav .nav-tab[data-view="apps"] {
+      color: #fff;
+      border-color: var(--good-line-soft);
+      background: var(--good-surface-strong);
+    }
+
+    body[data-view="apps"] .mobile-nav .nav-tab[data-view="apps"] svg {
+      color: var(--good);
+    }
+
+    html[data-theme="light"] body[data-view="account"] .mobile-nav .nav-tab[data-view="account"] {
+      color: var(--accent);
+      border-color: var(--accent-border-mid);
+      background: var(--accent-surface-strong);
+    }
+
+    html[data-theme="light"] body[data-view="configs"] .mobile-nav .nav-tab[data-view="configs"] {
+      color: var(--stat-orange);
+      border-color: var(--warn-line);
+      background: var(--stat-orange-bg);
+    }
+
+    html[data-theme="light"] body[data-view="apps"] .mobile-nav .nav-tab[data-view="apps"] {
+      color: var(--good);
+      border-color: var(--good-line-soft);
+      background: var(--good-surface-strong);
+    }
+
+    .actions {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      direction: ltr;
+    }
+
+    #lang-btn { order: 1; }
+    #theme-btn { order: 2; }
+    #support-btn { order: 3; }
+
+    html[dir="ltr"] #support-btn { order: 1; }
+    html[dir="ltr"] #theme-btn { order: 2; }
+    html[dir="ltr"] #lang-btn { order: 3; }
+
+    .icon-btn,
+    .small-btn,
+    .ghost,
+    .range-btn {
+      border: var(--border);
+      border-radius: var(--r-control);
+      background: var(--glass-2);
+      color: var(--ink);
+      appearance: none;
+      -webkit-appearance: none;
+      transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+    }
+
+    .icon-btn {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      line-height: 1;
+      flex: 0 0 auto;
+      text-decoration: none;
+    }
+
+    .icon-btn.copied,
+    .ghost.copied {
+      border-color: var(--good-line-soft);
+      background: var(--good-surface-strong);
+      color: var(--good);
+    }
+
+    .icon-btn.hidden {
+      display: none;
+    }
+
+    .small-btn,
+    .ghost {
+      min-height: 36px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 0 11px;
+      font-size: 12px;
+      font-weight: 680;
+      text-align: center;
+      line-height: 1;
+    }
+
+    .ghost span {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #copy-all {
+      min-width: 112px;
+    }
+
+    button:active,
+    a:active {
+      transform: scale(0.985);
+    }
+
+    .view {
+      display: none;
+    }
+
+    body[data-view="account"] #view-account,
+    body[data-view="configs"] #view-configs,
+    body[data-view="apps"] #view-apps {
+      display: block;
+    }
+
+    body[data-view-dir="next"][data-view="account"] #view-account,
+    body[data-view-dir="next"][data-view="configs"] #view-configs,
+    body[data-view-dir="next"][data-view="apps"] #view-apps {
+      animation: view-enter-next 240ms ease;
+    }
+
+    body[data-view-dir="prev"][data-view="account"] #view-account,
+    body[data-view-dir="prev"][data-view="configs"] #view-configs,
+    body[data-view-dir="prev"][data-view="apps"] #view-apps {
+      animation: view-enter-prev 240ms ease;
+    }
+
+    @keyframes view-enter-next {
+      from {
+        opacity: 0.62;
+        transform: translateX(12px);
+      }
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    @keyframes view-enter-prev {
+      from {
+        opacity: 0.62;
+        transform: translateX(-12px);
+      }
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    html[dir="rtl"] body[data-view-dir="next"][data-view="account"] #view-account,
+    html[dir="rtl"] body[data-view-dir="next"][data-view="configs"] #view-configs,
+    html[dir="rtl"] body[data-view-dir="next"][data-view="apps"] #view-apps {
+      animation-name: view-enter-prev;
+    }
+
+    html[dir="rtl"] body[data-view-dir="prev"][data-view="account"] #view-account,
+    html[dir="rtl"] body[data-view-dir="prev"][data-view="configs"] #view-configs,
+    html[dir="rtl"] body[data-view-dir="prev"][data-view="apps"] #view-apps {
+      animation-name: view-enter-next;
+    }
+
+    .account-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+    }
+
+    .panel {
+      padding: 22px;
+      min-width: 0;
+    }
+
+    .profile {
+      min-height: 300px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .profile > div {
+      min-width: 0;
+    }
+
+    .status-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .status-line > .chip {
+      min-width: 0;
+      max-width: min(100%, 240px);
+      flex-shrink: 1;
+    }
+
+    .status-line > .chip-row {
+      flex: 1 1 auto;
+      min-width: 0;
+      justify-content: flex-end;
+    }
+
+    #status-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .chip {
+      min-height: 28px;
+      max-width: 100%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 0 9px;
+      border: var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+      background: var(--chip-bg);
+      font-size: 11px;
+      font-weight: 620;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .chip.status-active {
+      color: var(--good);
+      border-color: var(--good-line);
+      background: var(--good-surface);
+    }
+
+    .chip.status-warn {
+      color: var(--warn);
+      border-color: var(--warn-line-soft);
+      background: var(--warn-surface);
+    }
+
+    .chip.status-bad {
+      color: var(--bad);
+      border-color: var(--bad-line-soft);
+      background: var(--bad-surface);
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--good);
+    }
+
+    .dot.warn {
+      background: var(--warn);
+    }
+
+    .dot.bad {
+      background: var(--bad);
+    }
+
+    .username {
+      margin: 6px 0 0;
+      font-size: clamp(28px, 5vw, 50px);
+      font-weight: 760;
+      line-height: 0.98;
+      letter-spacing: -0.02em;
+      direction: ltr;
+      text-align: inherit;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .subline {
+      max-width: 620px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 470;
+      line-height: 1.7;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .subline:empty {
+      display: none;
+    }
+
+    .profile-shortcuts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .profile-shortcuts .ghost {
+      min-width: 0;
+      flex: 1 1 calc(50% - 4px);
+      min-height: 42px;
+      padding: 0 14px;
+    }
+
+    .profile-shortcuts .ghost [data-svg] {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      line-height: 0;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .metric,
+    .detail,
+    .config-card,
+    .app-card,
+    .os-card {
+      border: var(--border);
+      border-radius: var(--r-box);
+      background: var(--surface);
+      min-width: 0;
+    }
+
+    .metric {
+      min-height: 86px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 8px;
+      text-align: right;
+      overflow: hidden;
+    }
+
+    .stat-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .stat-icon {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border: none;
+      border-radius: var(--r-sm);
+      flex: 0 0 auto;
+      line-height: 0;
+    }
+
+    .stat-icon svg {
+      width: 17px;
+      height: 17px;
+      display: block;
+      opacity: 0.96;
+    }
+
+    .stat-icon.tone-accent {
+      background: var(--accent-surface);
+      color: var(--accent);
+    }
+
+    .stat-icon.tone-good {
+      background: var(--good-surface);
+      color: var(--good);
+    }
+
+    .stat-icon.tone-warn {
+      background: var(--warn-surface);
+      color: var(--warn);
+    }
+
+    .stat-icon.tone-bad {
+      background: var(--bad-surface);
+      color: var(--bad);
+    }
+
+    .stat-icon.tone-muted {
+      background: var(--chip-bg);
+      color: var(--muted);
+    }
+
+    .stat-icon.tone-cyan {
+      background: var(--stat-cyan-bg);
+      color: var(--stat-cyan);
+    }
+
+    .stat-icon.tone-violet {
+      background: var(--stat-violet-bg);
+      color: var(--stat-violet);
+    }
+
+    .stat-icon.tone-teal {
+      background: var(--stat-teal-bg);
+      color: var(--stat-teal);
+    }
+
+    .stat-icon.tone-orange {
+      background: var(--stat-orange-bg);
+      color: var(--stat-orange);
+    }
+
+    .stat-icon.tone-rose {
+      background: var(--stat-rose-bg);
+      color: var(--stat-rose);
+    }
+
+    .stat-icon.tone-indigo {
+      background: var(--stat-indigo-bg);
+      color: var(--stat-indigo);
+    }
+
+    .stat-icon.tone-fuchsia {
+      background: var(--stat-fuchsia-bg);
+      color: var(--stat-fuchsia);
+    }
+
+    .stat-icon.tone-lime {
+      background: var(--stat-lime-bg);
+      color: var(--stat-lime);
+    }
+
+    .stat-top .k {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .k {
+      width: 100%;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 560;
+      text-align: right;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    html[dir="ltr"] .k {
+      text-align: left;
+    }
+
+    .v {
+      color: var(--ink);
+      font-size: 17px;
+      font-weight: 730;
+      letter-spacing: -0.025em;
+      direction: inherit;
+      unicode-bidi: plaintext;
+      text-align: right;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    html[dir="ltr"] .v {
+      text-align: left;
+    }
+
+    html[dir="ltr"] .metric,
+    html[dir="ltr"] .detail,
+    html[dir="ltr"] .title,
+    html[dir="ltr"] .note,
+    html[dir="ltr"] .item-title,
+    html[dir="ltr"] .os-name,
+    html[dir="ltr"] .app-name,
+    html[dir="ltr"] .app-name-text,
+    html[dir="ltr"] .app-desc,
+    html[dir="ltr"] .sheet-title,
+    html[dir="ltr"] .sheet-sub {
+      text-align: left;
+    }
+
+    .metric .v,
+    .detail .v {
+      min-height: 24px;
+      display: block;
+      width: 100%;
+    }
+
+    .usage {
+      min-height: 300px;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      min-width: 0;
+    }
+
+    .section-head > div:first-child {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .title {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 740;
+      letter-spacing: -0.045em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .note {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.7;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .range {
+      display: flex;
+      gap: 8px;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+    }
+
+    .range-btn {
+      width: 52px;
+      min-height: 30px;
+      padding: 0 9px;
+      border: 1px solid var(--accent-line);
+      border-radius: 999px;
+      background: var(--accent-surface);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+
+    .range-btn.active {
+      border-color: var(--accent-border-mid);
+      background: var(--accent-surface-strong);
+      color: var(--accent);
+    }
+
+    .chart {
+      min-height: 230px;
+      display: grid;
+      align-items: end;
+      padding: 16px;
+      border: 1px solid var(--chart-border);
+      border-radius: var(--r-box);
+      background: var(--chart-surface);
+    }
+
+    .bars {
+      min-height: 190px;
+      display: grid;
+      grid-template-columns: repeat(var(--bars), minmax(0, 1fr));
+      gap: 10px;
+      align-items: end;
+      direction: ltr;
+    }
+
+    .bar-wrap {
+      height: 198px;
+      display: grid;
+      grid-template-rows: 1fr auto;
+      gap: 7px;
+    }
+
+    .bar {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--bar-border);
+      border-radius: var(--r-sm);
+      background: var(--chart-surface);
+    }
+
+    .bar i {
+      position: absolute;
+      inset-inline: 0;
+      bottom: 0;
+      height: var(--h);
+      min-height: 12px;
+      border-radius: inherit;
+      border: 1px solid var(--bar-fill-border);
+      background: var(--bar-fill-surface);
+      box-shadow: none;
+    }
+
+    .bar b {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 760;
+      line-height: 1.65;
+      letter-spacing: 0.22em;
+      direction: ltr;
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      text-shadow: none;
+      white-space: nowrap;
+    }
+
+    .bar-wrap span {
+      color: var(--faint);
+      font-size: 10px;
+      font-weight: 560;
+      text-align: center;
+      direction: ltr;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 0;
+    }
+
+    .detail {
+      min-height: 86px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 8px;
+      text-align: right;
+      overflow: hidden;
+    }
+
+    .detail .v {
+      font-size: 17px;
+      font-weight: 730;
+    }
+
+    .alert-banner {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      max-width: 100%;
+      min-height: 44px;
+      padding: 12px;
+      margin: 0 0 12px;
+      border: 1px solid var(--bad-line);
+      border-radius: var(--r-box);
+      background: var(--bad-surface);
+      color: var(--bad);
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.5;
+      text-align: center;
+      overflow: hidden;
+      contain: layout style paint;
+    }
+
+    .alert-banner.show {
+      display: flex;
+    }
+
+    #alert-text {
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #support-btn.alert-active {
+      border-color: var(--bad-line-strong);
+      background: var(--bad-surface-strong);
+      color: var(--bad);
+      animation: support-blink 1.15s ease-in-out infinite;
+    }
+
+    html[data-theme="light"] #support-btn.alert-active {
+      animation-name: support-blink-light;
+    }
+
+    @keyframes support-blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.72; }
+    }
+
+    @keyframes support-blink-light {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.78; }
+    }
+
+    .notice {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      max-width: 100%;
+      min-height: 44px;
+      padding: 12px;
+      margin: 0 0 20px;
+      border: 1px solid var(--warn-line);
+      border-radius: var(--r-box);
+      background: var(--warn-surface);
+      color: var(--warn);
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      text-align: center;
+      overflow: hidden;
+    }
+
+    .notice.show {
+      display: flex;
+    }
+
+    .notice a,
+    #notice-text {
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .config-card {
+      min-height: 62px;
+      padding: 12px;
+      display: grid;
+      grid-template-columns: 40px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .item-main {
+      display: block;
+      overflow: hidden;
+    }
+
+    .icon {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      border: var(--border);
+      border-radius: var(--r-control);
+      background: var(--surface);
+      color: var(--muted);
+    }
+
+    .item-title {
+      display: block;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .row-actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      flex: 0 0 auto;
+    }
+
+    .row-actions .icon-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: var(--r-sm);
+    }
+
+    .os-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    .os-card {
+      min-height: 62px;
+      padding: 12px;
+      display: grid;
+      grid-template-columns: 40px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      text-align: left;
+      direction: ltr;
+    }
+
+    html[dir="rtl"] .os-card {
+      direction: rtl;
+      text-align: right;
+    }
+
+    html[dir="rtl"] .os-info {
+      direction: rtl;
+      text-align: right;
+    }
+
+    html[dir="ltr"] .os-info {
+      direction: ltr;
+      text-align: left;
+    }
+
+    .os-card.current {
+      border-color: var(--os-current-line);
+      background: var(--os-current-surface);
+    }
+
+    .os-top {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 6px;
+      margin-bottom: 0;
+      min-width: 0;
+    }
+
+    .os-icon,
+    .app-icon {
+      display: grid;
+      place-items: center;
+      border: var(--border);
+      background: var(--surface);
+      color: var(--ink);
+    }
+
+    .os-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--r-control);
+    }
+
+    .os-icon svg {
+      width: 19px;
+      height: 19px;
+    }
+
+    .os-open {
+      min-width: 66px;
+      padding-inline: 12px;
+      flex: 0 0 auto;
+    }
+
+    .badge-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .badge {
+      min-height: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 0 9px;
+      border: var(--border);
+      border-radius: 999px;
+      background: var(--chip-bg);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 620;
+      white-space: nowrap;
+    }
+
+    .badge.rec {
+      color: var(--warn);
+      border-color: var(--warn-line);
+      background: var(--warn-surface);
+    }
+
+    .badge.current-tag {
+      color: var(--good);
+      border-color: var(--good-line-soft);
+      background: var(--good-surface-strong);
+    }
+
+    .os-name {
+      flex: 1 1 auto;
+      min-width: 0;
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 740;
+      letter-spacing: -0.04em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .empty {
+      min-height: 128px;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      border: 1px dashed var(--line-soft);
+      border-radius: var(--r-box);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.8;
+      text-align: center;
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+      background: var(--modal-overlay);
+      visibility: hidden;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 220ms ease, visibility 220ms ease;
+    }
+
+    .modal.show {
+      visibility: visible;
+      opacity: 1;
+      pointer-events: auto;
+      backdrop-filter: blur(12px) saturate(125%);
+      -webkit-backdrop-filter: blur(12px) saturate(125%);
+    }
+
+    .modal .sheet.glass,
+    .modal .qr-box.glass {
+      background: var(--modal-surface);
+    }
+
+    .modal .sheet,
+    .modal .qr-box {
+      transform: translateY(10px) scale(0.98);
+      opacity: 0;
+      transition: transform 220ms ease, opacity 220ms ease;
+    }
+
+    .modal.show .sheet,
+    .modal.show .qr-box {
+      transform: none;
+      opacity: 1;
+    }
+
+    .sheet {
+      width: min(100%, 520px);
+      max-height: min(720px, calc(100dvh - 36px));
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+    }
+
+    .sheet-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 18px;
+      border-bottom: var(--border);
+    }
+
+    .sheet-title {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 740;
+      letter-spacing: -0.04em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .sheet-sub {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .sheet-body {
+      overflow: auto;
+      padding: 18px;
+    }
+
+    .app-list {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    .app-card {
+      min-height: 112px;
+      padding: 14px;
+      max-width: 440px;
+      width: 100%;
+      margin-inline: auto;
+    }
+
+    .app-head {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+
+    .app-icon {
+      width: 42px;
+      height: 42px;
+      overflow: hidden;
+      border-radius: var(--r-control);
+      flex: 0 0 auto;
+    }
+
+    .app-icon img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+    }
+
+    .app-name {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 740;
+      line-height: 1.4;
+    }
+
+    .app-name-text {
+      min-width: 0;
+      flex: 1 1 auto;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .app-desc {
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.55;
+      display: -webkit-box;
+      overflow: hidden;
+      line-clamp: 2;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+
+    .app-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .app-actions a {
+      min-height: 38px;
+      height: 38px;
+      flex: 1 1 calc(50% - 8px);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 10px;
+      border: var(--border);
+      border-radius: var(--r-control);
+      background: var(--surface);
+      color: var(--ink);
+      font-size: 11px;
+      font-weight: 650;
+      text-align: center;
+      line-height: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .app-actions a.action-download {
+      color: var(--good);
+      border-color: var(--good-line-soft);
+      background: var(--good-surface);
+    }
+
+    .app-actions a.action-exit {
+      color: var(--bad);
+      border-color: var(--bad-line-soft);
+      background: var(--bad-surface);
+    }
+
+    .app-actions a.action-import,
+    .app-actions a.import {
+      flex-basis: 100%;
+      color: var(--accent);
+      border-color: var(--accent-border-mid);
+      background: var(--accent-surface-strong);
+    }
+
+    .icon-btn.modal-close {
+      color: var(--bad);
+      border-color: var(--bad-line-soft);
+      background: var(--bad-surface);
+    }
+
+    .qr-box {
+      width: min(100%, 288px);
+      padding: 0;
+      text-align: center;
+      overflow: hidden;
+    }
+
+    .qr-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 720;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .qr-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 18px;
+      border-bottom: var(--border);
+    }
+
+    .qr-canvas {
+      width: 240px;
+      min-height: 240px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin: 28px auto;
+      padding: 16px;
+      border-radius: var(--r-box);
+      background: #fff;
+      color: #111827;
+      font-size: 12px;
+    }
+
+    .qr-canvas canvas,
+    .qr-canvas img {
+      width: 208px;
+      height: 208px;
+      display: block;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: calc(var(--nav-height) + var(--nav-offset) + env(safe-area-inset-bottom, 0px) + var(--nav-gap));
+      z-index: 140;
+      transform: translateX(-50%) translateY(70px);
+      opacity: 0;
+      pointer-events: none;
+      max-width: min(calc(100% - 24px), 420px);
+      padding: 9px 14px;
+      border: var(--border);
+      border-radius: 999px;
+      background: var(--glass-3);
+      color: var(--ink);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: opacity 180ms ease, transform 180ms ease;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .toast.success {
+      border-color: var(--good-line-soft);
+      background: var(--good-surface-strong);
+      color: var(--good);
+    }
+
+    .loading {
+      position: fixed;
+      inset: 0;
+      z-index: 90;
+      display: none;
+      place-items: center;
+      background: var(--modal-overlay);
+      pointer-events: none;
+    }
+
+    .loading.show {
+      display: grid;
+      pointer-events: auto;
+      backdrop-filter: blur(12px) saturate(125%);
+      -webkit-backdrop-filter: blur(12px) saturate(125%);
+    }
+
+    .loader {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 44px;
+      padding: 0 16px;
+      border: var(--border);
+      border-radius: 999px;
+      background: var(--modal-surface);
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 620;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.18);
+    }
+
+    .loader::before {
+      content: "";
+      width: 13px;
+      height: 13px;
+      border: 2px solid var(--line-soft);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 800ms linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .mobile-nav {
+      position: fixed;
+      left: 50%;
+      bottom: calc(var(--nav-offset) + env(safe-area-inset-bottom, 0px));
+      z-index: 80;
+      width: min(360px, calc(100% - 24px));
+      height: var(--nav-height);
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 5px;
+      padding: 8px;
+      align-items: stretch;
+      border: var(--border);
+      border-color: var(--nav-border);
+      border-radius: 999px;
+      background: var(--nav-bg);
+      transform: translateX(-50%);
+      contain: layout style paint;
+    }
+
+    .nav-tab {
+      position: relative;
+      min-width: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 9px 4px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 630;
+      line-height: 1;
+    }
+
+    .mobile-nav .nav-tab {
+      height: 100%;
+      min-height: 0;
+      border: 1px solid transparent;
+    }
+
+    .nav-tab svg {
+      width: 19px;
+      height: 19px;
+      display: block;
+      flex: 0 0 auto;
+    }
+
+    .mobile-nav .nav-tab [data-svg] {
+      display: grid;
+      place-items: center;
+      width: 20px;
+      height: 20px;
+      line-height: 0;
+      flex: 0 0 auto;
+    }
+
+    .nav-tab span:last-child {
+      line-height: 1;
+      display: block;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 980px) {
+      .account-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .detail-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .os-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 720px) {
+      :root {
+        --nav-offset: 20px;
+        --nav-gap: 32px;
+      }
+
+      body {
+        padding:
+          max(30px, env(safe-area-inset-top))
+          18px
+          var(--page-bottom);
+      }
+
+      .topbar {
+        position: relative;
+        top: auto;
+        min-height: 58px;
+        padding: 12px;
+        border-radius: var(--r-card);
+      }
+
+      .brand-logo {
+        width: 38px;
+        height: 38px;
+        border-radius: var(--r-control);
+      }
+
+      .brand-title {
+        font-size: 14px;
+      }
+
+      .brand-sub {
+        max-width: 150px;
+        font-size: 10px;
+      }
+
+      .icon-btn {
+        width: 36px;
+        height: 36px;
+      }
+
+      .panel {
+        padding: 18px;
+      }
+
+      .profile {
+        min-height: 270px;
+      }
+
+      .metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .detail-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .username {
+        font-size: clamp(30px, 11vw, 42px);
+      }
+
+      .config-card {
+        grid-template-columns: 38px minmax(0, 1fr) auto;
+      }
+
+      .config-card .row-actions {
+        grid-column: auto;
+        justify-content: center;
+      }
+
+      .modal {
+        align-items: center;
+        padding: 20px;
+      }
+
+      .sheet {
+        max-height: calc(100dvh - 20px);
+        border-radius: var(--r-card);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+
+    html[data-perf="lite"] body[data-view-dir="next"] .view,
+    html[data-perf="lite"] body[data-view-dir="prev"] .view {
+      animation: none !important;
+    }
+
+    html[data-perf="lite"] .modal .sheet,
+    html[data-perf="lite"] .modal .qr-box,
+    html[data-perf="lite"] .modal {
+      transition: none !important;
+    }
+
+    html[data-perf="lite"] .modal.show {
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+    }
+
+    html[data-perf="lite"] body::before {
+      display: none;
+    }
+
+    html[data-perf="lite"] button:active,
+    html[data-perf="lite"] a:active {
+      transform: none;
+    }
+
+    html[data-perf="lite"] .loader::before {
+      animation: none !important;
+    }
+
+    html[data-perf="lite"] .loading.show {
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+    }
+
+    html[data-perf="lite"] #support-btn.alert-active {
+      animation: none !important;
+    }
+
+    @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+      .modal.show,
+      .loading.show {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+      }
+    }
+  </style>
+</head>
+<body data-view="account">
+  <div class="shell">
+    <header class="topbar glass">
+      <div class="brand">
+        <span class="brand-logo" id="brand-logo">
+          <img id="brand-img" alt="">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="8.5"></circle>
+            <path d="M12 7v5l3 2"></path>
+            <path d="M7 3.5 4.8 5.3M17 3.5l2.2 1.8"></path>
+          </svg>
+        </span>
+        <span class="brand-text">
+          <h1 class="brand-title" id="brand-title">MrClock Template</h1>
+          <p class="brand-sub" id="brand-subtitle">پنل اشتراک</p>
+        </span>
+      </div>
+
+      <div class="actions">
+        <button class="icon-btn" id="lang-btn" type="button" aria-label="language"><span id="lang-label">FA</span></button>
+        <button class="icon-btn" id="theme-btn" type="button" aria-label="theme"><span data-svg="moon"></span></button>
+        <a class="icon-btn hidden" id="support-btn" href="#" target="_blank" rel="noopener" aria-label="support"><span data-svg="support"></span></a>
+      </div>
+    </header>
+
+    <div class="alert-banner" id="alert" role="alert" aria-live="polite">
+      <span id="alert-text"></span>
+    </div>
+
+    <div class="notice" id="notice">
+      <span id="notice-text"></span>
+    </div>
+
+    <main>
+      <section class="view" id="view-account">
+        <div class="account-grid">
+          <section class="panel profile glass">
+            <div class="status-line">
+              <div class="chip"><span class="dot" id="status-dot"></span><span id="status-label">—</span></div>
+              <div class="chip-row" id="profile-chips"></div>
+            </div>
+            <div>
+              <h2 class="username" id="username">—</h2>
+              <p class="subline" id="subline" data-i18n="emptyState">لینک اشتراک را وارد کنید</p>
+              <div class="profile-shortcuts hidden" id="profile-shortcuts">
+                <button class="ghost profile-shortcut" type="button" id="copy-sub-link"><span data-svg="copy"></span><span data-i18n="copySubLink">کپی لینک اشتراک</span></button>
+                <button class="ghost profile-shortcut" type="button" id="qr-sub-link"><span data-svg="qr"></span><span data-i18n="qrSubLink">QR اشتراک</span></button>
+              </div>
+            </div>
+            <div class="metrics" id="metrics"></div>
+            <div class="detail-grid" id="details"></div>
+          </section>
+
+          <section class="panel usage glass">
+            <div class="section-head">
+              <div>
+                <h2 class="title" data-i18n="usage">نمودار مصرف</h2>
+                <p class="note" id="usage-total">—</p>
+              </div>
+              <div class="range">
+                <button class="range-btn active" type="button" data-range="1d" data-i18n="day">روز</button>
+                <button class="range-btn" type="button" data-range="7d" data-i18n="week">هفته</button>
+              </div>
+            </div>
+            <div class="chart" id="chart"><div class="empty" data-i18n="noUsage">آماری برای نمایش نیست</div></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" id="view-configs">
+        <section class="panel glass">
+          <div class="section-head">
+            <div>
+              <h2 class="title" data-i18n="configsTitle">کانفیگ‌ها</h2>
+              <p class="note" data-i18n="configsNote">لینک اشتراک و کانفیگ‌های کاربر</p>
+            </div>
+            <button class="ghost" id="copy-all" type="button"><span data-i18n="copyAll">کپی همه</span></button>
+          </div>
+          <div class="list" id="config-list"></div>
+        </section>
+      </section>
+
+      <section class="view" id="view-apps">
+        <section class="panel glass">
+          <div class="section-head">
+            <div>
+              <h2 class="title" data-i18n="appsTitle">اپلیکیشن‌ها</h2>
+              <p class="note" data-i18n="appsNote">لیست اپلیکیشن‌ها بر اساس سیستم‌عامل</p>
+            </div>
+          </div>
+          <div class="os-grid" id="os-grid"></div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <nav class="mobile-nav" aria-label="sections">
+    <button class="nav-tab" type="button" data-view="account"><span data-svg="user"></span><span data-i18n="account">اطلاعات حساب</span></button>
+    <button class="nav-tab" type="button" data-view="configs"><span data-svg="sliders"></span><span data-i18n="configs">کانفیگ‌ها</span></button>
+    <button class="nav-tab" type="button" data-view="apps"><span data-svg="apps"></span><span data-i18n="apps">اپلیکیشن‌ها</span></button>
+  </nav>
+
+  <div class="modal" id="apps-modal" aria-hidden="true">
+    <section class="sheet glass" role="dialog" aria-modal="true" aria-labelledby="apps-modal-title">
+      <div class="sheet-head">
+        <div>
+          <h2 class="sheet-title" id="apps-modal-title">—</h2>
+          <p class="sheet-sub" id="apps-modal-sub">—</p>
+        </div>
+        <button class="icon-btn modal-close" type="button" data-close="apps-modal" aria-label="close"><span data-svg="close"></span></button>
+      </div>
+      <div class="sheet-body">
+        <div class="app-list" id="app-list"></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="modal" id="qr-modal" aria-hidden="true">
+    <section class="qr-box glass" role="dialog" aria-modal="true" aria-labelledby="qr-title">
+      <div class="qr-head">
+        <h2 class="qr-title" id="qr-title">QR</h2>
+        <button class="icon-btn modal-close" type="button" data-close="qr-modal" aria-label="close"><span data-svg="close"></span></button>
+      </div>
+      <div class="qr-canvas" id="qr-canvas"></div>
+    </section>
+  </div>
+
+  <div class="loading" id="loading"><div class="loader" data-i18n="loading">در حال دریافت اطلاعات</div></div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+(function () {
+  "use strict";
+
+  var LS = {
+    panel: "pg_user_panel",
+    token: "pg_user_token",
+    lang: "pg_user_lang",
+    theme: "pg_user_theme"
+  };
+
+  var DEFAULT_BRAND = {
+    name: "MrClock Template",       // ← نام برند
+    subtitle: {
+      fa: "پنل اشتراک",             // ← شعار فارسی
+      en: "Subscription panel"      // ← شعار انگلیسی
+    },
+    logoUrl: ""                     // ← URL لوگو (خالی = آیکن پیش‌فرض)
+  };
+
+  var BRAND = window.MRCLOCK_BRAND || window.PASARGUARD_BRAND || window.PANEL_BRAND || DEFAULT_BRAND;
+
+  var CONFIG = window.PASARGUARD_CONFIG || window.PANEL_USER_CONFIG || {};
+
+  var state = {
+    lang: localStorage.getItem(LS.lang) || "fa",
+    theme: localStorage.getItem(LS.theme) || "dark",
+    ctx: null,
+    user: null,
+    headers: {},
+    links: [],
+    apps: [],
+    range: "1d",
+    groups: {},
+    appsModalPlatform: null,
+    toastTimer: null,
+    viewAnimTimer: null,
+    usageRequest: 0,
+    usageRaw: null,
+    qrPromise: null,
+    configItems: []
+  };
+
+  var L = {
+    fa: {
+      account: "اطلاعات حساب",
+      configs: "کانفیگ‌ها",
+      apps: "اپلیکیشن‌ها",
+      configTag: "کانفیگ",
+      appTag: "اپلیکیشن",
+      emptyState: "لینک اشتراک را وارد کنید",
+      usage: "نمودار مصرف",
+      day: "روز",
+      week: "هفته",
+      noUsage: "آماری برای نمایش نیست",
+      configsTitle: "کانفیگ‌ها",
+      configsNote: "لینک اشتراک و کانفیگ‌های کاربر",
+      copyAll: "کپی همه",
+      appsTitle: "اپلیکیشن‌ها",
+      appsNote: "لیست اپلیکیشن‌ها بر اساس سیستم‌عامل",
+      close: "بستن",
+      loading: "در حال دریافت اطلاعات",
+      loadingUsage: "در حال بارگذاری نمودار",
+      active: "فعال",
+      disabled: "غیرفعال",
+      limited: "محدود",
+      expired: "منقضی",
+      on_hold: "منتظر اولین اتصال",
+      unknown: "نامشخص",
+      expire: "زمان باقی‌مانده",
+      used: "مصرف",
+      remain: "حجم باقی‌مانده",
+      limit: "حجم کل",
+      online: "آخرین اتصال",
+      lifetime: "مصرف کل",
+      created: "تاریخ ساخت",
+      updated: "آخرین ویرایش",
+      ip: "آخرین IP",
+      devices: "دستگاه‌ها",
+      deviceTag: "دستگاه",
+      deviceCapacity: "ظرفیت مجاز",
+      unlimited: "نامحدود",
+      never: "هرگز",
+      days: "روز",
+      bytes: "بایت",
+      kb: "کیلوبایت",
+      mb: "مگابایت",
+      gb: "گیگابایت",
+      tb: "ترابایت",
+      usageTotal: "مصرف این بازه",
+      lowTraffic: "حجم اشتراک رو به پایان است",
+      lowTime: "زمان اشتراک رو به پایان است",
+      noConfig: "کانفیگی برای نمایش نیست",
+      subLink: "لینک اشتراک",
+      copySubLink: "کپی لینک اشتراک",
+      qrSubLink: "QR اشتراک",
+      copy: "کپی",
+      copied: "کپی شد",
+      support: "پشتیبانی",
+      qr: "QR",
+      download: "دانلود",
+      noApps: "اپلیکیشنی برای نمایش نیست",
+      app: "اپ",
+      openApps: "مشاهده",
+      recommended: "پیشنهادی",
+      yourOS: "سیستم شما",
+      import: "افزودن اشتراک",
+      linkLabel: "لینک",
+      invalid: "لینک یا توکن معتبر نیست",
+      infoError: "دریافت اطلاعات حساب خطا داد",
+      fileHint: "فایل باید روی دامنه پنل یا دامنه مجاز CORS باشد",
+      qrLoading: "در حال ساخت QR",
+      qrError: "ساخت QR خطا داد",
+      qrLong: "لینک برای QR طولانی است",
+      other: "سایر"
+    },
+    en: {
+      account: "Account",
+      configs: "Configs",
+      apps: "Apps",
+      configTag: "Config",
+      appTag: "App",
+      emptyState: "Enter your subscription link",
+      usage: "Usage chart",
+      day: "Day",
+      week: "Week",
+      noUsage: "No usage data",
+      configsTitle: "Configs",
+      configsNote: "User subscription link and configs",
+      copyAll: "Copy all",
+      appsTitle: "Apps",
+      appsNote: "App list by operating system",
+      close: "Close",
+      loading: "Fetching account info",
+      loadingUsage: "Loading chart",
+      active: "Active",
+      disabled: "Disabled",
+      limited: "Limited",
+      expired: "Expired",
+      on_hold: "Starts on first use",
+      unknown: "Unknown",
+      expire: "Time left",
+      used: "Used",
+      remain: "Remaining data",
+      limit: "Limit",
+      online: "Last online",
+      lifetime: "Lifetime",
+      created: "Created",
+      updated: "Updated",
+      ip: "Last IP",
+      devices: "devices",
+      deviceTag: "device",
+      deviceCapacity: "Device limit",
+      unlimited: "Unlimited",
+      never: "Never",
+      days: "days",
+      bytes: "B",
+      kb: "KB",
+      mb: "MB",
+      gb: "GB",
+      tb: "TB",
+      usageTotal: "Traffic in range",
+      lowTraffic: "Your remaining traffic is low",
+      lowTime: "Your subscription expires soon",
+      noConfig: "No configs to show",
+      subLink: "Subscription link",
+      copySubLink: "Copy subscription link",
+      qrSubLink: "Subscription QR",
+      copy: "Copy",
+      copied: "Copied",
+      support: "Support",
+      qr: "QR",
+      download: "Download",
+      noApps: "No apps to show",
+      app: "app",
+      openApps: "View",
+      recommended: "Recommended",
+      yourOS: "Your OS",
+      import: "Add subscription",
+      linkLabel: "Link",
+      invalid: "Invalid link or token",
+      infoError: "Could not load account info",
+      fileHint: "Host the file on the panel domain or a CORS-allowed domain",
+      qrLoading: "Creating QR",
+      qrError: "Could not create QR",
+      qrLong: "The link is too long for QR",
+      other: "Other"
+    }
+  };
+
+  var SVG = {
+    user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21a8 8 0 1 0-16 0"></path><circle cx="12" cy="7" r="4"></circle></svg>',
+    sliders: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"></path><circle cx="8" cy="7" r="1.5"></circle><circle cx="16" cy="12" r="1.5"></circle><circle cx="10" cy="17" r="1.5"></circle></svg>',
+    apps: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="6" height="6" rx="2"></rect><rect x="14" y="4" width="6" height="6" rx="2"></rect><rect x="4" y="14" width="6" height="6" rx="2"></rect><rect x="14" y="14" width="6" height="6" rx="2"></rect></svg>',
+    moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3a6 6 0 1 0 9 7 9 9 0 1 1-9-7Z"></path></svg>',
+    sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg>',
+    copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="3"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>',
+    support: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.4 19.4 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.7 2Z"></path></svg>',
+    qr: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z"></path></svg>',
+    download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12"></path><path d="M7 10l5 5 5-5"></path><path d="M5 21h14"></path></svg>',
+    link: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>',
+    close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg>',
+    net: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18"></path><path d="M12 3c2.3 2.5 3.5 5.5 3.5 9S14.3 18.5 12 21"></path><path d="M12 3C9.7 5.5 8.5 8.5 8.5 12S9.7 18.5 12 21"></path></svg>',
+    apple: '<svg viewBox="5 3 16 17" fill="currentColor"><path d="M16.9 12.1c0-1.8 1.5-2.7 1.6-2.8-.9-1.2-2.2-1.4-2.6-1.4-1.1-.1-2.1.6-2.7.6-.6 0-1.4-.6-2.3-.6-1.2 0-2.4.7-3 1.8-1.3 2.2-.3 5.5.9 7.3.6.9 1.4 1.9 2.4 1.9.9 0 1.3-.6 2.4-.6s1.4.6 2.4.6 1.7-.9 2.3-1.8c.7-1 1-2.1 1-2.1-.1 0-2.4-.9-2.4-2.9zM15.2 6.7c.5-.6.8-1.4.8-2.2-.8 0-1.6.5-2.1 1.1-.5.5-.9 1.3-.8 2.1.8.1 1.6-.4 2.1-1z"></path></svg>',
+    android: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85a.637.637 0 0 0-.83.22l-1.88 3.24a11.463 11.463 0 0 0-8.94 0L5.65 5.67a.643.643 0 0 0-.87-.2.641.641 0 0 0-.26.85l1.84 3.18C4.41 11.22 3 13.79 3 16.78h18c0-2.99-1.41-5.56-3.4-7.3zM8.5 15.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm7 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"></path></svg>',
+    tv: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="13" rx="2"></rect><path d="M8 21h8"></path><path d="M12 18v3"></path></svg>',
+    windows: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 5h7v6H4V5Zm9 0h7v6h-7V5ZM4 13h7v6H4v-6Zm9 0h7v6h-7v-6Z"></path></svg>',
+    linux: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3c-2.4 0-4 2.1-4 5.1 0 1.5-.5 2.8-1.3 4.1L5 15.4C4.3 16.8 5.2 18 6.6 18h10.8c1.4 0 2.3-1.2 1.6-2.6l-1.7-3.2C16.5 10.9 16 9.6 16 8.1 16 5.1 14.4 3 12 3Z"></path><path d="M9 19.5 7.8 21M15 19.5l1.2 1.5M10 8h.01M14 8h.01"></path></svg>',
+    statCalendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"></path></svg>',
+    statTrend: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 7 13.5 15.5 8.5 10.5 2 17"></path><path d="M16 7h6v6"></path></svg>',
+    statRemain: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22a8 8 0 0 0 8-8c0-4-4-8-8-12-4 4-8 8-8 8a8 8 0 0 0 8 8Z"></path></svg>',
+    statDatabase: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"></path><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"></path></svg>',
+    statActivity: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>',
+    statLifetime: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 20V9M12 20V4M18 20v-7"></path></svg>',
+    statCreated: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"></path><path d="m9 16 2 2 4-4"></path></svg>',
+    statRefresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"></path><path d="M21 3v6h-6"></path></svg>',
+    statGlobe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z"></path></svg>',
+    statDevice: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="7" y="2" width="10" height="20" rx="2"></rect><path d="M12 18h.01"></path></svg>'
+  };
+
+  function scrollToTop() {
+    var lite = document.documentElement.getAttribute("data-perf") === "lite";
+    window.scrollTo({ top: 0, behavior: lite ? "auto" : "smooth" });
+  }
+
+  function syncRangeButtons() {
+    document.querySelectorAll(".range-btn").forEach(function (btn) {
+      btn.classList.toggle("active", btn.getAttribute("data-range") === state.range);
+    });
+  }
+
+  function statCard(kind, label, value, icon, tone) {
+    return '<article class="' + kind + '"><div class="stat-top">' + statIcon(icon, tone) + '<span class="k">' + esc(label) + '</span></div><span class="v">' + esc(value) + '</span></article>';
+  }
+
+  function $(id) { return document.getElementById(id); }
+  function tr(key) { return (L[state.lang] && L[state.lang][key]) || L.fa[key] || key; }
+  function fa() { return state.lang === "fa"; }
+  function esc(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function num(value) {
+    var s = String(value == null ? "" : value);
+    return fa() ? s.replace(/\d/g, function (d) { return "۰۱۲۳۴۵۶۷۸۹"[d]; }) : s.replace(/[۰-۹]/g, function (d) { return "۰۱۲۳۴۵۶۷۸۹".indexOf(d); });
+  }
+  function svg(name) { return SVG[name] || ""; }
+
+  function installSvg(root) {
+    (root || document).querySelectorAll("[data-svg]").forEach(function (el) {
+      el.innerHTML = svg(el.getAttribute("data-svg"));
+    });
+  }
+
+  function applyLang() {
+    document.documentElement.lang = state.lang;
+    document.documentElement.dir = fa() ? "rtl" : "ltr";
+    $("lang-label").textContent = fa() ? "FA" : "EN";
+    document.querySelectorAll("[data-i18n]").forEach(function (el) {
+      el.textContent = tr(el.getAttribute("data-i18n"));
+    });
+    applyBrand();
+    if (state.ctx) {
+      renderAll();
+      refreshUsageView();
+    }
+    if ($("apps-modal").classList.contains("show") && state.appsModalPlatform) {
+      openApps(state.appsModalPlatform);
+    }
+  }
+
+  function applyTheme() {
+    document.documentElement.setAttribute("data-theme", state.theme);
+    var icon = $("theme-btn").querySelector("[data-svg]");
+    icon.setAttribute("data-svg", state.theme === "dark" ? "sun" : "moon");
+    icon.innerHTML = svg(state.theme === "dark" ? "sun" : "moon");
+  }
+
+  function defaultSubtitle() {
+    var sub = BRAND.subtitle;
+    return typeof sub === "object" ? (sub[state.lang] || sub.fa || sub.en || "") : (sub || "");
+  }
+
+  function applyBrand() {
+    var name = BRAND.name || "MrClock Template";
+    var sub = defaultSubtitle();
+    var logo = BRAND.logoUrl || BRAND.logo || "";
+    $("brand-title").textContent = name;
+    $("brand-subtitle").textContent = sub;
+    $("brand-img").src = logo || "";
+    $("brand-logo").classList.toggle("has-image", !!logo);
+  }
+
+  function toast(message, tone) {
+    $("toast").textContent = message;
+    $("toast").classList.toggle("success", tone === "success");
+    $("toast").classList.add("show");
+    clearTimeout(state.toastTimer);
+    state.toastTimer = setTimeout(function () {
+      $("toast").classList.remove("show", "success");
+    }, 1600);
+  }
+
+  function loading(on) {
+    $("loading").classList.toggle("show", !!on);
+  }
+
+  function setView(view, meta) {
+    meta = meta || {};
+    var next = view || "account";
+    var prev = document.body.getAttribute("data-view") || "account";
+    document.body.setAttribute("data-view", next);
+    if (meta.animate && prev !== next) {
+      document.body.setAttribute("data-view-dir", meta.dir === "prev" ? "prev" : "next");
+      clearTimeout(state.viewAnimTimer);
+      state.viewAnimTimer = setTimeout(function () {
+        document.body.removeAttribute("data-view-dir");
+      }, 260);
+    }
+  }
+
+  var VIEWS = ["account", "configs", "apps"];
+
+  function viewIndex(view) {
+    var i = VIEWS.indexOf(view || document.body.getAttribute("data-view") || "account");
+    return i < 0 ? 0 : i;
+  }
+
+  function modalOpen() {
+    return !!document.querySelector(".modal.show");
+  }
+
+  function navigateView(delta) {
+    var next = viewIndex() + delta;
+    if (next < 0 || next >= VIEWS.length) return;
+    setView(VIEWS[next], { animate: true, dir: delta > 0 ? "next" : "prev" });
+    scrollToTop();
+  }
+
+  function bindSwipeNav() {
+    var root = document.querySelector("main");
+    if (!root) return;
+    var startX = 0;
+    var startY = 0;
+    var tracking = false;
+    var minDist = 64;
+    var ratio = 1.6;
+
+    function blocked(target) {
+      return !!(target && target.closest && target.closest("button, a, input, textarea, select, label, .modal, .chart"));
+    }
+
+    root.addEventListener("touchstart", function (event) {
+      if (modalOpen() || !event.touches || event.touches.length !== 1) return;
+      if (blocked(event.target)) return;
+      var touch = event.touches[0];
+      startX = touch.clientX;
+      startY = touch.clientY;
+      tracking = true;
+    }, { passive: true });
+
+    root.addEventListener("touchend", function (event) {
+      if (!tracking || modalOpen() || !event.changedTouches || event.changedTouches.length !== 1) {
+        tracking = false;
+        return;
+      }
+      var touch = event.changedTouches[0];
+      var dx = touch.clientX - startX;
+      var dy = touch.clientY - startY;
+      tracking = false;
+      if (Math.abs(dx) < minDist) return;
+      if (Math.abs(dx) < Math.abs(dy) * ratio) return;
+      var delta = dx > 0 ? 1 : -1;
+      if (!fa()) delta = -delta;
+      navigateView(delta);
+    }, { passive: true });
+
+    root.addEventListener("touchcancel", function () {
+      tracking = false;
+    }, { passive: true });
+  }
+
+  function cleanToken(value) {
+    value = String(value || "").trim().replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/^['"]|['"]$/g, "");
+    try { value = decodeURIComponent(value); } catch (e) {}
+    return value.replace(/^\/+|\/+$/g, "");
+  }
+
+  function parseInput(raw) {
+    raw = String(raw || "").trim().replace(/[\u200B-\u200D\uFEFF]/g, "");
+    if (!raw) return null;
+    try {
+      if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) {
+        var u = new URL(raw);
+        var keys = ["token", "sub", "sub_token", "subscription", "subscription_token"];
+        for (var i = 0; i < keys.length; i++) {
+          var q = u.searchParams.get(keys[i]);
+          if (q) return { panel: u.searchParams.get("panel") || u.searchParams.get("panel_url") || u.origin, token: cleanToken(q) };
+        }
+        var path = u.pathname.replace(/\/+$/, "").replace(/\/(?:info|apps|links|raw|usage)$/i, "");
+        var parts = path.split("/").filter(Boolean);
+        var token = parts.length ? cleanToken(parts[parts.length - 1]) : "";
+        if (token && !/\.(?:html?|php)$/i.test(token)) return { panel: u.origin, token: token, subPath: path };
+      }
+    } catch (e) {}
+    if (raw.indexOf("/") > -1 && raw.indexOf("://") === -1) {
+      var p = raw.split(/[?#]/)[0].replace(/\/+$/, "").replace(/\/(?:info|apps|links|raw|usage)$/i, "");
+      var ps = p.split("/").filter(Boolean);
+      if (ps.length) return { token: cleanToken(ps[ps.length - 1]), subPath: p.charAt(0) === "/" ? p : "/" + p };
+    }
+    if (!/\s/.test(raw) && raw.indexOf("/") === -1 && raw.indexOf("?") === -1) return { token: cleanToken(raw) };
+    return null;
+  }
+
+  function makeContext(panelInput, tokenInput) {
+    var parsed = typeof tokenInput === "object" ? tokenInput : parseInput(tokenInput);
+    if (!parsed || !parsed.token) return null;
+    var panel = String(parsed.panel || panelInput || window.location.origin || "").trim().replace(/\/+$/, "");
+    if (panel && !/^https?:\/\//i.test(panel)) panel = "https://" + panel;
+    if (!panel || panel === "null") return null;
+    var subPath = parsed.subPath || "/sub/" + encodeURIComponent(parsed.token);
+    if (subPath.charAt(0) !== "/") subPath = "/" + subPath;
+    subPath = subPath.replace(/\/+$/, "");
+    return {
+      panel: panel,
+      token: parsed.token,
+      subPath: subPath,
+      subUrl: panel + subPath + "/",
+      infoUrl: panel + subPath + "/info",
+      appsUrl: panel + subPath + "/apps",
+      linksUrl: panel + subPath + "/links",
+      rawUrl: panel + subPath + "/raw",
+      usageUrl: panel + subPath + "/usage"
+    };
+  }
+
+  function detectUrl() {
+    var direct = parseInput(location.href) || parseInput(location.hash.replace(/^#/, ""));
+    if (direct && direct.token) return makeContext(direct.panel || "", direct);
+    var qs = new URLSearchParams(location.search);
+    var panel = qs.get("panel") || qs.get("panel_url") || qs.get("base_url") || location.origin;
+    var keys = ["token", "sub", "sub_token", "subscription", "subscription_token"];
+    for (var i = 0; i < keys.length; i++) {
+      if (qs.get(keys[i])) return makeContext(panel, qs.get(keys[i]));
+    }
+    return null;
+  }
+
+  function request(url, options, timeout) {
+    options = options || {};
+    timeout = timeout || 10000;
+    if (!window.AbortController) return fetch(url, options);
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, timeout);
+    options.signal = controller.signal;
+    return fetch(url, options).then(function (res) {
+      clearTimeout(timer);
+      return res;
+    }, function (err) {
+      clearTimeout(timer);
+      throw err;
+    });
+  }
+
+  function fetchInfo() {
+    return request(state.ctx.infoUrl, { credentials: "same-origin", headers: { Accept: "application/json" } }, 8000).then(function (res) {
+      if (!res.ok) throw new Error(tr("infoError") + " (" + res.status + ")");
+      return res.json().then(function (data) {
+        var user = data && (data.user || data.data || data);
+        if (data && user && user !== data && typeof user === "object") user = Object.assign({}, data, user);
+        return {
+          user: user,
+          headers: {
+            announce: res.headers.get("announce") || "",
+            announceUrl: res.headers.get("announce-url") || "",
+            supportUrl: res.headers.get("support-url") || res.headers.get("support") || res.headers.get("telegram") || ""
+          }
+        };
+      });
+    });
+  }
+
+  function parseLinks(payload) {
+    if (!payload) return [];
+    if (Array.isArray(payload)) return payload;
+    if (typeof payload === "object") return parseLinks(payload.links || payload.configs || payload.proxies || payload.raw || payload.data || []);
+    return String(payload).split(/\r?\n/);
+  }
+
+  function fetchLinksFrom(url) {
+    return request(url, { credentials: "same-origin", headers: { Accept: "application/json, text/plain, */*" } }, 10000).then(function (res) {
+      if (!res.ok) return [];
+      var type = res.headers.get("content-type") || "";
+      if (type.indexOf("json") > -1) return res.json().then(parseLinks);
+      return res.text().then(parseLinks);
+    }).then(function (list) {
+      return list.map(function (x) { return String(x || "").trim(); }).filter(Boolean);
+    }).catch(function () { return []; });
+  }
+
+  function fetchLinks() {
+    return fetchLinksFrom(state.ctx.linksUrl).then(function (links) {
+      if (links.length) return links;
+      return fetchLinksFrom(state.ctx.rawUrl);
+    }).then(function (links) {
+      if (links.length) return links;
+      return fetchLinksFrom(state.ctx.subUrl);
+    });
+  }
+
+  function fetchApps() {
+    return request(state.ctx.appsUrl, { credentials: "same-origin", headers: { Accept: "application/json" } }, 10000)
+      .then(function (res) { return res.ok ? res.json() : []; })
+      .then(function (data) {
+        var list = Array.isArray(data) ? data : (data && (data.apps || data.data || data.clients)) || [];
+        return Array.isArray(list) ? list.map(normalizeApp) : [];
+      }).catch(function () { return []; });
+  }
+
+  function usageUrl(range) {
+    var end = new Date();
+    var days = range === "7d" ? 7 : 1;
+    var start = new Date(end.getTime() - days * 86400000);
+    return state.ctx.usageUrl + "?period=" + encodeURIComponent(range === "1d" ? "hour" : "day") + "&start=" + encodeURIComponent(start.toISOString()) + "&end=" + encodeURIComponent(end.toISOString());
+  }
+
+  function fetchUsage(range) {
+    if (!state.ctx) return Promise.resolve(null);
+    return request(usageUrl(range), { credentials: "same-origin", headers: { Accept: "application/json" } }, 10000)
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .catch(function () { return null; });
+  }
+
+  function stamp(value) {
+    if (value == null || value === "") return null;
+    var n = Number(value);
+    if (isFinite(n) && String(value).trim() !== "") {
+      if (n > 0 && n < 100000000000) n *= 1000;
+      return n;
+    }
+    var t = new Date(value).getTime();
+    return isFinite(t) ? t : null;
+  }
+
+  function dateText(value) {
+    if (!value) return tr("unlimited");
+    var ms = stamp(value);
+    var d = ms ? new Date(ms) : new Date(value);
+    if (isNaN(d.getTime())) return String(value);
+    if (!fa()) return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+    try {
+      var parts = new Intl.DateTimeFormat("fa-IR-u-nu-arabext", { year: "numeric", month: "long", day: "numeric" }).formatToParts(d);
+      var map = {};
+      parts.forEach(function (part) { if (part.type !== "literal") map[part.type] = part.value; });
+      return "\u202B" + [map.day, map.month, map.year].filter(Boolean).join(" ") + "\u202C";
+    } catch (e) {
+      return d.toLocaleDateString("fa-IR");
+    }
+  }
+
+  function daysLeft(value) {
+    if (!value) return tr("unlimited");
+    var end = stamp(value);
+    if (!end) return dateText(value);
+    var left = end - Date.now();
+    if (left <= 0) return tr("expired");
+    return num(Math.ceil(left / 86400000)) + " " + tr("days");
+  }
+
+  function bytes(value) {
+    value = Number(value);
+    if (!isFinite(value)) return "—";
+    if (value === 0) return num(0) + " " + tr("bytes");
+    var units = [tr("bytes"), tr("kb"), tr("mb"), tr("gb"), tr("tb")];
+    var index = Math.min(units.length - 1, Math.floor(Math.log(Math.max(value, 1)) / Math.log(1024)));
+    var out = (value / Math.pow(1024, index)).toFixed(index > 1 ? 1 : 0).replace(/\.0$/, "");
+    return num(out) + " " + units[index];
+  }
+
+  function shortBytes(value) {
+    var gb = Number(value || 0) / 1073741824;
+    var text = gb < 1 ? gb.toFixed(2) : (gb < 10 ? gb.toFixed(1) : String(Math.round(gb)));
+    return num(text.replace(/\.0$/, "")) + "G";
+  }
+
+  function get(obj, keys) {
+    obj = obj || {};
+    for (var i = 0; i < keys.length; i++) {
+      if (obj[keys[i]] != null && obj[keys[i]] !== "") return obj[keys[i]];
+    }
+    return null;
+  }
+
+  function localized(value) {
+    if (!value) return "";
+    if (typeof value === "string") return value;
+    return value[state.lang] || value.fa || value.en || "";
+  }
+
+  function appLang() {
+    return state.lang === "fa" ? "fa" : "en";
+  }
+
+  function normalizeAppLang(value) {
+    value = String(value || "").toLowerCase().trim();
+    if (!value) return "";
+    if (value.indexOf("fa") === 0 || value === "persian" || value === "فارسی") return "fa";
+    if (value.indexOf("en") === 0 || value === "english") return "en";
+    return value;
+  }
+
+  function pickAppText(value) {
+    if (!value) return "";
+    if (typeof value === "string") return value;
+    if (typeof value !== "object") return String(value);
+    var lang = appLang();
+    if (value[lang]) return String(value[lang]);
+    if (lang === "en" && value.fa) return String(value.fa);
+    return "";
+  }
+
+  function filterAppDownloadLinks(links) {
+    links = (links || []).filter(function (item) { return item && item.url; });
+    var lang = appLang();
+    var matched = links.filter(function (item) {
+      var itemLang = normalizeAppLang(item.language || item.lang || item.locale);
+      if (!itemLang) return lang === "fa";
+      return itemLang === lang;
+    });
+    if (matched.length) return matched;
+    if (lang === "en") {
+      return links.filter(function (item) {
+        return normalizeAppLang(item.language || item.lang || item.locale) === "fa";
+      });
+    }
+    return [];
+  }
+
+  function normalizeContactUrl(value) {
+    value = localized(value);
+    value = String(value || "").trim();
+    if (!value) return "";
+    if (value.charAt(0) === "@") return "https://t.me/" + encodeURIComponent(value.slice(1));
+    if (/^[\w.]{3,}$/.test(value) && value.indexOf("@") < 0 && value.indexOf(".") < 0) return "https://t.me/" + encodeURIComponent(value);
+    if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) return "mailto:" + value;
+    if (/^https?:\/\//i.test(value) || /^mailto:|^tel:/i.test(value)) return value;
+    if (/^(t\.me|telegram\.me|wa\.me)\//i.test(value)) return "https://" + value;
+    if (/^[\w.-]+\.[a-z]{2,}(?:\/.*)?$/i.test(value)) return "https://" + value;
+    return "";
+  }
+
+  function supportUrl() {
+    var user = state.user || {};
+    return normalizeContactUrl(
+      get(user, ["support_url", "support_link", "support", "support_href", "telegram_url", "telegram_link", "telegram", "telegram_id", "contact_url", "contact_link", "contact", "help_url"]) ||
+      state.headers.supportUrl ||
+      CONFIG.supportUrl ||
+      CONFIG.support_url ||
+      ""
+    );
+  }
+
+  function renderSupport() {
+    var url = supportUrl();
+    var btn = $("support-btn");
+    btn.classList.toggle("hidden", !url);
+    btn.href = url || "#";
+    btn.title = tr("support");
+    btn.setAttribute("aria-label", tr("support"));
+  }
+
+  function statusKey(value) {
+    value = String(value || "active").toLowerCase();
+    if (value === "enable" || value === "enabled" || value === "true") return "active";
+    if (value === "disable" || value === "inactive" || value === "false") return "disabled";
+    return value;
+  }
+
+  function statusTone(status) {
+    status = statusKey(status);
+    if (status === "active") return "";
+    if (status === "limited" || status === "expired" || status === "on_hold") return "warn";
+    return "bad";
+  }
+
+  function unlimitedDevices(value) {
+    if (value == null || value === "") return true;
+    var n = Number(value);
+    return !isFinite(n) || n <= 0;
+  }
+
+  function formatDeviceCount(value) {
+    if (unlimitedDevices(value)) return tr("unlimited");
+    var n = Math.floor(Number(value));
+    if (fa()) return num(n) + " " + tr("deviceTag");
+    return num(n) + " " + (n === 1 ? tr("deviceTag") : tr("devices"));
+  }
+
+  function expireTone(expire, status) {
+    if (statusKey(status) === "on_hold") return "warn";
+    if (expire) {
+      var end = stamp(expire);
+      if (end) {
+        var days = Math.ceil((end - Date.now()) / 86400000);
+        if (days <= 0) return "bad";
+        if (days <= 7) return "warn";
+      }
+    }
+    return "teal";
+  }
+
+  function remainTone(used, limit) {
+    if (limit > 0) {
+      var remain = Math.max(0, limit - used);
+      if (remain <= Math.min(1073741824, limit * 0.12)) return "warn";
+    }
+    return "good";
+  }
+
+  function statIcon(name, tone) {
+    return '<span class="stat-icon tone-' + esc(tone || "accent") + '" aria-hidden="true">' + svg(name) + '</span>';
+  }
+
+  function renderAccount() {
+    var user = state.user || {};
+    var has = !!state.user;
+    var username = get(user, ["username", "name", "email"]) || "—";
+    var status = statusKey(get(user, ["status", "state", "enabled"]) || "active");
+    var tone = statusTone(status);
+    var used = Number(get(user, ["used_traffic", "used", "consumed_traffic", "current_traffic"]) || 0);
+    var limit = Number(get(user, ["data_limit", "traffic_limit", "total_traffic", "total"]) || 0);
+    var remain = limit > 0 ? Math.max(0, limit - used) : Infinity;
+    var expire = get(user, ["expire", "expire_date", "expiry_time", "end_time"]);
+    var online = get(user, ["online_at", "last_online", "last_connected_at"]);
+    var deviceLimit = get(user, ["hwid_limit", "device_limit", "ip_limit", "max_ips", "max_devices"]);
+
+    $("status-dot").className = "dot" + (tone ? " " + tone : "");
+    $("status-label").parentElement.className = "chip " + (tone === "bad" ? "status-bad" : (tone === "warn" ? "status-warn" : "status-active"));
+    $("status-label").textContent = has ? (tr(status) || status) : tr("unknown");
+    $("username").textContent = username;
+    $("subline").textContent = has ? "" : tr("emptyState");
+    $("profile-shortcuts").classList.toggle("hidden", !(state.ctx && state.ctx.subUrl));
+    document.title = has && username !== "—" ? username : (fa() ? "پنل کاربری" : "User Panel");
+
+    $("profile-chips").innerHTML = [
+      chip(num(state.links.length) + " " + tr("configTag")),
+      chip(num(state.apps.length) + " " + tr("appTag")),
+      chip(formatDeviceCount(deviceLimit))
+    ].join("");
+
+    $("metrics").innerHTML = [
+      statCard("metric", tr("expire"), status === "on_hold" && user.on_hold_timeout ? daysLeft(user.on_hold_timeout) : daysLeft(expire), "statCalendar", expireTone(status === "on_hold" ? user.on_hold_timeout : expire, status)),
+      statCard("metric", tr("used"), bytes(used), "statTrend", "cyan"),
+      statCard("metric", tr("remain"), limit > 0 ? bytes(remain) : "∞", "statRemain", remainTone(used, limit)),
+      statCard("metric", tr("limit"), limit > 0 ? bytes(limit) : "∞", "statDatabase", "violet"),
+      statCard("metric", tr("online"), online ? dateText(online) : tr("never"), "statActivity", online ? "fuchsia" : "muted"),
+      statCard("metric", tr("lifetime"), bytes(get(user, ["lifetime_used_traffic", "lifetime_traffic"]) || used), "statLifetime", "orange")
+    ].join("");
+
+    $("details").innerHTML = has ? [
+      statCard("detail", tr("created"), get(user, ["created_at", "created"]) ? dateText(get(user, ["created_at", "created"])) : "—", "statCreated", "indigo"),
+      statCard("detail", tr("updated"), get(user, ["edit_at", "updated_at", "modified_at"]) ? dateText(get(user, ["edit_at", "updated_at", "modified_at"])) : "—", "statRefresh", "rose"),
+      statCard("detail", tr("ip"), get(user, ["ip", "last_ip"]) || "—", "statGlobe", get(user, ["ip", "last_ip"]) ? "warn" : "muted"),
+      statCard("detail", tr("deviceCapacity"), formatDeviceCount(deviceLimit), "statDevice", "lime")
+    ].join("") : "";
+  }
+
+  function chip(text) {
+    return '<span class="chip">' + esc(text) + '</span>';
+  }
+
+  function decodeAnnounce(raw) {
+    if (!raw) return "";
+    if (raw.indexOf("base64:") === 0) return b64(raw.slice(7)) || raw.slice(7);
+    try { return decodeURIComponent(raw); } catch (e) { return raw; }
+  }
+
+  function getAlerts() {
+    var user = state.user || {};
+    var alerts = [];
+    var used = Number(get(user, ["used_traffic", "used", "consumed_traffic", "current_traffic"]) || 0);
+    var limit = Number(get(user, ["data_limit", "traffic_limit", "total_traffic", "total"]) || 0);
+    var expire = get(user, ["expire", "expire_date", "expiry_time", "end_time"]);
+    if (limit > 0) {
+      var remain = Math.max(0, limit - used);
+      if (remain <= Math.min(1073741824, limit * 0.12)) alerts.push(tr("lowTraffic"));
+    }
+    var end = stamp(expire);
+    if (end) {
+      var days = Math.ceil((end - Date.now()) / 86400000);
+      if (days > 0 && days <= 3) alerts.push(tr("lowTime"));
+    }
+    return alerts;
+  }
+
+  function renderAlerts() {
+    var alerts = getAlerts();
+    $("alert").classList.toggle("show", alerts.length > 0);
+    $("alert-text").textContent = alerts.join(" · ");
+    $("support-btn").classList.toggle("alert-active", alerts.length > 0);
+  }
+
+  function renderNotice() {
+    var text = decodeAnnounce(state.headers.announce || "");
+    var url = state.headers.announceUrl || "";
+    $("notice").classList.toggle("show", !!(text || url));
+    $("notice-text").innerHTML = esc(text || "") + (url ? ' <a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(tr("linkLabel")) + '</a>' : "");
+    renderAlerts();
+  }
+
+  function renderConfigs() {
+    var items = [];
+    if (state.ctx) items.push({ title: tr("subLink"), payload: state.ctx.subUrl, icon: "link" });
+    state.links.forEach(function (raw, index) {
+      items.push({
+        title: configName(raw) || linkType(raw) + " " + num(index + 1),
+        payload: raw,
+        icon: "net"
+      });
+    });
+    state.configItems = items;
+    if (!items.length) {
+      $("config-list").innerHTML = '<div class="empty">' + esc(tr("noConfig")) + '</div>';
+      return;
+    }
+    $("config-list").innerHTML = items.map(function (item, index) {
+      var canDownload = !!wireguardConfigText(item.payload);
+      return '<article class="config-card" data-index="' + index + '" data-title="' + esc(item.title) + '">' +
+        '<span class="icon">' + svg(item.icon) + '</span>' +
+        '<span class="item-main"><span class="item-title">' + esc(item.title) + '</span></span>' +
+        '<span class="row-actions">' +
+        '<button class="icon-btn" type="button" data-action="qr" aria-label="' + esc(tr("qr")) + '">' + svg("qr") + '</button>' +
+        '<button class="icon-btn" type="button" data-action="copy" aria-label="' + esc(tr("copy")) + '">' + svg("copy") + '</button>' +
+        (canDownload ? '<button class="icon-btn" type="button" data-action="download" aria-label="' + esc(tr("download")) + '">' + svg("download") + '</button>' : "") +
+        '</span></article>';
+    }).join("");
+  }
+
+  function wgParam(params, name) {
+    var direct = params.get(name);
+    if (direct !== null && direct !== "") return direct;
+    name = String(name || "").toLowerCase();
+    var keys = [];
+    params.forEach(function (_v, key) { keys.push(key); });
+    for (var i = 0; i < keys.length; i++) {
+      if (String(keys[i]).toLowerCase() === name) return params.get(keys[i]);
+    }
+    return "";
+  }
+
+  function wgList(value) {
+    return String(value || "").split(",").map(function (part) { return part.trim(); }).filter(Boolean).join(", ");
+  }
+
+  function linkType(raw) {
+    raw = String(raw || "").toLowerCase();
+    if (raw.indexOf("vless://") === 0) return "VLESS";
+    if (raw.indexOf("vmess://") === 0) return "VMess";
+    if (raw.indexOf("trojan://") === 0) return "Trojan";
+    if (raw.indexOf("wireguard://") === 0 || raw.indexOf("[interface]") === 0) return "WireGuard";
+    if (raw.indexOf("hysteria") === 0) return "Hysteria";
+    if (raw.indexOf("ss://") === 0 || raw.indexOf("shadowsocks") === 0) return "Shadowsocks";
+    if (/^https?:\/\//.test(raw)) return "Link";
+    return "Proxy";
+  }
+
+  function configName(raw) {
+    raw = String(raw || "");
+    try {
+      if (raw.toLowerCase().indexOf("vmess://") === 0) {
+        var data = JSON.parse(b64(raw.slice(8)));
+        if (data && data.ps) return decodeSafe(data.ps);
+      }
+      var u = new URL(raw);
+      var hash = decodeSafe(u.hash.replace(/^#/, ""));
+      if (hash) return hash;
+      return decodeSafe(u.searchParams.get("name") || u.searchParams.get("remark") || u.searchParams.get("tag") || "");
+    } catch (e) {}
+    var index = raw.indexOf("#");
+    return index >= 0 ? decodeSafe(raw.slice(index + 1)) : "";
+  }
+
+  function normalizeApp(app) {
+    if (typeof app === "string") return { name: app, platform: detectPlatform(app), download_links: [], import_url: "", icon: "" };
+    app = app || {};
+    var name = app.name || app.title || app.app || app.client || app.label || app.platform || "App";
+    var platform = canonical(app.platform || app.os || app.client_type || detectPlatform([name, app.url, app.link, app.download].join(" ")));
+    var links = app.download_links || app.downloads || app.links || [];
+    if (!Array.isArray(links)) links = [];
+    var direct = app.url || app.link || app.download || app.href;
+    if (direct) {
+      links = [{
+        name: app.download_name || tr("download"),
+        url: direct,
+        language: app.download_language || app.language || app.lang || ""
+      }].concat(links);
+    }
+    return {
+      name: name,
+      platform: platform,
+      description: app.description || app.desc || app.subtitle || "",
+      download_links: links,
+      import_url: app.import_url || app.import || app.add_url || "",
+      recommended: !!app.recommended,
+      icon: app.icon_url || app.icon || app.logo_url || app.logo || app.image_url || app.image || ""
+    };
+  }
+
+  function renderApps() {
+    if (!state.apps.length) {
+      $("os-grid").innerHTML = '<div class="empty">' + esc(tr("noApps")) + '</div>';
+      return;
+    }
+    var groups = {};
+    state.apps.forEach(function (app) {
+      var key = canonical(app.platform);
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(app);
+    });
+    state.groups = groups;
+    var current = currentOS();
+    var order = ["ios", "android", "windows", "macos", "linux", "appletv", "androidtv", "web", "other"];
+    if (groups[current]) order = [current].concat(order.filter(function (x) { return x !== current; }));
+    var keys = order.filter(function (key) { return groups[key] && groups[key].length; });
+    Object.keys(groups).sort().forEach(function (key) { if (keys.indexOf(key) < 0) keys.push(key); });
+    $("os-grid").innerHTML = keys.map(function (key) {
+      var list = groups[key];
+      return '<article class="os-card ' + (key === current ? "current" : "") + '" data-platform="' + esc(key) + '">' +
+        '<span class="os-icon">' + platformIcon(key) + '</span><span class="os-info"><span class="os-top"><span class="os-name">' + esc(platformLabel(key)) + '</span><span class="badge-wrap">' +
+        (key === current ? '<span class="badge current-tag">' + esc(tr("yourOS")) + '</span>' : '') +
+        '</span></span></span><button class="small-btn os-open" type="button">' + esc(tr("openApps")) + '</button></article>';
+    }).join("");
+  }
+
+  function actionLinkClass(label) {
+    var text = String(label || "").toLowerCase();
+    if (/خروج|exit|logout|log\s?out|sign\s?out|leave/.test(text)) return "action-exit";
+    if (/افزودن|import|add\s+sub|subscribe|subscription|اضافه/.test(text)) return "action-import";
+    return "action-download";
+  }
+
+  function openApps(platform) {
+    var list = state.groups[platform] || [];
+    state.appsModalPlatform = platform;
+    $("apps-modal-title").textContent = platformLabel(platform);
+    $("apps-modal-sub").textContent = num(list.length) + " " + tr("app");
+    $("app-list").innerHTML = list.map(appHtml).join("");
+    openModal("apps-modal");
+  }
+
+  function appHtml(app) {
+    var desc = pickAppText(app.description);
+    var iconHtml = app.icon
+      ? '<img src="' + esc(resolveUrl(app.icon)) + '" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'"><span style="display:none;width:100%;height:100%;place-items:center;">' + platformIcon(app.platform) + '</span>'
+      : platformIcon(app.platform);
+    var links = filterAppDownloadLinks(app.download_links || []);
+    var linkHtml = links.map(function (item) {
+      var label = pickAppText(item.name) || (typeof item.name === "string" ? item.name : "") || tr("download");
+      return '<a class="' + esc(actionLinkClass(label)) + '" href="' + esc(resolveUrl(item.url)) + '" target="_blank" rel="noopener">' + esc(label) + '</a>';
+    }).join("");
+    var importHtml = app.import_url ? '<a class="import action-import" href="' + esc(resolveUrl(app.import_url)) + '" target="_blank" rel="noopener">' + esc(tr("import")) + '</a>' : "";
+    var actions = linkHtml + importHtml;
+    return '<article class="app-card"><div class="app-head"><span class="app-icon">' + iconHtml + '</span><span class="app-info"><span class="app-name"><span class="app-name-text">' + esc(pickAppText(app.name) || (typeof app.name === "string" ? app.name : "App")) + '</span>' + (app.recommended ? '<span class="badge rec">' + esc(tr("recommended")) + '</span>' : '') + '</span>' + (desc ? '<p class="app-desc">' + esc(desc) + '</p>' : '') + '</span></div>' + (actions ? '<div class="app-actions">' + actions + '</div>' : '') + '</article>';
+  }
+
+  function normalizeUsage(data) {
+    var out = {};
+    var stats = data && (data.stats || data.data || data.usage || data);
+    function add(point) {
+      if (!point || typeof point !== "object") return;
+      var key = point.period_start || point.time || point.date || point.created_at;
+      var value = point.total_traffic || point.traffic || point.used_traffic || point.value || 0;
+      if (!key) return;
+      out[key] = (out[key] || 0) + (Number(value) || 0);
+    }
+    if (Array.isArray(stats)) stats.forEach(add);
+    else if (stats && typeof stats === "object") {
+      Object.keys(stats).forEach(function (key) {
+        if (Array.isArray(stats[key])) stats[key].forEach(add);
+        else if (typeof stats[key] === "number") out[key] = (out[key] || 0) + stats[key];
+      });
+    }
+    return Object.keys(out).sort().map(function (key) { return { time: key, value: out[key] }; });
+  }
+
+  function renderUsage(points, range) {
+    points = points || [];
+    if (!points.length) {
+      $("usage-total").textContent = tr("usageTotal") + ": —";
+      $("chart").innerHTML = '<div class="empty">' + esc(tr("noUsage")) + '</div>';
+      return;
+    }
+    var maxBars = range === "7d" ? 7 : 8;
+    var bucket = Math.max(1, Math.ceil(points.length / maxBars));
+    var bars = [];
+    for (var i = 0; i < points.length; i += bucket) {
+      bars.push({
+        time: points[i].time,
+        value: points.slice(i, i + bucket).reduce(function (sum, p) { return sum + Number(p.value || 0); }, 0)
+      });
+    }
+    var max = Math.max.apply(null, bars.map(function (bar) { return bar.value; })) || 1;
+    var total = bars.reduce(function (sum, bar) { return sum + bar.value; }, 0);
+    $("usage-total").textContent = tr("usageTotal") + ": " + bytes(total);
+    $("chart").innerHTML = '<div class="bars" style="--bars:' + bars.length + '">' + bars.map(function (bar, index) {
+      var height = Math.max(8, Math.round(bar.value / max * 100));
+      return '<div class="bar-wrap"><div class="bar" title="' + esc(bytes(bar.value)) + '"><i style="--h:' + height + '%"></i><b>' + esc(shortBytes(bar.value)) + '</b></div><span>' + esc(tick(bar.time, range, index, bars.length)) + '</span></div>';
+    }).join("") + '</div>';
+  }
+
+  function tick(time, range, index, count) {
+    var d = new Date(time || Date.now() - Math.max(0, count - 1 - index) * (range === "1d" ? 3 * 3600000 : 86400000));
+    if (isNaN(d.getTime())) return "";
+    try {
+      return new Intl.DateTimeFormat(range === "1d" ? "en-US" : (fa() ? "fa-IR" : "en-US"), {
+        hour: range === "1d" ? "2-digit" : undefined,
+        hour12: false,
+        weekday: range !== "1d" ? "short" : undefined
+      }).format(d).replace(/^24$/, "00");
+    } catch (e) { return ""; }
+  }
+
+  function refreshUsageView() {
+    if (!state.ctx) return;
+    syncRangeButtons();
+    if (state.usageRaw !== null) {
+      renderUsage(normalizeUsage(state.usageRaw), state.range);
+      return;
+    }
+    loadUsage(state.range);
+  }
+
+  function loadUsage(range) {
+    if (!state.ctx) return;
+    state.range = range || state.range;
+    syncRangeButtons();
+    $("chart").innerHTML = '<div class="empty">' + esc(tr("loadingUsage")) + '</div>';
+    var id = ++state.usageRequest;
+    fetchUsage(state.range).then(function (data) {
+      if (id !== state.usageRequest) return;
+      state.usageRaw = data;
+      renderUsage(normalizeUsage(data), state.range);
+    });
+  }
+
+  function canonical(value) {
+    value = String(value || "other").toLowerCase().replace(/[\s_-]+/g, "");
+    if (value === "iphone" || value === "ipad" || value === "ipados") return "ios";
+    if (value === "mac" || value === "macosx" || value === "macintosh") return "macos";
+    if (value === "win" || value === "win32" || value === "win64") return "windows";
+    if (value === "tvos" || value === "appletvos") return "appletv";
+    if (value === "googletv" || value === "firetv") return "androidtv";
+    if (value === "browser" || value === "pwa") return "web";
+    return value || "other";
+  }
+
+  function detectPlatform(text) {
+    text = String(text || "").toLowerCase();
+    if (/ios|iphone|ipad|singbox-ios/.test(text)) return "ios";
+    if (/android tv|google tv|fire tv/.test(text)) return "androidtv";
+    if (/android|apk|hiddify-android/.test(text)) return "android";
+    if (/windows|win64|win/.test(text)) return "windows";
+    if (/mac|darwin|osx/.test(text)) return "macos";
+    if (/linux|ubuntu|debian|appimage/.test(text)) return "linux";
+    if (/web|browser|pwa/.test(text)) return "web";
+    return "other";
+  }
+
+  function currentOS() {
+    var ua = (navigator.userAgent || "").toLowerCase();
+    var p = (navigator.platform || "").toLowerCase();
+    if (/android tv|google tv|fire tv/.test(ua)) return "androidtv";
+    if (/android/.test(ua)) return "android";
+    if (/iphone|ipad|ipod/.test(ua) || (p === "macintel" && navigator.maxTouchPoints > 1)) return "ios";
+    if (/win/.test(p) || /windows/.test(ua)) return "windows";
+    if (/mac/.test(p) || /macintosh/.test(ua)) return "macos";
+    if (/linux/.test(p) || /linux/.test(ua)) return "linux";
+    return "other";
+  }
+
+  function platformLabel(platform) {
+    var map = { ios: "iOS", android: "Android", windows: "Windows", macos: "macOS", linux: "Linux", appletv: "Apple TV", androidtv: "Android TV", web: "Web", other: tr("other") };
+    return map[platform] || platform;
+  }
+
+  function platformIcon(platform) {
+    platform = canonical(platform);
+    if (platform === "ios" || platform === "macos") return svg("apple");
+    if (platform === "appletv" || platform === "androidtv") return svg("tv");
+    if (platform === "android") return svg("android");
+    if (platform === "windows") return svg("windows");
+    if (platform === "linux") return svg("linux");
+    return svg("net");
+  }
+
+  function resolveUrl(url) {
+    url = String(url || "");
+    if (/^(https?:|data:image|blob:)/i.test(url)) return url;
+    try { return new URL(url, state.ctx ? state.ctx.panel + "/" : location.href).href; } catch (e) { return url; }
+  }
+
+  function copyText(text, btn) {
+    function done() {
+      toast(tr("copied"), "success");
+      if (btn) {
+        btn.classList.add("copied");
+        setTimeout(function () { btn.classList.remove("copied"); }, 900);
+      }
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(String(text || "")).then(done);
+    var ta = document.createElement("textarea");
+    ta.value = String(text || "");
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    done();
+  }
+
+  function loadQrLib() {
+    if (window.QRCode) return Promise.resolve();
+    if (state.qrPromise) return state.qrPromise;
+    state.qrPromise = new Promise(function (resolve, reject) {
+      var script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
+      script.async = true;
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+    return state.qrPromise;
+  }
+
+  function openQr(text, title) {
+    $("qr-title").textContent = title || "QR";
+    $("qr-canvas").textContent = tr("qrLoading");
+    openModal("qr-modal");
+    loadQrLib().then(function () {
+      $("qr-canvas").innerHTML = "";
+      try {
+        new QRCode($("qr-canvas"), { text: text, width: 208, height: 208, colorDark: "#111827", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.M });
+      } catch (e) {
+        closeModal("qr-modal");
+        toast(tr("qrLong"));
+      }
+    }).catch(function () {
+      closeModal("qr-modal");
+      toast(tr("qrError"));
+    });
+  }
+
+  function wireguardConfigText(raw) {
+    raw = String(raw || "").trim();
+    if (/^\[Interface\]/i.test(raw)) return raw.slice(-1) === "\n" ? raw : raw + "\n";
+    if (!/^wireguard:\/\//i.test(raw)) return null;
+    try {
+      var u = new URL(raw);
+      var p = u.searchParams;
+      var privateKey = decodeSafe(u.username || wgParam(p, "privatekey") || "");
+      var publicKey = wgParam(p, "publickey");
+      var address = wgParam(p, "address");
+      var endpoint = wgParam(p, "endpoint");
+      if (!privateKey || !publicKey || !address) return null;
+      var host = u.hostname;
+      if (host && host.indexOf(":") >= 0 && host.charAt(0) !== "[") host = "[" + host + "]";
+      if (!endpoint) endpoint = u.port ? host + ":" + u.port : host;
+      var lines = ["[Interface]", "PrivateKey = " + privateKey.replace(/\s/g, "+"), "Address = " + wgList(address)];
+      var dns = wgParam(p, "dns");
+      if (dns) lines.push("DNS = " + wgList(dns));
+      var mtu = wgParam(p, "mtu");
+      if (mtu) lines.push("MTU = " + mtu);
+      var reserved = wgParam(p, "reserved");
+      if (reserved) lines.push("Reserved = " + reserved);
+      lines.push("", "[Peer]", "PublicKey = " + publicKey.replace(/\s/g, "+"));
+      var psk = wgParam(p, "presharedkey");
+      if (psk) lines.push("PresharedKey = " + psk.replace(/\s/g, "+"));
+      lines.push("AllowedIPs = " + wgList(wgParam(p, "allowedips") || "0.0.0.0/0, ::/0"));
+      lines.push("Endpoint = " + endpoint);
+      var keepalive = wgParam(p, "keepalive") || wgParam(p, "persistentkeepalive");
+      lines.push("PersistentKeepalive = " + (keepalive || "25"));
+      return lines.join("\n") + "\n";
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function wireguardFileName(raw, title) {
+    title = String(title || "").trim();
+    if (title && title !== tr("subLink")) return safeFile(title);
+    try {
+      if (/^wireguard:\/\//i.test(raw)) {
+        var remark = decodeSafe(new URL(raw).hash.replace(/^#/, ""));
+        if (remark) return safeFile(remark);
+      }
+    } catch (e) {}
+    return safeFile("wireguard");
+  }
+
+  function safeFile(title) {
+    title = String(title || "wireguard").replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, "-");
+    return /\.conf$/i.test(title) ? title : title + ".conf";
+  }
+
+  function downloadText(text, name) {
+    var blob = new Blob([text], { type: "application/x-wireguard-profile;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function decodeSafe(value) {
+    try { return decodeURIComponent(String(value || "").replace(/\+/g, "%20")).trim(); }
+    catch (e) { return String(value || "").trim(); }
+  }
+
+  function b64(value) {
+    try {
+      value = String(value || "").replace(/-/g, "+").replace(/_/g, "/").replace(/\s/g, "");
+      while (value.length % 4) value += "=";
+      var bin = atob(value);
+      var out = Array.prototype.map.call(bin, function (c) { return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2); }).join("");
+      return decodeURIComponent(out);
+    } catch (e) { return ""; }
+  }
+
+  function openModal(id) {
+    $(id).classList.add("show");
+    $(id).setAttribute("aria-hidden", "false");
+  }
+
+  function closeModal(id) {
+    $(id).classList.remove("show");
+    $(id).setAttribute("aria-hidden", "true");
+  }
+
+  function renderAll() {
+    renderAccount();
+    renderNotice();
+    renderSupport();
+    renderConfigs();
+    renderApps();
+  }
+
+  function loadAll(ctx) {
+    state.ctx = ctx;
+    state.user = null;
+    state.headers = {};
+    state.links = [];
+    state.apps = [];
+    state.configItems = [];
+    state.usageRaw = null;
+    state.usageRequest++;
+    localStorage.setItem(LS.panel, ctx.panel);
+    localStorage.setItem(LS.token, ctx.subUrl);
+    loading(true);
+    renderConfigs();
+    renderSupport();
+
+    fetchLinks().then(function (links) {
+      state.links = links || [];
+      renderConfigs();
+      renderAccount();
+    });
+
+    fetchApps().then(function (apps) {
+      state.apps = apps || [];
+      renderApps();
+      renderAccount();
+    });
+
+    fetchInfo().then(function (res) {
+      state.user = res.user || {};
+      state.headers = res.headers || {};
+      renderAccount();
+      renderNotice();
+      renderSupport();
+    }).catch(function (err) {
+      var message = (err && err.message) || tr("infoError");
+      if (location.protocol === "file:") message += " - " + tr("fileHint");
+      toast(message);
+    }).finally(function () {
+      loading(false);
+    });
+
+    setTimeout(function () { loadUsage("1d"); }, 0);
+  }
+
+  function bindEvents() {
+    $("copy-all").addEventListener("click", function () {
+      copyText(state.links.join("\n") || (state.ctx && state.ctx.subUrl) || "", $("copy-all"));
+    });
+    $("copy-sub-link").addEventListener("click", function () {
+      if (state.ctx && state.ctx.subUrl) copyText(state.ctx.subUrl, $("copy-sub-link"));
+    });
+    $("qr-sub-link").addEventListener("click", function () {
+      if (state.ctx && state.ctx.subUrl) openQr(state.ctx.subUrl, tr("subLink"));
+    });
+    $("config-list").addEventListener("click", function (event) {
+      var btn = event.target.closest("[data-action]");
+      if (!btn) return;
+      var card = btn.closest(".config-card");
+      if (!card) return;
+      var item = state.configItems[Number(card.getAttribute("data-index"))];
+      if (!item) return;
+      var payload = item.payload;
+      var title = card.getAttribute("data-title") || item.title || "";
+      var action = btn.getAttribute("data-action");
+      if (action === "copy") copyText(payload, btn);
+      else if (action === "qr") openQr(payload, title);
+      else if (action === "download") {
+        var conf = wireguardConfigText(payload);
+        if (conf) downloadText(conf, wireguardFileName(payload, title));
+      }
+    });
+    $("os-grid").addEventListener("click", function (event) {
+      var btn = event.target.closest(".os-open");
+      if (!btn) return;
+      var card = btn.closest(".os-card");
+      if (card) openApps(card.getAttribute("data-platform"));
+    });
+    $("theme-btn").addEventListener("click", function () {
+      state.theme = state.theme === "dark" ? "light" : "dark";
+      localStorage.setItem(LS.theme, state.theme);
+      applyTheme();
+    });
+    $("lang-btn").addEventListener("click", function () {
+      state.lang = state.lang === "fa" ? "en" : "fa";
+      localStorage.setItem(LS.lang, state.lang);
+      applyLang();
+    });
+    document.querySelectorAll("[data-view]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setView(btn.getAttribute("data-view"));
+        scrollToTop();
+      });
+    });
+    document.querySelectorAll(".range-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () { loadUsage(btn.getAttribute("data-range")); });
+    });
+    document.querySelectorAll("[data-close]").forEach(function (btn) {
+      btn.addEventListener("click", function () { closeModal(btn.getAttribute("data-close")); });
+    });
+    document.querySelectorAll(".modal").forEach(function (modal) {
+      modal.addEventListener("click", function (event) { if (event.target === modal) closeModal(modal.id); });
+    });
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") {
+        closeModal("apps-modal");
+        closeModal("qr-modal");
+      }
+    });
+  }
+
+  function setupPerfMode() {
+    var lite = false;
+    try {
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) lite = true;
+      if (window.matchMedia("(pointer: coarse)").matches) {
+        var cores = navigator.hardwareConcurrency || 8;
+        var mem = navigator.deviceMemory || 8;
+        if (cores <= 4 || mem <= 4) lite = true;
+      }
+      if (window.CSS && CSS.supports && !CSS.supports("(backdrop-filter: blur(1px))") && !CSS.supports("(-webkit-backdrop-filter: blur(1px))")) lite = true;
+    } catch (e) {}
+    if (lite) document.documentElement.setAttribute("data-perf", "lite");
+  }
+
+  function init() {
+    setupPerfMode();
+    installSvg(document);
+    applyTheme();
+    applyLang();
+    bindEvents();
+    bindSwipeNav();
+    requestAnimationFrame(function () {
+      var auto = detectUrl();
+      if (auto) return loadAll(auto);
+      var configured = makeContext(CONFIG.panelUrl || CONFIG.panel || "", CONFIG.subscriptionUrl || CONFIG.subscription || CONFIG.token || CONFIG.sub || "");
+      if (configured) return loadAll(configured);
+      var savedPanel = localStorage.getItem(LS.panel);
+      var savedToken = localStorage.getItem(LS.token);
+      if (savedPanel && savedToken) {
+        var ctx = makeContext(savedPanel, savedToken);
+        if (ctx) loadAll(ctx);
+      }
+    });
+  }
+
+  init();
+})();
+  </script>
+</body>
+</html>

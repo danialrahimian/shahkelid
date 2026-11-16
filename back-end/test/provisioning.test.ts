@@ -645,43 +645,52 @@ describe("The customer's link (/s/:token)", () => {
     assert.equal((await fetch(`${getBaseUrl()}/s/..%2F..%2Fetc`)).status, 404);
   });
 
-  it("When a browser opens the link, then it gets the panel's page with our link in it, allowed to run its script", async () => {
+  it("When a browser opens the link, then it gets the shop's own subscription page, allowed to run its script", async () => {
     const store = await aStore();
     store.fake.subscriptionBase = linkBase;
     const subscription = await aLiveSubscription(store);
 
     const response = await fetch(`${getBaseUrl()}${new URL(subscription.link).pathname}`, {
-      headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", accept: "text/html" },
+      headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", accept: "text/html,application/xhtml+xml" },
     });
 
     assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type") ?? "", /text\/html/);
     const html = await response.text();
-    assert.ok(html.includes(`var sub = "${subscription.link}/"`), html);
-    assert.ok(html.includes(`href="${subscription.link}"`));
-    assert.equal(html.includes(linkBase), false, "the panel's address is nowhere in the page");
+    assert.ok(html.includes("PGClock Pro, the subscription page by Mr.Clock"), "PGClock Pro, credited");
+    assert.ok(html.includes('window.MRCLOCK_BRAND = {"name":"شاه‌کلید"'), "with the shop's brand, set before its script");
+    assert.ok(html.indexOf("window.MRCLOCK_BRAND") < html.indexOf("var DEFAULT_BRAND"));
+    assert.equal(html.includes(linkBase), false, "nothing of the panel");
     const csp = response.headers.get("content-security-policy") ?? "";
     assert.match(csp, /script-src[^;]*'unsafe-inline'/);
     assert.match(csp, /connect-src 'self'/);
   });
 
-  it("When the page asks for its info, apps and usage, then they come from the panel, with our link in place of its own", async () => {
+  it("When the page asks about the account and its apps, then the shop answers from its records, with its own link", async () => {
     const store = await aStore();
     store.fake.subscriptionBase = linkBase;
     const subscription = await aLiveSubscription(store);
     const path = new URL(subscription.link).pathname;
 
-    const info = (await (await fetch(`${getBaseUrl()}${path}/info`)).json()) as {
-      subscription_url: string;
-      apps: { import_url: string }[];
-    };
+    const info = (await (await fetch(`${getBaseUrl()}${path}/info`)).json()) as Record<string, unknown>;
+    assert.equal(String(info.username).startsWith("sk_"), false, "the customer, not the panel's username");
+    assert.equal(info.plan, "ماهانه ۵۰ گیگ");
+    assert.equal(info.status, "on_hold");
+    assert.equal(info.data_limit, 50 * 1024 ** 3);
+    assert.equal(info.device_limit, 2);
+    assert.ok(info.on_hold_timeout, "the days still to come from first use");
     assert.equal(info.subscription_url, subscription.link);
-    assert.equal(info.apps[0]?.import_url, `v2rayn://install-sub?url=${encodeURIComponent(subscription.link)}`, "the v2rayN button imports our link");
 
-    const usage = (await (await fetch(`${getBaseUrl()}${path}/usage?period=1d`)).json()) as { query: string };
-    assert.equal(usage.query, "period=1d", "the query reaches the panel");
-    assert.match(lastLinkUrl, /\/usage\?period=1d$/);
+    const apps = (await (await fetch(`${getBaseUrl()}${path}/apps`)).json()) as { name: string; platform: string; import_url?: string }[];
+    assert.ok(apps.some((app) => app.name === "v2rayN" && app.platform === "windows"), "v2rayN for Windows");
+    const v2rayng = apps.find((app) => app.name === "v2rayNG");
+    assert.equal(v2rayng?.import_url, `v2rayng://install-config?url=${encodeURIComponent(subscription.link)}`);
+    assert.ok(apps.every((app) => !app.import_url || app.import_url.includes(subscription.link) || app.import_url.includes(encodeURIComponent(subscription.link))));
 
-    assert.equal((await fetch(`${getBaseUrl()}${path}/admin`)).status, 404, "nothing else of the panel is reachable");
+    const usage = (await (await fetch(`${getBaseUrl()}${path}/usage?period=day`)).json()) as { query: string };
+    assert.equal(usage.query, "period=day", "usage history still comes from the panel");
+
+    assert.equal((await fetch(`${getBaseUrl()}${path}/admin`)).status, 404, "nothing else is reachable");
   });
 
   it("When v2rayN on Windows fetches the link, then it gets the configs byte for byte", async () => {

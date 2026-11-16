@@ -102,16 +102,11 @@ sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/danialrahimian/shah
 
 ### صفحه‌ی لینک اشتراک
 
-لینک اشتراک مشتری (`https://دامنه/s/…`) پاسخ پنل PasarGuard را از طرف فروشگاه می‌دهد:
-- **برنامه‌ی VPN** (v2rayN در ویندوز، v2rayNG، Hiddify، Streisand و…) همان کانفیگ‌هایی را می‌گیرد که پنل برای آن برنامه می‌سازد. در v2rayN لینک را در «Subscription group» اضافه کنید و «Update subscription» را بزنید.
-- **مرورگر** صفحه‌ی اشتراک پنل را می‌بیند. برای ظاهر دلخواه، قالب را روی **سرور پنل PasarGuard** نصب کنید، نه روی سرور فروشگاه. مثلاً [PGClock Pro](https://github.com/Mrclocks/PGClockPRO) با اسکریپت نصب خودش، یا با گذاشتن فایل در `/var/lib/pasarguard/templates/subscription/index.html` و این دو خط در `/opt/pasarguard/.env` و بعد `pasarguard restart`:
+لینک اشتراک مشتری (`https://دامنه/s/…`) دو کار می‌کند:
+- **برنامه‌ی VPN** (v2rayN در ویندوز، v2rayNG، Hiddify، Streisand و…) همان کانفیگ‌هایی را می‌گیرد که پنل PasarGuard برای آن برنامه می‌سازد. در v2rayN لینک را در «Subscription group» اضافه کنید و «Update subscription» را بزنید.
+- **مرورگر** صفحه‌ی اشتراک خود فروشگاه را می‌بیند: قالب [PGClock Pro](https://github.com/Mrclocks/PGClockPRO) از Mr.Clock که با اجازه‌ی او در کد فروشگاه آمده است (`back-end/src/modules/subscriptions/page/`). نصب چیزی روی پنل لازم نیست.
 
-```env
-CUSTOM_TEMPLATES_DIRECTORY="/var/lib/pasarguard/templates/"
-SUBSCRIPTION_PAGE_TEMPLATE="subscription/index.html"
-```
-
-فروشگاه آنچه صفحه کنار خودش می‌خواهد (`/info`، `/apps`، `/links`، `/usage`) را هم از پنل می‌آورد و در همه‌ی آن‌ها نشانی پنل را با لینک فروشگاه عوض می‌کند. پس دکمه‌های «افزودن به v2rayN» و QR همان لینک فروشگاه را می‌دهند و نشانی پنل به مشتری نمی‌رسد. فهرست برنامه‌ها و اطلاعیه را در پنل PasarGuard، در Settings → Subscription، تنظیم کنید.
+اطلاعات صفحه از خود فروشگاه می‌آید: نام مشتری (نه نام کاربری داخلی پنل)، پلن، حجم، روزها، تعداد دستگاه و مصرف که هر بار از پنل خوانده می‌شود. فهرست برنامه‌ها هم مال فروشگاه است، با لینک دانلود و دکمه‌ی «افزودن اشتراک» که لینک فروشگاه را به برنامه می‌دهد. کانفیگ‌ها و نمودار مصرف از پنل می‌آیند. نشانی پنل در هیچ‌کدام به مشتری نمی‌رسد.
 
 ---
 
