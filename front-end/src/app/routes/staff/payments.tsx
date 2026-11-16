@@ -10,6 +10,8 @@ const PaymentsRoute = () => {
     <PaymentsPage
       canReview={account.permissions.includes("payments:review")}
       canManageCards={account.permissions.includes("settings:manage")}
+      canSeeOrders={account.permissions.includes("orders:read")}
+      canFulfil={account.permissions.includes("subscriptions:manage")}
     />
   );
 };

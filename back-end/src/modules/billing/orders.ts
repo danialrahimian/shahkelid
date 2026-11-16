@@ -270,6 +270,20 @@ const markPaidAndFulfil = async (tx: Executor, order: OrderRow, paymentId: strin
   return fulfil(tx, paid!, paymentId);
 };
 
+/** Makes a new order's subscription, on a savepoint; throws why not (NO_SERVER_AVAILABLE says which condition). */
+const makeSubscriptionFor = async (tx: Executor, order: OrderRow) => {
+  const plan = await snapshotOf(tx, order.id);
+  const subscriptionId = await tx.transaction((savepoint) =>
+    createSubscription(savepoint, "system", { userId: order.userId, planId: plan.id, orderId: order.id }),
+  );
+  const [fulfilled] = await tx
+    .update(orders)
+    .set({ status: "fulfilled", fulfilledAt: new Date(), subscriptionId })
+    .where(eq(orders.id, order.id))
+    .returning();
+  return fulfilled!;
+};
+
 /** Makes the order's subscription, or leaves the order paid and tells staff why not. */
 export const fulfil = async (tx: Executor, order: OrderRow, paymentId: string | null) => {
   if (order.kind === "renewal") {
@@ -280,15 +294,7 @@ export const fulfil = async (tx: Executor, order: OrderRow, paymentId: string | 
   }
   const plan = await snapshotOf(tx, order.id);
   try {
-    const subscriptionId = await tx.transaction((savepoint) =>
-      createSubscription(savepoint, "system", { userId: order.userId, planId: plan.id, orderId: order.id }),
-    );
-    const [fulfilled] = await tx
-      .update(orders)
-      .set({ status: "fulfilled", fulfilledAt: new Date(), subscriptionId })
-      .where(eq(orders.id, order.id))
-      .returning();
-    return fulfilled!;
+    return await makeSubscriptionFor(tx, order);
   } catch (error) {
     const reason = error instanceof ApiError ? `${error.code}: ${error.message}` : (error as Error).message;
     await alertStaff(
@@ -473,12 +479,11 @@ export const fulfilPaidOrder = async (db: Db, orderId: string) =>
     if (order.status !== "paid") {
       throw new ApiError(409, "CONFLICT", `The order is ${order.status}, not waiting for its subscription`);
     }
-    const after = await fulfil(tx, order, null);
-    if (order.kind === "renewal") return orderView(tx, after); // asked again of the worker
-    if (after.status !== "fulfilled") {
-      throw new ApiError(409, "NO_SERVER_AVAILABLE", "The subscription still could not be made");
-    }
-    return orderView(tx, after);
+    // A renewal is asked again of the worker.
+    if (order.kind === "renewal") return orderView(tx, await fulfil(tx, order, null));
+    // Staff pressed the button: they are told why at once (which condition
+    // no server meets), not alerted again.
+    return orderView(tx, await makeSubscriptionFor(tx, order));
   });
 
 // ---------------------------------------------------------------- invoices

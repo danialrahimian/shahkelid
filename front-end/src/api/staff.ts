@@ -257,8 +257,11 @@ export const staffApi = api.injectEndpoints({
       }),
       invalidatesTags: ["StaffPaymentCard"],
     }),
-    staffOrders: builder.query<StaffOrderView[], { userId?: string }>({
-      query: ({ userId }) => ({ url: `${STAFF}/orders`, params: userId ? { userId } : {} }),
+    staffOrders: builder.query<StaffOrderView[], { userId?: string; status?: OrderView["status"] }>({
+      query: ({ userId, status }) => ({
+        url: `${STAFF}/orders`,
+        params: { ...(userId ? { userId } : {}), ...(status ? { status } : {}) },
+      }),
       providesTags: ["StaffOrder"],
     }),
     staffFulfilOrder: builder.mutation<OrderView, string>({

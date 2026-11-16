@@ -598,6 +598,10 @@ export const en: SameShape<typeof fa> = {
       waiting: "Waiting",
       decided: "Reviewed",
       empty: "No receipts are waiting.",
+      waitingForService: "Paid, without a service",
+      waitingForServiceHint:
+        "These orders are paid, but their service was not made, usually because no server could take a customer when the payment arrived. Once the server or plan is fixed, press \"Make subscription\". If it still cannot be made, the exact reason is shown.",
+      renewal: "renewal",
       order: "Order",
       customer: "Customer",
       amount: "Order amount",
