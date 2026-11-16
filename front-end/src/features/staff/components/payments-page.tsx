@@ -11,6 +11,7 @@ import type { ZodType } from "zod";
 
 import {
   receiptImageUrl,
+  useStaffOrdersQuery,
   useStaffPaymentCardsQuery,
   useStaffReceiptsQuery,
   useStaffReviewReceiptMutation,
@@ -27,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { showSaveError } from "../form-errors";
 import { CryptoTransfersSection } from "./crypto-transfers-section";
 import { CheckField, FormActions, NumberField, TextField } from "./fields";
+import { FulfilButton } from "./fulfil-button";
 import { Button, ConfirmButton, FormDialog, PageHeader, Placeholder, Section, TableFrame } from "./staff-ui";
 
 /** Card numbers in groups of four, left to right. */
@@ -299,9 +301,68 @@ const CardsSection = () => {
   );
 };
 
+// ------------------------------------------------- paid, without a service
+
+/**
+ * Orders that are paid but have no service yet: no server could take them
+ * when the payment arrived (or a renewal the panel has not taken). Listed
+ * here, where payments are approved, each with the button that makes it.
+ */
+const WaitingForServiceSection = ({ canFulfil }: { canFulfil: boolean }) => {
+  const { t } = useTranslation();
+  const { data: orders, isLoading } = useStaffOrdersQuery({ status: "paid" }, { pollingInterval: 60_000 });
+  if (isLoading || !orders?.length) return null;
+  return (
+    <Section title={t("staff.payments.waitingForService")}>
+      <p className="text-sm text-muted-foreground">{t("staff.payments.waitingForServiceHint")}</p>
+      <TableFrame>
+        <thead>
+          <tr>
+            <th>{t("staff.orders.number")}</th>
+            <th>{t("staff.payments.customer")}</th>
+            <th>{t("staff.subscriptions.plan")}</th>
+            <th>{t("staff.orders.total")}</th>
+            <th>{t("staff.orders.paidAt")}</th>
+            <th>{t("staff.common.actions")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {orders.map((order) => (
+            <tr key={order.id}>
+              <td className="tabular-nums">{formatNumber(order.number)}</td>
+              <td>
+                <Link to={paths.staffCustomer.getHref(order.customer.id)} className="underline underline-offset-4">
+                  <bdi dir="ltr">{order.customer.email}</bdi>
+                </Link>
+              </td>
+              <td>
+                {order.plan.name}
+                {order.kind === "renewal" ? <span className="ms-1 text-xs text-muted-foreground">({t("staff.payments.renewal")})</span> : null}
+              </td>
+              <td className="tabular-nums">{formatToman(order.totalToman)}</td>
+              <td>{formatDateTime(order.paidAt)}</td>
+              <td>{canFulfil ? <FulfilButton order={order} /> : "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </TableFrame>
+    </Section>
+  );
+};
+
 // -------------------------------------------------------------------- page
 
-export const PaymentsPage = ({ canReview, canManageCards }: { canReview: boolean; canManageCards: boolean }) => {
+export const PaymentsPage = ({
+  canReview,
+  canManageCards,
+  canSeeOrders = false,
+  canFulfil = false,
+}: {
+  canReview: boolean;
+  canManageCards: boolean;
+  canSeeOrders?: boolean;
+  canFulfil?: boolean;
+}) => {
   const { t } = useTranslation();
   const [which, setWhich] = React.useState<"waiting" | "decided">("waiting");
   const receipts = useStaffReceiptsQuery(which, { skip: !canReview, pollingInterval: 60_000 });
@@ -309,6 +370,8 @@ export const PaymentsPage = ({ canReview, canManageCards }: { canReview: boolean
   return (
     <div className="space-y-10">
       <PageHeader title={t("staff.payments.title")} description={t("staff.payments.description")} />
+
+      {canSeeOrders ? <WaitingForServiceSection canFulfil={canFulfil} /> : null}
 
       {canReview ? (
         <section className="space-y-4">

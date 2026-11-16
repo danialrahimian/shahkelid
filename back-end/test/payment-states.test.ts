@@ -408,6 +408,30 @@ describe("Paid, but the service cannot be made yet", () => {
     assert.match(alert!.text, /panel is switched off/);
   });
 
+  it("When staff press 'Make subscription' before fixing the cause, then they are told exactly why, and it works once fixed", async () => {
+    const store = await aStore();
+    const { buyer, order, paymentId } = await aReceiptWaiting(store);
+    const [panel] = (await store.staff.client.get(`${STAFF}/panels`)).data.filter((p: { id: string }) => p.id === store.panelId);
+    const setPanel = (isActive: boolean) =>
+      store.staff.client.put(`${STAFF}/panels/${store.panelId}`, { name: panel.name, driver: "pasarguard", baseUrl: panel.baseUrl, isActive });
+    await setPanel(false);
+    await review(paymentId, "approve");
+
+    const waiting = (await store.staff.client.get(`${STAFF}/orders?status=paid`)).data as { id: string }[];
+    assert.ok(waiting.some((row) => row.id === order.id), "listed among the paid orders waiting for a service");
+
+    const early = await store.staff.client.post(`${STAFF}/orders/${order.id}/fulfil`);
+    assert.equal(early.status, 409);
+    assert.equal(early.data.error.code, "NO_SERVER_AVAILABLE");
+    assert.match(early.data.error.message, /panel is switched off/);
+
+    await setPanel(true);
+    const made = await store.staff.client.post(`${STAFF}/orders/${order.id}/fulfil`);
+    assert.equal(made.status, 200, JSON.stringify(made.data));
+    assert.equal(made.data.status, "fulfilled");
+    assert.equal((await pageOf(buyer, order.id)).subscription?.status, "provisioning");
+  });
+
   it("When the plan's servers are archived, then the alert says the panel has no server", async () => {
     const store = await aStore();
     const { order, paymentId } = await aReceiptWaiting(store);

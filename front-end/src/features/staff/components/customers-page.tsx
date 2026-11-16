@@ -21,7 +21,6 @@ import {
   useStaffCustomersQuery,
   useStaffDeleteCustomerMutation,
   useStaffDeleteCustomerNoteMutation,
-  useStaffFulfilOrderMutation,
   useStaffOrdersQuery,
   useStaffPlansQuery,
   useStaffSetCustomerStageMutation,
@@ -37,6 +36,7 @@ import { cn } from "@/lib/utils";
 
 import { showSaveError } from "../form-errors";
 import { FormActions, SelectField } from "./fields";
+import { FulfilButton } from "./fulfil-button";
 import { NotificationLog } from "./notification-log";
 import { Button, ConfirmButton, FormDialog, PageHeader, Placeholder, Section, TableFrame } from "./staff-ui";
 import { SubscriptionTable } from "./subscription-table";
@@ -308,7 +308,6 @@ const NewSubscriptionDialog = ({ userId, onClose }: { userId: string; onClose: (
 const OrdersSection = ({ userId }: { userId: string }) => {
   const { t } = useTranslation();
   const { data: orders, isLoading } = useStaffOrdersQuery({ userId });
-  const [fulfil, { isLoading: isFulfilling }] = useStaffFulfilOrderMutation();
 
   return (
     <Section title={t("staff.orders.title")}>
@@ -341,22 +340,7 @@ const OrdersSection = ({ userId }: { userId: string }) => {
                       <p className="text-amber-700 dark:text-amber-300">
                         {order.kind === "renewal" ? t("staff.orders.waitingForRenewal") : t("staff.orders.waitingForServer")}
                       </p>
-                      <Button
-                        tone="primary"
-                        busy={isFulfilling}
-                        onClick={() =>
-                          fulfil(order.id)
-                            .unwrap()
-                            .then(() =>
-                              toast.success(
-                                order.kind === "renewal" ? t("staff.orders.renewalRequested") : t("staff.orders.fulfilled"),
-                              ),
-                            )
-                            .catch((error: unknown) => toast.error(errorText(error)))
-                        }
-                      >
-                        {order.kind === "renewal" ? t("staff.orders.applyRenewal") : t("staff.orders.fulfil")}
-                      </Button>
+                      <FulfilButton order={order} />
                     </div>
                   ) : (
                     t(`shop.orders.status.${order.status}`)
