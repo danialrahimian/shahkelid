@@ -100,6 +100,19 @@ sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/danialrahimian/shah
 - با یک ایمیل دیگر وارد شوید و ارزان‌ترین پلن را بخرید.
 - ببینید لینک اشتراک ساخته می‌شود و در برنامه‌ی VPN کار می‌کند.
 
+### صفحه‌ی لینک اشتراک
+
+لینک اشتراک مشتری (`https://دامنه/s/…`) پاسخ پنل PasarGuard را از طرف فروشگاه می‌دهد:
+- **برنامه‌ی VPN** (v2rayN در ویندوز، v2rayNG، Hiddify، Streisand و…) همان کانفیگ‌هایی را می‌گیرد که پنل برای آن برنامه می‌سازد. در v2rayN لینک را در «Subscription group» اضافه کنید و «Update subscription» را بزنید.
+- **مرورگر** صفحه‌ی اشتراک پنل را می‌بیند. برای ظاهر دلخواه، قالب را روی **سرور پنل PasarGuard** نصب کنید، نه روی سرور فروشگاه. مثلاً [PGClock Pro](https://github.com/Mrclocks/PGClockPRO) با اسکریپت نصب خودش، یا با گذاشتن فایل در `/var/lib/pasarguard/templates/subscription/index.html` و این دو خط در `/opt/pasarguard/.env` و بعد `pasarguard restart`:
+
+```env
+CUSTOM_TEMPLATES_DIRECTORY="/var/lib/pasarguard/templates/"
+SUBSCRIPTION_PAGE_TEMPLATE="subscription/index.html"
+```
+
+فروشگاه آنچه صفحه کنار خودش می‌خواهد (`/info`، `/apps`، `/links`، `/usage`) را هم از پنل می‌آورد و در همه‌ی آن‌ها نشانی پنل را با لینک فروشگاه عوض می‌کند. پس دکمه‌های «افزودن به v2rayN» و QR همان لینک فروشگاه را می‌دهند و نشانی پنل به مشتری نمی‌رسد. فهرست برنامه‌ها و اطلاعیه را در پنل PasarGuard، در Settings → Subscription، تنظیم کنید.
+
 ---
 
 ## مدیریت با دستور `shahkelid`

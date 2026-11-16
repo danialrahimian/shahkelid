@@ -39,6 +39,7 @@ const GB = 1024 ** 3;
 /** A stand-in for the panel's own subscription links, served locally. */
 let linkServer: Server;
 let lastLinkRequest: IncomingHttpHeaders = {};
+let lastLinkUrl = "";
 let linkBase = "";
 
 before(async () => {
@@ -48,6 +49,30 @@ before(async () => {
 
   linkServer = createServer((req, res) => {
     lastLinkRequest = req.headers;
+    lastLinkUrl = req.url ?? "";
+    // As PasarGuard: the subscription page for browsers, and what the page
+    // reads beside itself, all naming the panel's own subscription address.
+    const self = `${linkBase.replace(/\/sub$/, "")}${(req.url ?? "").split("?")[0]!.replace(/\/(info|apps|links|raw|usage)$/, "")}`;
+    if (/\/(info|apps)$/.test((req.url ?? "").split("?")[0]!)) {
+      res.setHeader("content-type", "application/json");
+      res.end(
+        JSON.stringify({
+          subscription_url: self,
+          apps: [{ name: "v2rayN", import_url: `v2rayn://install-sub?url=${encodeURIComponent(self)}` }],
+        }),
+      );
+      return;
+    }
+    if (/\/usage$/.test((req.url ?? "").split("?")[0]!)) {
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ query: (req.url ?? "").split("?")[1] ?? "" }));
+      return;
+    }
+    if ((req.headers["user-agent"] ?? "").startsWith("Mozilla")) {
+      res.setHeader("content-type", "text/html; charset=utf-8");
+      res.end(`<html><script>var sub = "${self}/";</script><a href="${self}">link</a></html>`);
+      return;
+    }
     res.setHeader("content-type", "text/plain; charset=utf-8");
     res.setHeader("subscription-userinfo", "upload=0; download=1024; total=53687091200; expire=0");
     res.setHeader("profile-web-page-url", "https://secret-panel.example/sub/abc");
@@ -618,6 +643,57 @@ describe("The customer's link (/s/:token)", () => {
   it("When the token is unknown or malformed, then it is a plain 404", async () => {
     assert.equal((await fetch(`${getBaseUrl()}/s/${"a".repeat(32)}`)).status, 404);
     assert.equal((await fetch(`${getBaseUrl()}/s/..%2F..%2Fetc`)).status, 404);
+  });
+
+  it("When a browser opens the link, then it gets the panel's page with our link in it, allowed to run its script", async () => {
+    const store = await aStore();
+    store.fake.subscriptionBase = linkBase;
+    const subscription = await aLiveSubscription(store);
+
+    const response = await fetch(`${getBaseUrl()}${new URL(subscription.link).pathname}`, {
+      headers: { "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", accept: "text/html" },
+    });
+
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    assert.ok(html.includes(`var sub = "${subscription.link}/"`), html);
+    assert.ok(html.includes(`href="${subscription.link}"`));
+    assert.equal(html.includes(linkBase), false, "the panel's address is nowhere in the page");
+    const csp = response.headers.get("content-security-policy") ?? "";
+    assert.match(csp, /script-src[^;]*'unsafe-inline'/);
+    assert.match(csp, /connect-src 'self'/);
+  });
+
+  it("When the page asks for its info, apps and usage, then they come from the panel, with our link in place of its own", async () => {
+    const store = await aStore();
+    store.fake.subscriptionBase = linkBase;
+    const subscription = await aLiveSubscription(store);
+    const path = new URL(subscription.link).pathname;
+
+    const info = await (await fetch(`${getBaseUrl()}${path}/info`)).json();
+    assert.equal(info.subscription_url, subscription.link);
+    assert.equal(info.apps[0].import_url, `v2rayn://install-sub?url=${encodeURIComponent(subscription.link)}`, "the v2rayN button imports our link");
+
+    const usage = await (await fetch(`${getBaseUrl()}${path}/usage?period=1d`)).json();
+    assert.equal(usage.query, "period=1d", "the query reaches the panel");
+    assert.match(lastLinkUrl, /\/usage\?period=1d$/);
+
+    assert.equal((await fetch(`${getBaseUrl()}${path}/admin`)).status, 404, "nothing else of the panel is reachable");
+  });
+
+  it("When v2rayN on Windows fetches the link, then it gets the configs byte for byte", async () => {
+    const store = await aStore();
+    store.fake.subscriptionBase = linkBase;
+    const subscription = await aLiveSubscription(store);
+
+    const response = await fetch(`${getBaseUrl()}${new URL(subscription.link).pathname}`, {
+      headers: { "user-agent": "v2rayN/7.10.5" },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), "vless://example@1.2.3.4:443#DE");
+    assert.equal(lastLinkRequest["user-agent"], "v2rayN/7.10.5", "the panel picks the format v2rayN reads");
+    assert.match(response.headers.get("subscription-userinfo") ?? "", /total=/);
   });
 
   it("When the subscription is still being made, then its link is not served yet", async () => {
