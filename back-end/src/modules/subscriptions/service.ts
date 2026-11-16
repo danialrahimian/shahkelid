@@ -207,17 +207,13 @@ type Placement = { serverId: string; panelId: string; live: number; capacity: nu
  * cannot both take the last place on a server.
  */
 const placeOn = async (executor: Executor, planId: string): Promise<Placement> => {
-  const candidates = await executor.execute<{
+  const locked = await executor.execute<{
     id: string;
     panel_id: string;
     priority: number;
     capacity_users: number;
-    live: number;
   }>(sql`
-    select s.id, s.panel_id, s.priority, s.capacity_users,
-      (select count(*)::int from subscriptions x
-        where x.server_id = s.id
-          and x.status in ('provisioning', 'on_hold', 'active', 'limited')) as live
+    select s.id, s.panel_id, s.priority, s.capacity_users
     from servers s
     join plan_panel_settings pps on pps.panel_id = s.panel_id and pps.plan_id = ${planId}
     join panels p on p.id = s.panel_id and p.is_active
@@ -227,8 +223,28 @@ const placeOn = async (executor: Executor, planId: string): Promise<Placement> =
     order by s.id
     for update of s
   `);
+  if (locked.rows.length === 0) {
+    throw new ApiError(409, "NO_SERVER_AVAILABLE", "No server that sells this plan has room");
+  }
 
-  const [chosen] = candidates.rows
+  // Counted only once the locks are held, in a statement of its own: one
+  // that waited for a lock sees the place the purchase ahead of it took. A
+  // count in the locking statement was read before the wait, so two
+  // purchases at once could both take the last place.
+  const counts = await executor.execute<{ server_id: string; live: number }>(sql`
+    select x.server_id, count(*)::int as live
+    from subscriptions x
+    where x.server_id in (${sql.join(
+      locked.rows.map((server) => sql`${server.id}`),
+      sql`, `,
+    )})
+      and x.status in ('provisioning', 'on_hold', 'active', 'limited')
+    group by x.server_id
+  `);
+  const live = new Map(counts.rows.map((row) => [row.server_id, row.live]));
+  const candidates = locked.rows.map((server) => ({ ...server, live: live.get(server.id) ?? 0 }));
+
+  const [chosen] = candidates
     .filter((server) => server.live < server.capacity_users)
     .sort(
       (a, b) =>

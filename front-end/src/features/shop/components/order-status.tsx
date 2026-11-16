@@ -125,6 +125,13 @@ export const OrderStatus = ({ orderId }: { orderId: string }) => {
           <Headline icon={Loader2} tone="[&_svg]:animate-spin">
             {slow ? t("shop.order.preparingSlow") : t("shop.order.preparing")}
           </Headline>
+        ) : stage === "delayed" ? (
+          <>
+            <Headline icon={Clock} tone="text-amber-700 dark:text-amber-300">
+              {t("shop.order.delayed")}
+            </Headline>
+            <p className="text-sm leading-6">{t("shop.order.delayedHint")}</p>
+          </>
         ) : stage === "awaiting_transfer" && order.payment?.crypto ? (
           <UsdtPayment quote={order.payment.crypto} />
         ) : stage === "checking" ? (
