@@ -21,7 +21,7 @@ import { Button, FormDialog, PageHeader, Placeholder, TableFrame } from "./staff
 type PanelForm = PanelInput & { credentials?: PanelInput["credentials"] };
 
 /** Add or edit a panel. Editing keeps the saved credentials unless asked to replace them. */
-const PanelFormDialog = ({
+export const PanelFormDialog = ({
   panel,
   open,
   onOpenChange,
@@ -71,6 +71,10 @@ const PanelFormDialog = ({
           const kind = methods.watch("credentials.kind");
           return (
             <>
+              {/* PasarGuard is the only driver, so no one picks it. Registered all
+                  the same: with shouldUnregister, a value with no input is
+                  dropped, the schema finds no driver, and Save did nothing. */}
+              <input type="hidden" {...methods.register("driver")} />
               <TextField<PanelForm> name="name" label={t("staff.panels.name")} autoFocus />
               <TextField<PanelForm>
                 name="baseUrl"

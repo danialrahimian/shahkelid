@@ -10,9 +10,11 @@ import {
   type UseFormProps,
   type UseFormReturn,
 } from "react-hook-form";
+import { toast } from "sonner";
 import type { ZodType } from "zod";
 
 import { fieldErrorText } from "@/lib/error-text";
+import i18n from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 /**
@@ -67,8 +69,9 @@ export const Form = <TFormValues extends FieldValues>({
     <FormProvider {...methods}>
       <form
         className={cn("space-y-5", className)}
-        onSubmit={methods.handleSubmit((values) =>
-          onSubmit(values, methods),
+        onSubmit={methods.handleSubmit(
+          (values) => onSubmit(values, methods),
+          (errors) => toastFormErrors(errorMessages(errors)),
         )}
         id={id}
         noValidate
@@ -77,6 +80,40 @@ export const Form = <TFormValues extends FieldValues>({
       </form>
     </FormProvider>
   );
+};
+
+/** Every message in a form's errors, nested ones included, each once. */
+const errorMessages = (errors: unknown, found = new Set<string>()) => {
+  if (errors && typeof errors === "object") {
+    const { message } = errors as { message?: unknown };
+    if (typeof message === "string" && message) found.add(fieldErrorText(message));
+    for (const [key, value] of Object.entries(errors)) {
+      // `ref` is the field's DOM element: nothing to read there.
+      if (key !== "ref") errorMessages(value, found);
+    }
+  }
+  return found;
+};
+
+/**
+ * Says in a toast why a form was not saved, as well as under each field.
+ *
+ * A message under a field is easy to miss in a long dialog, and one for a
+ * value with no field of its own is not shown anywhere: without this, Save
+ * looked like it did nothing.
+ */
+export const toastFormErrors = (messages: Iterable<string>) => {
+  const list = [...new Set(messages)];
+  toast.error(i18n.t("errors.formInvalid"), {
+    description:
+      list.length > 0 ? (
+        <ul className="list-disc ps-4">
+          {list.map((message) => (
+            <li key={message}>{message}</li>
+          ))}
+        </ul>
+      ) : undefined,
+  });
 };
 
 /** Reads a possibly nested error message, e.g. "address.city". */
