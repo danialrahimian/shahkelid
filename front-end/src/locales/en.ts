@@ -290,6 +290,9 @@ export const en: SameShape<typeof fa> = {
       preparing: "Payment received. Your service is being prepared…",
       preparingSlow:
         "Preparing is taking longer than usual. Your payment is recorded, and the service will appear here and in your account as soon as it is ready.",
+      delayed: "Your payment is recorded, but making your service is delayed.",
+      delayedHint:
+        "The shop has been told and will make your service. No money is lost, and the service appears here and in your account as soon as it is made. If you have a question, ask support.",
       ready: "Your service is ready",
       failed: "The payment did not go through",
       expired: "The time to pay this order has run out.",

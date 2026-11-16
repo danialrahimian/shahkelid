@@ -50,8 +50,45 @@ describe("The order page", () => {
     expect(pollEvery("preparing")).toBe(2000);
   });
 
-  it("When paid but no server had room (no subscription yet), then it still reads as being prepared, not failed", () => {
-    expect(stageOf(anOrder({ status: "paid", payment: payment("succeeded") }))).toBe("preparing");
+  it("When paid but no server had room (no subscription yet), then it says the service is delayed, not failed", () => {
+    expect(stageOf(anOrder({ status: "paid", payment: payment("succeeded") }))).toBe("delayed");
+    expect(pollEvery("delayed")).toBe(15000);
+  });
+
+  it("When the panel turned the service down and the retries ran out, then it says delayed instead of spinning for ever", () => {
+    const order = anOrder({
+      status: "fulfilled",
+      payment: payment("succeeded"),
+      subscription: { id: "s", status: "provisioning_failed", link: null },
+    });
+    expect(stageOf(order)).toBe("delayed");
+  });
+
+  it("When staff then make the service, then the delayed order turns ready on its own", () => {
+    const order = anOrder({
+      status: "fulfilled",
+      payment: payment("succeeded"),
+      subscription: { id: "s", status: "on_hold", link: "https://x/s/abc" },
+    });
+    expect(stageOf(order)).toBe("ready");
+  });
+
+  it("When a pending order's payment is in each state, then the page says the matching thing", () => {
+    const expected = {
+      initiated: "checking",
+      pending: "checking",
+      pending_review: "review",
+      failed: "failed",
+      expired: "failed",
+    } as const;
+    for (const [status, stage] of Object.entries(expected)) {
+      expect(stageOf(anOrder({ payment: payment(status as keyof typeof expected) })), status).toBe(stage);
+    }
+    expect(stageOf(anOrder())).toBe("waiting_payment");
+  });
+
+  it("When an order is cancelled, then it reads as closed, with no way to pay", () => {
+    expect(stageOf(anOrder({ status: "cancelled" }))).toBe("expired");
   });
 
   it("When the payment is still being checked, then the page keeps asking", () => {
