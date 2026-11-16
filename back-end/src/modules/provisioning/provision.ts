@@ -122,19 +122,19 @@ export const provisioningAlert = async (
     .where(eq(subscriptions.id, id));
   return stage === "gave_up"
     ? {
-        subject: "ساخت سرویس متوقف شد",
+        subject: "Making a service stopped",
         text: [
-          `اشتراک ${id} برای ${row?.email ?? "?"} روی پنل ساخته نشد و تلاش خودکار تمام شد.`,
-          `خطا: ${error.message.slice(0, 300)}`,
-          "پول مشتری ثبت شده است. بعد از رفع مشکل پنل، در بخش مدیریت روی «تلاش دوباره برای ساخت» بزنید.",
+          `Subscription ${id} for ${row?.email ?? "?"} was not made on the panel, and the automatic attempts are over.`,
+          `Error: ${error.message.slice(0, 300)}`,
+          "The customer's payment is recorded. Once the panel is fixed, press \"Retry\" on the subscription in the staff area.",
         ].join("\n"),
       }
     : {
-        subject: "ساخت سرویس یک دقیقه است که شکست می‌خورد",
+        subject: "Making a service has been failing for a minute",
         text: [
-          `اشتراک ${id} برای ${row?.email ?? "?"} هنوز روی پنل ساخته نشده است.`,
-          `خطا: ${error.message.slice(0, 300)}`,
-          "تلاش خودکار ادامه دارد و به محض برگشتن پنل، سرویس ساخته می‌شود. مشتری «در حال آماده‌سازی» می‌بیند.",
+          `Subscription ${id} for ${row?.email ?? "?"} is not on the panel yet.`,
+          `Error: ${error.message.slice(0, 300)}`,
+          "Automatic attempts carry on, and the service is made as soon as the panel is back. The customer sees \"being prepared\".",
         ].join("\n"),
       };
 };

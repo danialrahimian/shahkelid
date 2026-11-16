@@ -156,6 +156,10 @@ export const paths = {
     path: "/staff/audit",
     getHref: () => "/staff/audit",
   },
+  staffLogs: {
+    path: "/staff/logs",
+    getHref: () => "/staff/logs",
+  },
 
   notFound: {
     path: "*",

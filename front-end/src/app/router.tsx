@@ -77,6 +77,7 @@ export const createAppRouter = () =>
         { path: paths.staffPanels.path, element: lazyRoute(() => import("@/app/routes/staff/panels")) },
         { path: paths.staffTeam.path, element: lazyRoute(() => import("@/app/routes/staff/team")) },
         { path: paths.staffAudit.path, element: lazyRoute(() => import("@/app/routes/staff/audit")) },
+        { path: paths.staffLogs.path, element: lazyRoute(() => import("@/app/routes/staff/logs")) },
       ],
     },
   ]);

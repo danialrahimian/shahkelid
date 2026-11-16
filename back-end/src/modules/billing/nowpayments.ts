@@ -225,8 +225,8 @@ export const handleNowPaymentsIpn = async (db: Db, notified: { payment_id?: unkn
         await alertStaff(
           tx,
           {
-            subject: "پرداخت ناقص در NOWPayments",
-            text: `پرداخت ${ours.id} کمتر از مبلغ فاکتور پرداخت شد (${truth.actually_paid ?? "?"} ${truth.pay_currency ?? ""}). در NOWPayments بررسی کنید و با مشتری هماهنگ شوید.`,
+            subject: "Partial payment at NOWPayments",
+            text: `Payment ${ours.id} was paid below the invoice amount (${truth.actually_paid ?? "?"} ${truth.pay_currency ?? ""}). Check it in NOWPayments and settle it with the customer.`,
           },
           { type: "payment", id: ours.id },
         );

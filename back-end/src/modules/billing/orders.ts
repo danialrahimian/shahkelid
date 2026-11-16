@@ -290,17 +290,15 @@ export const fulfil = async (tx: Executor, order: OrderRow, paymentId: string | 
       .returning();
     return fulfilled!;
   } catch (error) {
-    const reason = error instanceof ApiError ? error.code : (error as Error).message;
+    const reason = error instanceof ApiError ? `${error.code}: ${error.message}` : (error as Error).message;
     await alertStaff(
       tx,
       {
-        subject: "سفارش پرداخت شد ولی سرویس ساخته نشد",
+        subject: "Order paid, but its service was not made",
         text: [
-          `سفارش ${order.number} (${plan.name}) پرداخت شده${paymentId ? ` (پرداخت ${paymentId})` : ""}، ولی اشتراکش ساخته نشد.`,
-          `علت: ${reason}`,
-          reason === "NO_SERVER_AVAILABLE"
-            ? "هیچ سروری جای خالی ندارد. ظرفیت یک سرور را بالا ببرید یا سرور تازه اضافه کنید، بعد در صفحه‌ی سفارش «ساخت اشتراک» را بزنید."
-            : "در بخش مدیریت، صفحه‌ی سفارش را باز کنید و «ساخت اشتراک» را بزنید.",
+          `Order ${order.number} (${plan.name}) is paid${paymentId ? ` (payment ${paymentId})` : ""}, but its subscription was not made.`,
+          `Reason: ${reason}`,
+          "Once that is fixed, open the customer's page in the staff area and press \"Make subscription\" on this order.",
         ].join("\n"),
       },
       { type: "order", id: order.id },
@@ -349,12 +347,12 @@ export const settlePayment = async (
       await alertStaff(
         tx,
         {
-          subject: paidAlready ? "پرداخت دوباره برای یک سفارش" : "پرداخت برای سفارشی که دیگر باز نیست",
+          subject: paidAlready ? "A second payment for one order" : "A payment for an order that is no longer open",
           text: [
             paidAlready
-              ? `برای سفارش ${order!.number} دو پرداخت موفق رسید.`
-              : `برای سفارش ${order!.number} پرداختی رسید، ولی وضعیت سفارش «${order!.status}» است.`,
-            `پرداخت ${paymentId} (${payment.amountToman} تومان، کد پیگیری ${confirmation.refId ?? "-"}) باید به مشتری برگردانده شود.`,
+              ? `Order ${order!.number} received two successful payments.`
+              : `A payment arrived for order ${order!.number}, but the order is "${order!.status}".`,
+            `Payment ${paymentId} (${payment.amountToman} toman, reference ${confirmation.refId ?? "-"}) must be returned to the customer.`,
           ].join(" "),
         },
         { type: "payment", id: paymentId },

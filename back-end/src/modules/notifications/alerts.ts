@@ -76,7 +76,7 @@ export const deliverAlert = async (db: Db, alert: Alert) => {
   const emails = isMailSetUp() || !config.isProduction ? await recipients(db) : [];
   for (const email of emails) {
     try {
-      await deliverEmail({ to: email, subject: `[شاه‌کلید] ${alert.subject}`, text: alert.text });
+      await deliverEmail({ to: email, subject: `[Shah Kelid] ${alert.subject}`, text: alert.text });
       delivered += 1;
     } catch (error) {
       failures.push(error);

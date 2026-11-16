@@ -51,3 +51,38 @@ export type AuditEntryView = {
 };
 
 export type AuditPage = { entries: AuditEntryView[]; nextBefore: number | null };
+
+/** The owner's log of everything, by where an entry comes from. */
+export const LOG_SOURCES = [
+  "staff",
+  "system",
+  "subscription",
+  "order",
+  "payment",
+  "alert",
+  "event",
+  "email",
+  "support",
+  "account",
+] as const;
+export type LogSource = (typeof LOG_SOURCES)[number];
+
+export type LogEntryView = {
+  /** Unique, and ordered with `at`. */
+  key: string;
+  at: string;
+  source: LogSource;
+  kind: string;
+  actor: string | null;
+  entity: { type: string; id: string } | null;
+  summary: string;
+  details: unknown;
+  /** Something went wrong here: a failed payment, an email that bounced, an alert. */
+  problem: boolean;
+};
+
+export type LogPage = {
+  entries: LogEntryView[];
+  /** The cursor for the next (older) page; null on the last one. */
+  next: { beforeAt: string; beforeKey: string } | null;
+};

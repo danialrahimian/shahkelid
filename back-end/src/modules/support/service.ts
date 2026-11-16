@@ -138,9 +138,9 @@ export const deliverTicketAlert = async (db: Db, payload: { ticketId: string; wh
         to: address,
         subject:
           payload.what === "new"
-            ? `[تیکت ${ticket.number}] تازه: ${ticket.subject}`
-            : `[تیکت ${ticket.number}] پاسخ مشتری: ${ticket.subject}`,
-        text: `تیکت ${ticket.number} (${ticket.priority}) منتظر پشتیبانی است:\n${link}`,
+            ? `[Ticket ${ticket.number}] New: ${ticket.subject}`
+            : `[Ticket ${ticket.number}] Customer replied: ${ticket.subject}`,
+        text: `Ticket ${ticket.number} (${ticket.priority}) is waiting for support:\n${link}`,
       });
       delivered += 1;
     } catch (error) {

@@ -81,13 +81,16 @@ export const runRenewalJob = async (
       await alertStaff(
         db,
         {
-          subject: last || failure instanceof PanelRejectedError ? "تمدید روی پنل اعمال نشد" : "اعمال تمدید یک دقیقه است که شکست می‌خورد",
-          text: [
-            `تمدید سفارش ${orderId} پرداخت شده ولی هنوز روی پنل اعمال نشده است.`,
-            `خطا: ${failure.message.slice(0, 300)}`,
+          subject:
             last || failure instanceof PanelRejectedError
-              ? "بعد از رفع مشکل پنل، در صفحه‌ی مشتری روی «ساخت اشتراک» همان سفارش بزنید."
-              : "تلاش خودکار ادامه دارد.",
+              ? "A renewal was not applied on the panel"
+              : "Applying a renewal has been failing for a minute",
+          text: [
+            `The renewal in order ${orderId} is paid but not yet applied on the panel.`,
+            `Error: ${failure.message.slice(0, 300)}`,
+            last || failure instanceof PanelRejectedError
+              ? "Once the panel is fixed, press \"Make subscription\" on that order in the customer's page."
+              : "Automatic attempts carry on.",
           ].join("\n"),
         },
         { type: "order", id: orderId },

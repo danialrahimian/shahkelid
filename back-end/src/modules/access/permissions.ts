@@ -14,6 +14,7 @@ export const PERMISSIONS = {
   "users:read": "View staff accounts and their roles",
   "users:manage_roles": "Give and take away roles",
   "audit:read": "Read the audit log",
+  "logs:read": "Read the log of everything: actions, payments, subscriptions, alerts, emails and system events",
   // catalogue and infrastructure (M3)
   "plans:manage": "Create and edit plans",
   "servers:manage": "Manage VPN panels, servers and locations",
@@ -55,7 +56,8 @@ export const SYSTEM_ROLES: Record<
   admin: {
     name: "مدیر",
     description: "Runs the store day to day. Cannot change roles.",
-    permissions: ALL_PERMISSIONS.filter((p) => p !== "users:manage_roles"),
+    // The log of everything is the owner's alone, for now.
+    permissions: ALL_PERMISSIONS.filter((p) => p !== "users:manage_roles" && p !== "logs:read"),
   },
   support: {
     name: "پشتیبان",

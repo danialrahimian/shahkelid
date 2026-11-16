@@ -9,6 +9,7 @@ import { crmRouter } from "../modules/crm/routes";
 import { reportsRouter } from "../modules/reports/routes";
 import { identityRouter } from "../modules/identity/routes";
 import { infrastructureRouter } from "../modules/infrastructure/routes";
+import { logsRouter } from "../modules/logs/routes";
 import { notificationsRouter } from "../modules/notifications/routes";
 import { settingsRouter } from "../modules/settings/routes";
 import { subscriptionLinkRouter } from "../modules/subscriptions/link";
@@ -38,6 +39,7 @@ export const createV1Router = () => {
 
   router.use("/auth", identityRouter({ db, redis }));
   router.use("/staff", accessRouter({ db }));
+  router.use("/staff", logsRouter({ db }));
   router.use("/staff", infrastructureRouter({ db }));
   router.use("/staff", catalogRouter({ db }));
   router.use("/staff", crmRouter({ db }));
