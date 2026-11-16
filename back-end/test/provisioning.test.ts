@@ -670,11 +670,14 @@ describe("The customer's link (/s/:token)", () => {
     const subscription = await aLiveSubscription(store);
     const path = new URL(subscription.link).pathname;
 
-    const info = await (await fetch(`${getBaseUrl()}${path}/info`)).json();
+    const info = (await (await fetch(`${getBaseUrl()}${path}/info`)).json()) as {
+      subscription_url: string;
+      apps: { import_url: string }[];
+    };
     assert.equal(info.subscription_url, subscription.link);
-    assert.equal(info.apps[0].import_url, `v2rayn://install-sub?url=${encodeURIComponent(subscription.link)}`, "the v2rayN button imports our link");
+    assert.equal(info.apps[0]?.import_url, `v2rayn://install-sub?url=${encodeURIComponent(subscription.link)}`, "the v2rayN button imports our link");
 
-    const usage = await (await fetch(`${getBaseUrl()}${path}/usage?period=1d`)).json();
+    const usage = (await (await fetch(`${getBaseUrl()}${path}/usage?period=1d`)).json()) as { query: string };
     assert.equal(usage.query, "period=1d", "the query reaches the panel");
     assert.match(lastLinkUrl, /\/usage\?period=1d$/);
 
