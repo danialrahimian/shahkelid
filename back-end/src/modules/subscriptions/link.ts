@@ -8,6 +8,7 @@ import { ApiError } from "../../platform/http/api-error";
 import { limitPerIp } from "../../platform/http/rate-limit";
 import { panels } from "../infrastructure/schema";
 import { subscriptions } from "./schema";
+import { pageApps, pageInfo, renderPage, wantsPage } from "./page";
 import { linkFor } from "./service";
 
 /**
@@ -23,6 +24,13 @@ import { linkFor } from "./service";
  * The headers the panel reads to recognise a device (for the device limit)
  * and to choose a format (User-Agent) are passed on. Of the answer, only the
  * body and the headers apps read are returned: nothing that names the panel.
+ *
+ * Opened in a browser, the link is the shop's own subscription page
+ * (./page.ts: PGClock Pro with the shop's brand). The page reads the rest
+ * from beside itself, as it would from PasarGuard: /s/:token/info and /apps
+ * are answered here from our records; /links, /raw and /usage are the
+ * panel's, passed through with its own subscription address (also
+ * URL-encoded) replaced by ours.
  */
 
 const FORWARDED_REQUEST_HEADERS = [
@@ -46,6 +54,41 @@ const RETURNED_HEADERS = [
   "routing",
 ];
 
+/** What the subscription page asks for beside itself (PasarGuard's endpoints). */
+const PARTS = new Set(["info", "apps", "links", "raw", "usage"]);
+
+/**
+ * The page is one HTML file with inline script, a font and a QR code
+ * library from public CDNs, and a logo from anywhere: allowed for it, and
+ * nothing else. It still talks only to us.
+ */
+const PAGE_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net",
+  "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
+  "font-src 'self' data: https://cdn.jsdelivr.net https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https:",
+  "connect-src 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'",
+].join("; ");
+
+/** Our link in place of the panel's, plain and URL-encoded, with or without a trailing slash. */
+const swapLink = (body: string, panelUrl: string, ours: string) => {
+  const bare = panelUrl.replace(/\/+$/, "");
+  return body
+    .split(`${bare}/`)
+    .join(`${ours}/`)
+    .split(bare)
+    .join(ours)
+    .split(encodeURIComponent(`${bare}/`))
+    .join(encodeURIComponent(`${ours}/`))
+    .split(encodeURIComponent(bare))
+    .join(encodeURIComponent(ours));
+};
+
 const TIMEOUT_MS = 10_000;
 const TOKEN = /^[A-Za-z0-9_-]{20,64}$/;
 const GONE = ["deleted", "provisioning", "provisioning_failed"] as const;
@@ -55,11 +98,12 @@ const notFound = (res: Response) => res.status(404).type("text/plain").send("Not
 export const subscriptionLinkRouter = ({ db, redis }: { db: Db; redis: Redis }) => {
   const router = Router();
 
-  // Apps refresh every few hours; a few a minute is already generous.
-  router.use(limitPerIp({ redis, name: "sub-link", windowMs: 60_000, max: 30 }));
+  // Apps refresh every few hours. Opening the page asks for about six
+  // things at once, so a few reloads a minute must still fit.
+  router.use(limitPerIp({ redis, name: "sub-link", windowMs: 60_000, max: 120 }));
 
   // Express answers HEAD with the GET route; the method is passed on as it came.
-  router.get("/:token", async (req: Request, res: Response) => {
+  const serve = async (req: Request, res: Response, part: string | null) => {
     const token = String(req.params.token);
     if (!TOKEN.test(token)) return notFound(res);
 
@@ -72,6 +116,19 @@ export const subscriptionLinkRouter = ({ db, redis }: { db: Db; redis: Redis }) 
       .innerJoin(panels, eq(panels.id, subscriptions.panelId))
       .where(and(eq(subscriptions.accessToken, token), notInArray(subscriptions.status, [...GONE])));
     if (!found?.panelUrl) return notFound(res);
+    const ours = linkFor(token, found.subscriptionBaseUrl);
+
+    // The page and what it reads about the account: ours, not the panel's.
+    if (part === null && req.method === "GET" && wantsPage(req)) {
+      res.setHeader("content-security-policy", PAGE_CSP);
+      res.setHeader("cache-control", "no-store");
+      return res.type("html").send(renderPage());
+    }
+    if (part === "info") {
+      const info = await pageInfo(db, token);
+      return info ? res.setHeader("cache-control", "no-store").json(info) : notFound(res);
+    }
+    if (part === "apps") return res.setHeader("cache-control", "no-store").json(pageApps(ours));
 
     const headers = new Headers();
     for (const name of FORWARDED_REQUEST_HEADERS) {
@@ -79,9 +136,12 @@ export const subscriptionLinkRouter = ({ db, redis }: { db: Db; redis: Redis }) 
       if (value) headers.set(name, value);
     }
 
+    const query = req.originalUrl.includes("?") ? req.originalUrl.slice(req.originalUrl.indexOf("?")) : "";
+    const target = `${found.panelUrl.replace(/\/+$/, "")}${part ? `/${part}` : ""}${query}`;
+
     let upstream: globalThis.Response;
     try {
-      upstream = await fetch(found.panelUrl, {
+      upstream = await fetch(target, {
         method: req.method === "HEAD" ? "HEAD" : "GET",
         headers,
         signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -100,11 +160,24 @@ export const subscriptionLinkRouter = ({ db, redis }: { db: Db; redis: Redis }) 
       if (value) res.setHeader(name, value);
     }
     // The panel names its own address here; the customer's page is our link.
-    res.setHeader("profile-web-page-url", linkFor(token, found.subscriptionBaseUrl));
+    res.setHeader("profile-web-page-url", ours);
     res.setHeader("cache-control", "no-store");
+    const type = upstream.headers.get("content-type") ?? "";
+    const isPage = type.includes("text/html");
+    if (isPage) res.setHeader("content-security-policy", PAGE_CSP);
 
     if (req.method === "HEAD") return res.end();
-    res.send(Buffer.from(await upstream.arrayBuffer()));
+    const body = Buffer.from(await upstream.arrayBuffer());
+    // The page and its JSON may carry the panel's address; the configs apps
+    // read (often base64) are passed on byte for byte.
+    if (isPage || type.includes("json")) return res.send(swapLink(body.toString("utf8"), found.panelUrl, ours));
+    res.send(body);
+  };
+
+  router.get("/:token", (req, res) => serve(req, res, null));
+  router.get("/:token/:part", (req, res) => {
+    const part = String(req.params.part);
+    return PARTS.has(part) ? serve(req, res, part) : notFound(res);
   });
 
   // Apps read status codes, not JSON: answer in plain text.
