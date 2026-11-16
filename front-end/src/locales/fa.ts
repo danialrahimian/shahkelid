@@ -20,6 +20,8 @@ export const fa = {
   errors: {
     generic: "مشکلی پیش آمد. لطفاً دوباره تلاش کنید.",
     offline: "اتصال اینترنت برقرار نیست.",
+    /** A form that was not sent: a toast above the messages under the fields. */
+    formInvalid: "ذخیره نشد. این موارد را درست کنید:",
     /**
      * One sentence for every error code the API can answer with
      * (AUTH_ERROR_CODES in @shah-kelid/contracts). Form fields show these too:

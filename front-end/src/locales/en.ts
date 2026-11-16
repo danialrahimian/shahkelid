@@ -22,6 +22,7 @@ export const en: SameShape<typeof fa> = {
   errors: {
     generic: "Something went wrong. Please try again.",
     offline: "You are offline.",
+    formInvalid: "Not saved. Fix these first:",
     codes: {
       VALIDATION_FAILED: "Some of the values are not right.",
       EMAIL_INVALID: "Enter a valid email address.",
