@@ -5,7 +5,7 @@ import type {
   SubscriptionStatus,
   SubscriptionView,
 } from "@shah-kelid/contracts";
-import { and, desc, eq, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 
 import config from "../../config";
 import type { Db, Executor } from "../../platform/db/client";
@@ -18,7 +18,7 @@ import { accountLabel, optionalAccountLabel, users } from "../identity/schema";
 import { base32Encode } from "../identity/totp";
 import { locations, panels, servers } from "../infrastructure/schema";
 import type { PanelUser } from "../provisioning/driver";
-import { subscriptionEvents, subscriptions } from "./schema";
+import { subscriptionEvents, subscriptionPanels, subscriptions } from "./schema";
 
 /**
  * Subscriptions: made here, put on a panel by the worker (provisioning.ts),
@@ -61,6 +61,36 @@ const viewColumns = {
   locationName: locations.nameFa,
 };
 
+type PanelsOf = Map<string, SubscriptionView["panels"]>;
+
+/** Each subscription's panels, in one query for the whole list. */
+const panelsOf = async (executor: Executor, ids: string[]): Promise<PanelsOf> => {
+  const byId: PanelsOf = new Map();
+  if (ids.length === 0) return byId;
+  const rows = await executor
+    .select({ member: subscriptionPanels, panelName: panels.name, serverName: servers.name })
+    .from(subscriptionPanels)
+    .innerJoin(panels, eq(panels.id, subscriptionPanels.panelId))
+    .leftJoin(servers, eq(servers.id, subscriptionPanels.serverId))
+    .where(inArray(subscriptionPanels.subscriptionId, ids))
+    .orderBy(asc(subscriptionPanels.createdAt), asc(panels.name));
+  for (const { member, panelName, serverName } of rows) {
+    const list = byId.get(member.subscriptionId) ?? [];
+    list.push({
+      id: member.panelId,
+      name: panelName,
+      serverName,
+      onPanel: member.panelUserId !== null,
+      status: member.panelStatus,
+      usedBytes: member.usedBytes,
+      lastSyncedAt: iso(member.lastSyncedAt),
+      lastError: member.lastError,
+    });
+    byId.set(member.subscriptionId, list);
+  }
+  return byId;
+};
+
 const toView = (row: {
   subscription: SubscriptionRow;
   userEmail: string;
@@ -69,7 +99,7 @@ const toView = (row: {
   subscriptionBaseUrl: string | null;
   serverName: string | null;
   locationName: string | null;
-}): SubscriptionView => {
+}, on: PanelsOf): SubscriptionView => {
   const s = row.subscription;
   return {
     id: s.id,
@@ -81,6 +111,7 @@ const toView = (row: {
       s.serverId && row.serverName
         ? { id: s.serverId, name: row.serverName, locationName: row.locationName ?? "" }
         : null,
+    panels: on.get(s.id) ?? [],
     status: s.status,
     dataLimitBytes: s.dataLimitBytes,
     usedBytes: s.usedBytes,
@@ -110,7 +141,7 @@ const viewQuery = (executor: Executor) =>
 export const findSubscriptionView = async (executor: Executor, id: string) => {
   const [row] = await viewQuery(executor).where(eq(subscriptions.id, id));
   if (!row) throw notFound("No such subscription");
-  return toView(row);
+  return toView(row, await panelsOf(executor, [id]));
 };
 
 export const listSubscriptions = async (
@@ -125,7 +156,8 @@ export const listSubscriptions = async (
     .orderBy(desc(subscriptions.createdAt))
     .limit(filter.limit)
     .offset(filter.offset);
-  return rows.map(toView);
+  const on = await panelsOf(db, rows.map((row) => row.subscription.id));
+  return rows.map((row) => toView(row, on));
 };
 
 export const subscriptionHistory = async (db: Db, id: string): Promise<SubscriptionEventView[]> => {
@@ -226,14 +258,16 @@ const whyNoServer = async (executor: Executor, planId: string, full: { live: num
 };
 
 /**
- * The server a new subscription goes on: one on a panel that sells this
- * plan, taking customers, online, with room; highest priority first, then
- * the emptiest.
+ * Where a new subscription goes: on every panel that sells its plan, one
+ * server each (taking customers, online, with room; highest priority first,
+ * then the emptiest). A panel with no room is left out; with room on none,
+ * the sale is refused. The first of the list is the subscription's main
+ * panel.
  *
  * The candidate servers are locked, so two purchases at the same moment
  * cannot both take the last place on a server.
  */
-const placeOn = async (executor: Executor, planId: string): Promise<Placement> => {
+const placeOn = async (executor: Executor, planId: string): Promise<Placement[]> => {
   const locked = await executor.execute<{
     id: string;
     panel_id: string;
@@ -259,34 +293,37 @@ const placeOn = async (executor: Executor, planId: string): Promise<Placement> =
   // count in the locking statement was read before the wait, so two
   // purchases at once could both take the last place.
   const counts = await executor.execute<{ server_id: string; live: number }>(sql`
-    select x.server_id, count(*)::int as live
-    from subscriptions x
-    where x.server_id in (${sql.join(
+    select m.server_id, count(*)::int as live
+    from subscription_panels m
+    join subscriptions x on x.id = m.subscription_id
+    where m.server_id in (${sql.join(
       locked.rows.map((server) => sql`${server.id}`),
       sql`, `,
     )})
       and x.status in ('provisioning', 'on_hold', 'active', 'limited')
-    group by x.server_id
+    group by m.server_id
   `);
   const live = new Map(counts.rows.map((row) => [row.server_id, row.live]));
   const candidates = locked.rows.map((server) => ({ ...server, live: live.get(server.id) ?? 0 }));
 
-  const [chosen] = candidates
+  const best = candidates
     .filter((server) => server.live < server.capacity_users)
     .sort(
       (a, b) =>
         b.priority - a.priority || a.live / a.capacity_users - b.live / b.capacity_users,
     );
-  if (!chosen) {
+  // The best server of each panel, the best panel first.
+  const chosen = best.filter((server, index) => best.findIndex((other) => other.panel_id === server.panel_id) === index);
+  if (chosen.length === 0) {
     const full = candidates.map((server) => ({ live: server.live, capacity: server.capacity_users }));
     throw new ApiError(409, "NO_SERVER_AVAILABLE", await whyNoServer(executor, planId, full));
   }
-  return {
-    serverId: chosen.id,
-    panelId: chosen.panel_id,
-    live: chosen.live,
-    capacity: chosen.capacity_users,
-  };
+  return chosen.map((server) => ({
+    serverId: server.id,
+    panelId: server.panel_id,
+    live: server.live,
+    capacity: server.capacity_users,
+  }));
 };
 
 /**
@@ -321,7 +358,8 @@ export const createSubscription = async (
   if (!plan) throw notFound("No such plan");
   if (!orderId && (plan.archivedAt || !plan.isActive)) throw notFound("No such plan on sale");
 
-  const place = await placeOn(executor, planId);
+  const places = await placeOn(executor, planId);
+  const place = places[0]!;
 
   // The id is taken first: the panel username is made from it.
   const minted = await executor.execute<{ id: string }>(sql`select uuidv7() as id`);
@@ -341,8 +379,11 @@ export const createSubscription = async (
     startsOnFirstUse: true,
     accessToken: newAccessToken(),
   });
+  await executor.insert(subscriptionPanels).values(
+    places.map((each) => ({ subscriptionId: id, panelId: each.panelId, serverId: each.serverId, dataLimitBytes: plan.dataLimitBytes })),
+  );
 
-  await recordHistory(executor, id, "created", actor, { planId, serverId: place.serverId }, orderId);
+  await recordHistory(executor, id, "created", actor, { planId, serverId: place.serverId, panels: places.length }, orderId);
   await recordEvent(executor, {
     topic: PROVISION_TOPIC,
     aggregateType: "subscription",
@@ -361,21 +402,16 @@ export const createSubscription = async (
 };
 
 /** The groups a subscription's panel user gets: its server's, and the plan's extras on that panel. */
-export const groupsFor = async (executor: Executor, subscription: SubscriptionRow) => {
+export const groupsFor = async (
+  executor: Executor,
+  on: { planId: string; panelId: string; serverId: string | null },
+) => {
   const [setting] = await executor
     .select({ groupIds: planPanelSettings.groupIds })
     .from(planPanelSettings)
-    .where(
-      and(
-        eq(planPanelSettings.planId, subscription.planId),
-        eq(planPanelSettings.panelId, subscription.panelId),
-      ),
-    );
-  const [server] = subscription.serverId
-    ? await executor
-        .select({ groupId: servers.panelGroupId })
-        .from(servers)
-        .where(eq(servers.id, subscription.serverId))
+    .where(and(eq(planPanelSettings.planId, on.planId), eq(planPanelSettings.panelId, on.panelId)));
+  const [server] = on.serverId
+    ? await executor.select({ groupId: servers.panelGroupId }).from(servers).where(eq(servers.id, on.serverId))
     : [];
   const groups = new Set<number>(setting?.groupIds ?? []);
   if (server?.groupId) groups.add(server.groupId);

@@ -1,10 +1,11 @@
 import { toLatinDigits } from "@shah-kelid/contracts";
 import * as React from "react";
-import { useFormContext, type FieldValues, type Path } from "react-hook-form";
+import { useController, useFormContext, type FieldValues, type Path } from "react-hook-form";
 
 import { FieldError } from "@/components/ui/form/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Picker } from "@/components/ui/picker";
 import { cn } from "@/lib/utils";
 
 /**
@@ -113,17 +114,22 @@ export const SelectField = <T extends FieldValues>({
   /** The value is a number (a panel group id), not text. */
   numeric?: boolean;
 }) => {
-  const { register } = useFormContext<T>();
+  const { control } = useFormContext<T>();
+  const { field } = useController({ name, control });
   const id = React.useId();
   return (
     <Frame id={id} label={label} hint={hint} name={name} className={className}>
-      <select
+      <Picker
         id={id}
-        className="h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
-        {...register(
-          name,
-          numeric ? { setValueAs: (value: string) => (value === "" ? null : Number(value)) } : {},
-        )}
+        aria-describedby={hint ? `${id}-hint` : undefined}
+        className="h-10 w-full"
+        value={field.value === null || field.value === undefined ? "" : String(field.value)}
+        onChange={(event) => {
+          const value = event.target.value;
+          field.onChange(numeric ? (value === "" ? null : Number(value)) : value);
+          field.onBlur();
+        }}
+        placeholder={placeholder}
       >
         {placeholder ? <option value="">{placeholder}</option> : null}
         {options.map((option) => (
@@ -131,7 +137,7 @@ export const SelectField = <T extends FieldValues>({
             {option.label}
           </option>
         ))}
-      </select>
+      </Picker>
     </Frame>
   );
 };

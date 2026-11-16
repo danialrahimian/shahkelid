@@ -27,6 +27,7 @@ import { normalizeError } from "@/lib/api-client";
 import { codeText, errorText, isErrorCode } from "@/lib/error-text";
 import { formatDate, formatDateTime, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { Picker } from "@/components/ui/picker";
 
 import { Button, ConfirmButton, PageHeader, Placeholder, TableFrame } from "./staff-ui";
 
@@ -229,7 +230,7 @@ const PostEditor = ({ post }: { post?: StaffPostView }) => {
   const [save, { isLoading }] = useStaffSavePostMutation();
   const [draft, setDraft] = React.useState<Draft>(() => draftOf(post));
   const [errors, setErrors] = React.useState<Partial<Record<keyof Draft, string>>>({});
-  const set = (key: keyof Draft) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+  const set = (key: keyof Draft) => (event: { target: { value: string } }) =>
     setDraft({ ...draft, [key]: event.target.value });
 
   const submit = (event: React.FormEvent) => {
@@ -290,13 +291,13 @@ const PostEditor = ({ post }: { post?: StaffPostView }) => {
       </div>
       <aside className="space-y-5">
         <Field id="post-status" label={t("staff.posts.status")}>
-          <select id="post-status" value={draft.status} onChange={set("status")} className={cn(fieldClass, "h-10 py-0")}>
+          <Picker id="post-status" value={draft.status} onChange={set("status")} className={cn(fieldClass, "h-10 py-0")}>
             {POST_STATUSES.map((status) => (
               <option key={status} value={status}>
                 {t(`staff.posts.statuses.${status}`)}
               </option>
             ))}
-          </select>
+          </Picker>
         </Field>
         <Field id="post-tags" label={t("staff.posts.tags")} hint={t("staff.posts.tagsHint")} error={errors.tags}>
           <input id="post-tags" value={draft.tags} onChange={set("tags")} className={fieldClass} />

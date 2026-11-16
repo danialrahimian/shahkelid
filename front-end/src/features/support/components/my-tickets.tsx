@@ -9,6 +9,7 @@ import { PriorityText, ReplyBox, TicketStatusBadge } from "@/components/tickets/
 import { paths } from "@/config/paths";
 import { errorText } from "@/lib/error-text";
 import { formatDateTime, formatNumber } from "@/lib/format";
+import { Picker } from "@/components/ui/picker";
 
 const selectClass =
   "block h-10 w-full rounded-md border bg-background px-3 text-sm focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none";
@@ -55,7 +56,7 @@ const NewTicket = ({ onCancel }: { onCancel: () => void }) => {
           <label htmlFor={`${id}-category`} className="text-sm font-medium">
             {t("support.new.category")}
           </label>
-          <select
+          <Picker
             id={`${id}-category`}
             value={chosenCategory}
             onChange={(event) => setCategoryId(event.target.value)}
@@ -66,13 +67,13 @@ const NewTicket = ({ onCancel }: { onCancel: () => void }) => {
                 {i18n.language === "en" ? category.nameEn : category.nameFa}
               </option>
             ))}
-          </select>
+          </Picker>
         </div>
         <div className="space-y-1.5">
           <label htmlFor={`${id}-priority`} className="text-sm font-medium">
             {t("support.new.priority")}
           </label>
-          <select
+          <Picker
             id={`${id}-priority`}
             value={priority}
             onChange={(event) => setPriority(event.target.value as TicketPriority)}
@@ -83,14 +84,14 @@ const NewTicket = ({ onCancel }: { onCancel: () => void }) => {
                 {t(`support.priority.${value}`)}
               </option>
             ))}
-          </select>
+          </Picker>
         </div>
         {services?.length ? (
           <div className="space-y-1.5 sm:col-span-2">
             <label htmlFor={`${id}-service`} className="text-sm font-medium">
               {t("support.new.service")}
             </label>
-            <select
+            <Picker
               id={`${id}-service`}
               value={subscriptionId}
               onChange={(event) => setSubscriptionId(event.target.value)}
@@ -102,7 +103,7 @@ const NewTicket = ({ onCancel }: { onCancel: () => void }) => {
                   {service.plan.name}
                 </option>
               ))}
-            </select>
+            </Picker>
           </div>
         ) : null}
       </div>

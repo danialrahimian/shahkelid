@@ -64,6 +64,13 @@
       "when": 1792431142445,
       "tag": "0008_owner_username",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794841397483,
+      "tag": "0009_subscription_panels",
+      "breakpoints": true
     }
   ]
 }

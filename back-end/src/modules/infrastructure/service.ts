@@ -253,8 +253,9 @@ export const LIVE_STATUSES = ["provisioning", "on_hold", "active", "limited"] as
 // Table names written out: an interpolated column loses its table inside a
 // subquery, and "id" would then be the subscription's own id.
 const liveCount = sql<number>`(
-  select count(*)::int from subscriptions x
-  where x.server_id = "servers"."id"
+  select count(*)::int from subscription_panels m
+  join subscriptions x on x.id = m.subscription_id
+  where m.server_id = "servers"."id"
     and x.status in ('provisioning', 'on_hold', 'active', 'limited')
 )`;
 

@@ -106,6 +106,52 @@ export const subscriptions = pgTable(
 );
 
 /**
+ * The panels a subscription is on: one row per panel, each with the panel
+ * user made there (the same username on every panel) and what that panel
+ * last said about it.
+ *
+ * A plan may be sold on several panels at once. The customer then has one
+ * link here, carrying every panel's configs, and one volume: what is used
+ * on each panel is counted here, and the subscription's usage is their sum
+ * (see members.ts for how each panel's own limit is kept in step).
+ */
+export const subscriptionPanels = pgTable(
+  "subscription_panels",
+  {
+    subscriptionId: uuid("subscription_id")
+      .notNull()
+      .references(() => subscriptions.id, { onDelete: "cascade" }),
+    panelId: uuid("panel_id")
+      .notNull()
+      .references(() => panels.id, { onDelete: "restrict" }),
+    serverId: uuid("server_id").references(() => servers.id, { onDelete: "restrict" }),
+    // null until the user is made on this panel
+    panelUserId: integer("panel_user_id"),
+    panelSubscriptionUrl: text("panel_subscription_url"),
+    // the panel's own word: active, on_hold, limited, expired, disabled
+    panelStatus: text("panel_status"),
+    // the limit last set on this panel: what it has used plus what is left overall
+    dataLimitBytes: wholeNumber("data_limit_bytes"),
+    usedBytes: wholeNumber("used_bytes").notNull().default(0),
+    lifetimeUsedBytes: wholeNumber("lifetime_used_bytes").notNull().default(0),
+    expiresAt: at("expires_at"),
+    onHoldDurationSeconds: integer("on_hold_duration_seconds"),
+    onlineAt: at("online_at"),
+    lastSyncedAt: at("last_synced_at"),
+    lastError: text("last_error"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.subscriptionId, t.panelId] }),
+    check("subscription_panels_used_not_negative", sql`${t.usedBytes} >= 0`),
+    // the sync reads a panel's members; placement counts a server's
+    index("subscription_panels_panel_idx").on(t.panelId),
+    index("subscription_panels_server_idx").on(t.serverId),
+  ],
+);
+
+/**
  * Everything that ever happened to a subscription, including what the system
  * did on its own. Support reads this next to a ticket.
  */

@@ -8,18 +8,12 @@ import { auditBy, type StaffActor } from "../../platform/http/actor";
 import { ApiError, notFound } from "../../platform/http/api-error";
 import { recordEvent } from "../../platform/outbox/outbox";
 import { writeAudit } from "../access/audit";
-import { findPanel, panelFailure } from "../infrastructure/service";
-import type { PanelUser } from "../provisioning/driver";
+import { panelFailure } from "../infrastructure/service";
+import type { PanelDriver, PanelUser } from "../provisioning/driver";
 import { driverFor } from "../provisioning/drivers";
-import { syncSubscription } from "../provisioning/sync";
+import { isMade, memberFromPanel, membersOf, reconcile, refreshSubscription, saveMember, subscriptionFrom } from "./members";
 import { subscriptions } from "./schema";
-import {
-  PROVISION_TOPIC,
-  findSubscriptionView,
-  fromPanel,
-  recordHistory,
-  type SubscriptionRow,
-} from "./service";
+import { PROVISION_TOPIC, findSubscriptionView, recordHistory, type SubscriptionRow } from "./service";
 
 /**
  * What staff can do to a subscription.
@@ -27,6 +21,10 @@ import {
  * The panel is asked first. Only when it has done the thing is our copy
  * changed, with the history and audit entries in the same transaction; a
  * panel that is down or says no changes nothing here.
+ *
+ * A subscription on several panels is acted on on each of them, one after
+ * the other. If one fails part way, the action fails and what the panels
+ * before it did is kept on their rows; doing the action again finishes it.
  */
 
 const NOT_ON_PANEL = new Set(["provisioning", "provisioning_failed", "deleted"]);
@@ -81,7 +79,9 @@ export const removeFromPanel = async (db: Db, id: string) => {
   const [row] = await db.select().from(subscriptions).where(eq(subscriptions.id, id));
   if (!row || row.status === "deleted") return "not_needed";
   if (!NOT_ON_PANEL.has(row.status)) {
-    await driverFor(await findPanel(db, row.panelId)).deleteUser(row.panelUsername);
+    for (const member of (await membersOf(db, id)).filter(isMade)) {
+      await driverFor(member.panel).deleteUser(row.panelUsername);
+    }
   }
   await db.transaction(async (tx) => {
     await tx.update(subscriptions).set({ status: "deleted", lastError: null }).where(eq(subscriptions.id, id));
@@ -122,37 +122,45 @@ export const performAction = async (
   }
 
   onPanel(row);
-  const driver = driverFor(await findPanel(db, row.panelId));
   const username = row.panelUsername;
-  let user: PanelUser;
+
+  if (action === "sync") {
+    await ask(() => refreshSubscription(db, row));
+    return findSubscriptionView(db, id);
+  }
+
+  /** The same call on every panel the subscription is on. */
+  const onEach = async (work: (driver: PanelDriver) => Promise<PanelUser | void>) => {
+    for (const member of (await membersOf(db, id)).filter(isMade)) {
+      const user = await ask(() => work(driverFor(member.panel)));
+      if (user) await saveMember(db, member, memberFromPanel(user));
+    }
+    return subscriptionFrom(row, await membersOf(db, id));
+  };
 
   switch (action) {
-    case "sync":
-      await ask(() => syncSubscription(db, row));
-      return findSubscriptionView(db, id);
-
     case "reset_usage":
-      user = await ask(() => driver.resetUsage(username));
-      await record(db, actor, row, action, fromPanel(user));
+      await record(db, actor, row, action, await onEach((driver) => driver.resetUsage(username)));
+      // Each panel's limit is its own count plus what is left: all of it again.
+      await reconcile(db, id);
       break;
 
     case "revoke_link":
-      // The panel's link changes, and so does ours: the old /s/ link stops working.
-      user = await ask(() => driver.revokeSubscription(username));
+      // The panels' links change, and so does ours: the old /s/ link stops working.
       await record(db, actor, row, action, {
-        ...fromPanel(user),
+        ...(await onEach((driver) => driver.revokeSubscription(username))),
         accessToken: randomBytes(24).toString("base64url"),
       });
       break;
 
     case "disable":
     case "enable":
-      user = await ask(() => driver.setEnabled(username, action === "enable"));
-      await record(db, actor, row, action, fromPanel(user));
+      await record(db, actor, row, action, await onEach((driver) => driver.setEnabled(username, action === "enable")));
+      if (action === "enable") await reconcile(db, id);
       break;
 
     case "delete":
-      await ask(() => driver.deleteUser(username));
+      await onEach((driver) => driver.deleteUser(username));
       await record(db, actor, row, action, { status: "deleted", lastError: null });
       break;
   }

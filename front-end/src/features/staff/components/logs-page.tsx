@@ -6,6 +6,7 @@ import { useStaffLogsQuery, type LogFilter } from "@/api/logs";
 import { Input } from "@/components/ui/input";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { Picker } from "@/components/ui/picker";
 
 import { Button, PageHeader, Placeholder, TableFrame } from "./staff-ui";
 
@@ -122,7 +123,7 @@ export const LogsPage = () => {
     <div className="space-y-6">
       <PageHeader title={t("staff.logs.title")} description={t("staff.logs.description")} />
       <div className="flex flex-wrap items-center gap-3">
-        <select
+        <Picker
           aria-label={t("staff.logs.source")}
           value={source}
           onChange={(event) => setSource(event.target.value as LogSource | "")}
@@ -134,7 +135,7 @@ export const LogsPage = () => {
               {t(`staff.logs.sources.${value}`)}
             </option>
           ))}
-        </select>
+        </Picker>
         <Input
           value={typed}
           onChange={(event) => setTyped(event.target.value)}

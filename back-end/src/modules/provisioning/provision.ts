@@ -6,8 +6,9 @@ import { plans } from "../catalog/schema";
 import { users } from "../identity/schema";
 import { alertStaff } from "../notifications/alerts";
 import { format, notifyCustomer, siteUrl } from "../notifications/notify";
-import { findPanel } from "../infrastructure/service";
-import { fromPanel, groupsFor, linkFor, recordHistory } from "../subscriptions/service";
+import { panels } from "../infrastructure/schema";
+import { SYNCED, isMade, memberFromPanel, membersOf, saveMember, subscriptionFrom, type Member } from "../subscriptions/members";
+import { groupsFor, linkFor, recordHistory, type SubscriptionRow } from "../subscriptions/service";
 import { subscriptions } from "../subscriptions/schema";
 import { driverFor } from "./drivers";
 
@@ -23,65 +24,126 @@ import { driverFor } from "./drivers";
 
 export type ProvisionOutcome = "provisioned" | "not_waiting";
 
-export const provisionSubscription = async (db: Db, id: string): Promise<ProvisionOutcome> => {
-  const [subscription] = await db.select().from(subscriptions).where(eq(subscriptions.id, id));
-  if (!subscription || subscription.status !== "provisioning") return "not_waiting";
-
-  const [plan] = await db.select().from(plans).where(eq(plans.id, subscription.planId));
-  const panel = await findPanel(db, subscription.panelId);
-  const driver = driverFor(panel);
-
+/** Makes (or finds) the subscription's user on one panel, and keeps what the panel said. */
+const makeOn = async (db: Db, subscription: SubscriptionRow, plan: typeof plans.$inferSelect, member: Member, dataLimitBytes: number | null) => {
+  const driver = driverFor(member.panel);
   const existing = await driver.getUser(subscription.panelUsername);
   const user =
     existing ??
     (await driver.createUser({
       username: subscription.panelUsername,
-      groupIds: await groupsFor(db, subscription),
-      dataLimitBytes: subscription.dataLimitBytes,
+      groupIds: await groupsFor(db, { planId: subscription.planId, panelId: member.panelId, serverId: member.serverId }),
+      dataLimitBytes,
       deviceLimit: subscription.deviceLimit,
-      trafficReset: plan!.trafficReset,
+      trafficReset: plan.trafficReset,
       note: `shah-kelid ${subscription.id}`,
       startsOnFirstUse: true,
-      durationSeconds: plan!.durationDays * 86400,
-      startsAtLatest: new Date(
-        Date.now() + config.provisioning.firstUseDeadlineDays * 86400_000,
-      ),
+      durationSeconds: plan.durationDays * 86400,
+      startsAtLatest: new Date(Date.now() + config.provisioning.firstUseDeadlineDays * 86400_000),
     }));
+  await saveMember(db, member, memberFromPanel(user));
+  return { user, foundExisting: existing !== null };
+};
 
-  const made = await db.transaction(async (tx) => {
+/**
+ * Tries each panel the user is not on yet. One panel failing does not stop
+ * the others; its error is kept on its row.
+ */
+const makeOnPending = async (db: Db, subscription: SubscriptionRow) => {
+  const [plan] = await db.select().from(plans).where(eq(plans.id, subscription.planId));
+  const members = await membersOf(db, subscription.id);
+  // A panel joining late gets what is left, not the whole volume again.
+  const used = members.filter(isMade).reduce((sum, member) => sum + member.usedBytes, 0);
+  const limit = subscription.dataLimitBytes === null ? null : Math.max(1, subscription.dataLimitBytes - used);
+
+  const made: Member[] = [];
+  const failures: Error[] = [];
+  let foundExisting = false;
+  for (const member of members.filter((row) => !isMade(row))) {
+    try {
+      const result = await makeOn(db, subscription, plan!, member, limit);
+      foundExisting ||= result.foundExisting;
+      made.push(member);
+    } catch (error) {
+      failures.push(error as Error);
+      await saveMember(db, member, { lastError: (error as Error).message.slice(0, 500) });
+    }
+  }
+  return { plan: plan!, members, made, failures, foundExisting };
+};
+
+export const provisionSubscription = async (db: Db, id: string): Promise<ProvisionOutcome> => {
+  const [subscription] = await db.select().from(subscriptions).where(eq(subscriptions.id, id));
+  if (!subscription || subscription.status !== "provisioning") return "not_waiting";
+
+  const { plan, made, failures, foundExisting } = await makeOnPending(db, subscription);
+  const members = await membersOf(db, id);
+  // On no panel at all: nothing to give the customer yet. The job is retried.
+  if (!members.some(isMade)) throw failures[0] ?? new Error("The subscription has no panel to be made on");
+
+  const [primary] = await db.select().from(panels).where(eq(panels.id, subscription.panelId));
+  const done = await db.transaction(async (tx) => {
     const updated = await tx
       .update(subscriptions)
-      .set({ ...fromPanel(user), provisionedAt: new Date() })
+      .set({ ...subscriptionFrom(subscription, members), provisionedAt: new Date() })
       // Only if still waiting: staff may have acted while the panel answered.
       .where(and(eq(subscriptions.id, id), eq(subscriptions.status, "provisioning")))
       .returning({ id: subscriptions.id });
     if (updated.length > 0) {
       await recordHistory(tx, id, "provisioned", "system", {
-        panelUserId: user.id,
-        foundExisting: existing !== null,
+        panelUserId: members.find(isMade)?.panelUserId,
+        foundExisting,
+        panels: members.filter(isMade).length,
+        ...(failures.length > 0 ? { waitingForPanels: failures.length } : {}),
       });
+      if (failures.length > 0) {
+        await alertStaff(
+          tx,
+          {
+            subject: "A service was made on some of its panels only",
+            text: [
+              `Subscription ${id} is on ${members.filter(isMade).length} of its ${members.length} panels, and the customer has its link.`,
+              `Error from the rest: ${failures[0]!.message.slice(0, 300)}`,
+              "The remaining panels are tried again at every sync (every few minutes).",
+            ].join("\n"),
+          },
+          { type: "subscription", id },
+        );
+      }
       await notifyCustomer(tx, subscription.userId, "subscription_ready", {
-        plan_name: plan!.name,
+        plan_name: plan.name,
         volume: format.gb(subscription.dataLimitBytes),
-        days: format.days(plan!.durationDays),
-        link: linkFor(subscription.accessToken, panel.subscriptionBaseUrl),
+        days: format.days(plan.durationDays),
+        link: linkFor(subscription.accessToken, primary?.subscriptionBaseUrl ?? null),
         account_url: siteUrl.account(),
       });
     }
     return updated.length > 0;
   });
 
-  // Deleted while the panel was answering (by staff, or with the customer's
-  // account): the user just made there belongs to nothing now, so it goes,
-  // rather than being left on the panel taking a place.
-  if (!made && existing === null) {
+  // Deleted while the panels were answering (by staff, or with the customer's
+  // account): the users just made belong to nothing now, so they go, rather
+  // than being left on the panels taking a place.
+  if (!done) {
     const [now] = await db.select({ status: subscriptions.status }).from(subscriptions).where(eq(subscriptions.id, id));
-    if (now?.status === "deleted") {
-      await driver.deleteUser(subscription.panelUsername).catch(() => undefined);
+    if (now?.status === "deleted" && !foundExisting) {
+      for (const member of made) await driverFor(member.panel).deleteUser(subscription.panelUsername).catch(() => undefined);
     }
     return "not_waiting";
   }
   return "provisioned";
+};
+
+/**
+ * A live subscription that is not on all of its panels yet: tries the rest.
+ * Called by the sync. True when a panel was added (the limits then need
+ * setting again).
+ */
+export const provisionPending = async (db: Db, id: string) => {
+  const [subscription] = await db.select().from(subscriptions).where(eq(subscriptions.id, id));
+  if (!subscription || !(SYNCED as readonly string[]).includes(subscription.status)) return false;
+  const { made } = await makeOnPending(db, subscription);
+  return made.length > 0;
 };
 
 /** Remembers why the last attempt failed, for the dashboard. */

@@ -33,6 +33,7 @@ import { paths } from "@/config/paths";
 import { errorText } from "@/lib/error-text";
 import { formatDate, formatDateTime, formatGb, formatNumber, formatToman } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { Picker } from "@/components/ui/picker";
 
 import { showSaveError } from "../form-errors";
 import { FormActions, SelectField } from "./fields";
@@ -143,7 +144,7 @@ export const CustomersPage = () => {
           placeholder={t("staff.customers.searchPlaceholder")}
           className="h-10 max-w-xs"
         />
-        <select
+        <Picker
           aria-label={t("staff.customers.stage")}
           value={stage}
           onChange={(event) => setStage(event.target.value as CustomerStage | "")}
@@ -155,9 +156,9 @@ export const CustomersPage = () => {
               {t(`staff.customers.stages.${candidate}`)}
             </option>
           ))}
-        </select>
+        </Picker>
         {segments?.tags.length ? (
-          <select
+          <Picker
             aria-label={t("staff.customers.tags")}
             value={tagId}
             onChange={(event) => setTagId(event.target.value)}
@@ -169,9 +170,9 @@ export const CustomersPage = () => {
                 {tag.name} ({formatNumber(tag.customers)})
               </option>
             ))}
-          </select>
+          </Picker>
         ) : null}
-        <select
+        <Picker
           aria-label={t("staff.customers.sort")}
           value={sort}
           onChange={(event) => setSort(event.target.value as CustomerSort)}
@@ -182,7 +183,7 @@ export const CustomersPage = () => {
               {t(`staff.customers.sorts.${candidate}`)}
             </option>
           ))}
-        </select>
+        </Picker>
         {customers.data ? (
           <p className="text-sm text-muted-foreground">
             {t("staff.customers.segment", {
@@ -387,7 +388,7 @@ const CrmSection = ({ customer, canManage }: { customer: CustomerDetail; canMana
             <dt className="text-xs text-muted-foreground">{t("staff.customer.stage")}</dt>
             <dd className="space-y-1">
               {canManage ? (
-                <select
+                <Picker
                   aria-label={t("staff.customer.stage")}
                   value={customer.stageOverride ?? ""}
                   onChange={(event) =>
@@ -405,7 +406,7 @@ const CrmSection = ({ customer, canManage }: { customer: CustomerDetail; canMana
                       {t(`staff.customers.stages.${candidate}`)}
                     </option>
                   ))}
-                </select>
+                </Picker>
               ) : (
                 <StageBadge stage={customer.stage} />
               )}

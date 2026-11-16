@@ -5,6 +5,15 @@ import { createRoot } from "react-dom/client";
 import { Provider } from "react-redux";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// The page's logic is what is tested here; the themed select is the browser's own for it.
+vi.mock("@/components/ui/picker", () => ({
+  Picker: ({ value, onChange, children, ...rest }: { value: string; onChange: (event: { target: { value: string } }) => void; children: React.ReactNode }) => (
+    <select value={value} onChange={onChange} aria-label={(rest as { "aria-label"?: string })["aria-label"]}>
+      {children}
+    </select>
+  ),
+}));
+
 import "@/lib/i18n";
 import { createTestStore } from "@/testing/test-store";
 
