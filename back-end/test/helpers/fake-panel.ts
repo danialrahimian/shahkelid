@@ -108,7 +108,12 @@ export class FakePanel implements PanelDriver {
     if (change.groupIds !== undefined) user.groupIds = [...change.groupIds];
     if (change.expiresAt !== undefined) user.expiresAt = change.expiresAt;
     if (change.onHoldDurationSeconds !== undefined) user.onHoldDurationSeconds = change.onHoldDurationSeconds;
-    if (change.activate && user.status !== "on_hold") user.status = "active";
+    // Given an expiry, a user on hold starts; otherwise "activate" is for limited and expired ones.
+    if (change.activate && (user.status !== "on_hold" || change.expiresAt)) {
+      user.status = "active";
+      user.onHoldDurationSeconds = null;
+    }
+    if (user.status === "active" && user.dataLimitBytes !== null && user.usedBytes >= user.dataLimitBytes) user.status = "limited";
     this.updates.push({ username, change });
     return { ...user };
   }

@@ -6,12 +6,12 @@ import { ApiError, notFound } from "../../platform/http/api-error";
 import { recordEvent } from "../../platform/outbox/outbox";
 import { orderItems, orders } from "../billing/schema";
 import { planPanelSettings } from "../catalog/schema";
-import { findPanel } from "../infrastructure/service";
 import { format, notifyCustomer, siteUrl } from "../notifications/notify";
 import type { PanelUser } from "../provisioning/driver";
 import { driverFor } from "../provisioning/drivers";
-import { subscriptionEvents, subscriptions } from "./schema";
-import { fromPanel, groupsFor, recordHistory } from "./service";
+import { subscriptionEvents, subscriptionPanels, subscriptions } from "./schema";
+import { MISSING, isMade, limitFor, memberFromPanel, membersOf, saveMember, subscriptionFrom, totalsOf, type MemberRow } from "./members";
+import { groupsFor, recordHistory } from "./service";
 
 /**
  * Renewing: more time and more volume on a subscription the customer
@@ -52,9 +52,10 @@ export const assertRenewable = async (executor: Executor, userId: string, subscr
   const [soldThere] = await executor
     .select({ planId: planPanelSettings.planId })
     .from(planPanelSettings)
-    .where(and(eq(planPanelSettings.planId, planId), eq(planPanelSettings.panelId, subscription.panelId)));
+    .innerJoin(subscriptionPanels, eq(subscriptionPanels.panelId, planPanelSettings.panelId))
+    .where(and(eq(planPanelSettings.planId, planId), eq(subscriptionPanels.subscriptionId, subscription.id)));
   if (!soldThere) {
-    throw new ApiError(409, "PLAN_NOT_ON_SALE", "That plan is not sold on this subscription's panel");
+    throw new ApiError(409, "PLAN_NOT_ON_SALE", "That plan is not sold on any of this subscription's panels");
   }
   return subscription;
 };
@@ -76,7 +77,11 @@ type Target = {
 };
 
 /** The new limits, as absolute values, from what the panel has now and the plan bought. */
-export const renewalTarget = (user: PanelUser, plan: Snapshot, now = new Date()): Target => {
+export const renewalTarget = (
+  user: Pick<PanelUser, "status" | "dataLimitBytes" | "usedBytes" | "expiresAt" | "onHoldDurationSeconds">,
+  plan: Snapshot,
+  now = new Date(),
+): Target => {
   const days = plan.durationDays;
   const common = {
     deviceLimit: plan.deviceLimit,
@@ -118,7 +123,6 @@ export const applyRenewal = async (db: Db, orderId: string) => {
   const [item] = await db.select().from(orderItems).where(eq(orderItems.orderId, order.id));
   const plan = item!.planSnapshot as Snapshot;
   const [subscription] = await db.select().from(subscriptions).where(eq(subscriptions.id, order.subscriptionId!));
-  const driver = driverFor(await findPanel(db, subscription!.panelId));
 
   const [planned] = await db
     .select({ details: subscriptionEvents.details })
@@ -127,22 +131,51 @@ export const applyRenewal = async (db: Db, orderId: string) => {
 
   let target = (planned?.details as { target?: Target } | undefined)?.target;
   if (!target) {
-    const user = await driver.getUser(subscription!.panelUsername);
-    if (!user) throw new Error("The subscription is not on its panel");
-    target = renewalTarget(user, plan);
+    // From every panel's count as it is now: the subscription as one user.
+    const fresh: MemberRow[] = [];
+    for (const member of (await membersOf(db, subscription!.id)).filter(isMade)) {
+      const user = await driverFor(member.panel).getUser(subscription!.panelUsername);
+      if (!user) continue;
+      await saveMember(db, member, memberFromPanel(user));
+      fresh.push({ ...member, ...memberFromPanel(user) });
+    }
+    if (fresh.length === 0) throw new Error("The subscription is not on its panel");
+    const now = totalsOf(subscription!.dataLimitBytes, fresh);
+    target = renewalTarget(
+      {
+        status: now.status as PanelUser["status"],
+        dataLimitBytes: subscription!.dataLimitBytes,
+        usedBytes: now.usedBytes,
+        expiresAt: now.expiresAt,
+        onHoldDurationSeconds: now.onHoldDurationSeconds,
+      },
+      plan,
+    );
     await recordHistory(db, subscription!.id, "renewal_planned", "system", { target }, order.id);
   }
 
-  const user = await driver.updateLimits(subscription!.panelUsername, {
-    dataLimitBytes: target.dataLimitBytes,
-    deviceLimit: target.deviceLimit,
-    trafficReset: target.trafficReset,
-    groupIds: await groupsFor(db, { ...subscription!, planId: plan.id }),
-    ...(target.expiresAt ? { expiresAt: new Date(target.expiresAt) } : {}),
-    ...(target.onHoldDurationSeconds !== undefined ? { onHoldDurationSeconds: target.onHoldDurationSeconds } : {}),
-    activate: target.activate,
-  });
+  // The same target on every panel; each panel's limit is what it counted
+  // itself plus what the renewed subscription has left overall.
+  const members = (await membersOf(db, subscription!.id)).filter((member) => isMade(member) && member.lastError !== MISSING);
+  if (members.length === 0) throw new Error("The subscription is not on its panel");
+  const used = members.reduce((sum, member) => sum + member.usedBytes, 0);
+  for (const member of members) {
+    const user = await driverFor(member.panel).updateLimits(subscription!.panelUsername, {
+      dataLimitBytes: limitFor(target.dataLimitBytes, member, used),
+      deviceLimit: target.deviceLimit,
+      trafficReset: target.trafficReset,
+      groupIds: await groupsFor(db, { planId: plan.id, panelId: member.panelId, serverId: member.serverId }),
+      ...(target.expiresAt ? { expiresAt: new Date(target.expiresAt) } : {}),
+      ...(target.onHoldDurationSeconds !== undefined ? { onHoldDurationSeconds: target.onHoldDurationSeconds } : {}),
+      activate: target.activate,
+    });
+    await saveMember(db, member, memberFromPanel(user));
+  }
 
+  const renewed = subscriptionFrom(
+    { dataLimitBytes: target.dataLimitBytes, panelId: subscription!.panelId },
+    await membersOf(db, subscription!.id),
+  );
   await db.transaction(async (tx) => {
     const done = await tx
       .update(orders)
@@ -152,13 +185,15 @@ export const applyRenewal = async (db: Db, orderId: string) => {
     if (done.length === 0) return;
     await tx
       .update(subscriptions)
-      .set({ ...fromPanel(user), planId: plan.id })
+      .set({ ...renewed, dataLimitBytes: target.dataLimitBytes, deviceLimit: target.deviceLimit, planId: plan.id })
       .where(eq(subscriptions.id, subscription!.id));
     await recordHistory(tx, subscription!.id, "renewed", "system", { planId: plan.id, days: plan.durationDays }, order.id);
     await notifyCustomer(tx, subscription!.userId, "subscription_renewed", {
       plan_name: plan.name,
-      expires_on: user.expiresAt ? format.date(user.expiresAt) : "اولین اتصال + " + format.days(Math.round((user.onHoldDurationSeconds ?? 0) / 86400)),
-      remaining: format.gb(user.dataLimitBytes === null ? null : Math.max(0, user.dataLimitBytes - user.usedBytes)),
+      expires_on: renewed.expiresAt
+        ? format.date(renewed.expiresAt)
+        : "اولین اتصال + " + format.days(Math.round((renewed.onHoldDurationSeconds ?? 0) / 86400)),
+      remaining: format.gb(target.dataLimitBytes === null ? null : Math.max(0, target.dataLimitBytes - renewed.usedBytes)),
       account_url: siteUrl.account(),
     });
   });

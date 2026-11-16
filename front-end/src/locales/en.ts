@@ -809,6 +809,8 @@ export const en: SameShape<typeof fa> = {
       isActive: "On sale",
       sortOrder: "Display order",
       panels: "Panels this plan is sold on",
+      panelsHint:
+        "Each buyer's user is made on every ticked panel, and their link carries all those panels' configs. The plan's volume is one: usage is counted per panel and their sum comes off it. A panel needs at least one online server with room, or it is left out.",
       extraGroups: "Extra groups",
       extraGroupsHint: "Group ids separated by commas, like 3, 5. The server's own group is always given.",
       needPanel: "Add a panel first.",
@@ -903,6 +905,13 @@ export const en: SameShape<typeof fa> = {
       notStarted: "Starts at the first connection",
       online: "Last connected",
       lastSync: "Last synced with the panel",
+      panels: "Usage on each panel",
+      panelsHint:
+        "This subscription is on several panels, and the customer's link carries all their configs. Each panel counts what is used through its own configs; the subscription's usage is their sum.",
+      panelUsed: "Used on this panel",
+      panelState: "State on the panel",
+      panelWaiting: "Not made on this panel yet; tried again at the next sync.",
+      panelsTotal: "Total (the subscription's usage)",
       link: "Customer subscription link",
       linkHint: "Add this link in v2rayNG, Hiddify or Streisand, or scan the QR code.",
       qrAlt: "QR code of the subscription link",

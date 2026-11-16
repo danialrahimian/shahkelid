@@ -20,7 +20,7 @@ import { errorText } from "@/lib/error-text";
 import { cn } from "@/lib/utils";
 
 import { formatDate, formatDateTime, formatGb, formatNumber } from "@/lib/format";
-import { Button, ConfirmButton, PageHeader, Placeholder, Section, StatusBadge, UsageMeter } from "./staff-ui";
+import { Button, ConfirmButton, PageHeader, Placeholder, Section, StatusBadge, TableFrame, UsageMeter } from "./staff-ui";
 import { SubscriptionTable } from "./subscription-table";
 
 // -------------------------------------------------------------------- list
@@ -200,7 +200,9 @@ export const SubscriptionPage = ({ subscriptionId }: { subscriptionId: string })
             "—"
           )}
         </Fact>
-        <Fact label={t("staff.servers.panel")}>{subscription.panel.name}</Fact>
+        <Fact label={t("staff.servers.panel")}>
+          {subscription.panels.length > 1 ? subscription.panels.map((panel) => panel.name).join("، ") : subscription.panel.name}
+        </Fact>
         <Fact label={t("staff.subscriptions.created")}>{formatDateTime(subscription.createdAt)}</Fact>
       </dl>
 
@@ -209,6 +211,52 @@ export const SubscriptionPage = ({ subscriptionId }: { subscriptionId: string })
           <span className="font-medium">{t("staff.subscription.lastError")}: </span>
           {subscription.lastError}
         </p>
+      ) : null}
+
+      {subscription.panels.length > 1 ? (
+        <Section title={t("staff.subscription.panels")}>
+          <p className="text-sm text-muted-foreground">{t("staff.subscription.panelsHint")}</p>
+          <TableFrame>
+            <thead>
+              <tr>
+                <th>{t("staff.servers.panel")}</th>
+                <th>{t("staff.subscriptions.server")}</th>
+                <th>{t("staff.subscription.panelUsed")}</th>
+                <th>{t("staff.subscription.panelState")}</th>
+                <th>{t("staff.subscription.lastSync")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {subscription.panels.map((panel) => (
+                <tr key={panel.id}>
+                  <td className="font-medium">{panel.name}</td>
+                  <td>
+                    <bdi dir="ltr">{panel.serverName ?? "—"}</bdi>
+                  </td>
+                  <td className="tabular-nums">{formatGb(panel.usedBytes)}</td>
+                  <td>
+                    {panel.onPanel ? (
+                      <bdi dir="ltr">{panel.status ?? "—"}</bdi>
+                    ) : (
+                      <span className="text-amber-700 dark:text-amber-300">{t("staff.subscription.panelWaiting")}</span>
+                    )}
+                    {panel.lastError ? (
+                      <p className="max-w-72 text-xs break-words text-destructive" dir="auto">
+                        {panel.lastError}
+                      </p>
+                    ) : null}
+                  </td>
+                  <td>{formatDateTime(panel.lastSyncedAt)}</td>
+                </tr>
+              ))}
+              <tr className="font-medium">
+                <td colSpan={2}>{t("staff.subscription.panelsTotal")}</td>
+                <td className="tabular-nums">{formatGb(subscription.usedBytes)}</td>
+                <td colSpan={2} />
+              </tr>
+            </tbody>
+          </TableFrame>
+        </Section>
       ) : null}
 
       <Actions subscription={subscription} />

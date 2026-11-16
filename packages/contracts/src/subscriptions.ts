@@ -39,6 +39,21 @@ export type SubscriptionView = {
   plan: { id: string; name: string };
   panel: { id: string; name: string };
   server: { id: string; name: string; locationName: string } | null;
+  /**
+   * Every panel the subscription is on, with what was used through that
+   * panel's configs. `usedBytes` below is their sum. `onPanel` is false
+   * while the user has not been made there yet.
+   */
+  panels: {
+    id: string;
+    name: string;
+    serverName: string | null;
+    onPanel: boolean;
+    status: string | null;
+    usedBytes: number;
+    lastSyncedAt: string | null;
+    lastError: string | null;
+  }[];
   status: SubscriptionStatus;
   dataLimitBytes: number | null;
   usedBytes: number;

@@ -29,6 +29,7 @@ import { errorText } from "@/lib/error-text";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import i18n from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { Picker } from "@/components/ui/picker";
 
 import { showSaveError } from "../form-errors";
 import { CheckField, FormActions, NumberField, TextField } from "./fields";
@@ -336,7 +337,7 @@ export const StaffTicketPage = ({ ticketId }: { ticketId: string }) => {
             <legend className="sr-only">{t("staff.tickets.manage")}</legend>
             <label className="block space-y-1.5">
               <span className="text-xs text-muted-foreground">{t("staff.tickets.status")}</span>
-              <select
+              <Picker
                 value={ticket.status}
                 onChange={(event) => void change({ status: event.target.value as TicketStatus })}
                 className={selectClass}
@@ -346,11 +347,11 @@ export const StaffTicketPage = ({ ticketId }: { ticketId: string }) => {
                     {t(`support.status.staff.${status}`)}
                   </option>
                 ))}
-              </select>
+              </Picker>
             </label>
             <label className="block space-y-1.5">
               <span className="text-xs text-muted-foreground">{t("staff.tickets.priority")}</span>
-              <select
+              <Picker
                 value={ticket.priority}
                 onChange={(event) => void change({ priority: event.target.value as TicketPriority })}
                 className={selectClass}
@@ -360,11 +361,11 @@ export const StaffTicketPage = ({ ticketId }: { ticketId: string }) => {
                     {t(`support.priority.${priority}`)}
                   </option>
                 ))}
-              </select>
+              </Picker>
             </label>
             <label className="block space-y-1.5">
               <span className="text-xs text-muted-foreground">{t("staff.tickets.assignee")}</span>
-              <select
+              <Picker
                 value={ticket.assignedTo?.id ?? ""}
                 onChange={(event) => void change({ assignedToUserId: event.target.value || null })}
                 className={selectClass}
@@ -375,7 +376,7 @@ export const StaffTicketPage = ({ ticketId }: { ticketId: string }) => {
                     {agent.email}
                   </option>
                 ))}
-              </select>
+              </Picker>
             </label>
           </fieldset>
         </aside>

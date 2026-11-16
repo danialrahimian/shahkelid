@@ -139,6 +139,7 @@ const PlanDialog = ({ plan, onClose }: { plan?: PlanView; onClose: () => void })
 
               <fieldset className="space-y-3 rounded-md border p-4">
                 <legend className="px-1 text-sm font-medium">{t("staff.plans.panels")}</legend>
+                <p className="text-xs leading-5 text-muted-foreground">{t("staff.plans.panelsHint")}</p>
                 {panels.map((panel) => {
                   const on = selected.includes(panel.id);
                   return (

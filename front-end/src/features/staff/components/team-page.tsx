@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { errorText } from "@/lib/error-text";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { Picker } from "@/components/ui/picker";
 
 import { Button, ConfirmButton, PageHeader, Placeholder, Section, TableFrame } from "./staff-ui";
 
@@ -56,13 +57,13 @@ const AddMember = ({ roles }: { roles: RoleView[] }) => {
       </label>
       <label className="space-y-1 text-sm">
         <span className="block font-medium">{t("staff.team.role")}</span>
-        <select value={roleKey} onChange={(event) => setRoleKey(event.target.value)} className={selectClass}>
+        <Picker value={roleKey} onChange={(event) => setRoleKey(event.target.value)} className={selectClass}>
           {roles.map((role) => (
             <option key={role.key} value={role.key}>
               {role.name}
             </option>
           ))}
-        </select>
+        </Picker>
       </label>
       <Button type="submit" tone="primary" busy={isLoading}>
         {t("staff.team.add")}
@@ -128,7 +129,7 @@ export const TeamPage = ({ canManage }: { canManage: boolean }) => {
                         ),
                       )}
                       {canManage && missing.length ? (
-                        <select
+                        <Picker
                           aria-label={t("staff.team.grant")}
                           value=""
                           onChange={(event) =>
@@ -143,7 +144,7 @@ export const TeamPage = ({ canManage }: { canManage: boolean }) => {
                               {role.name}
                             </option>
                           ))}
-                        </select>
+                        </Picker>
                       ) : null}
                     </div>
                   </td>
@@ -274,7 +275,7 @@ export const AuditPage = () => {
   return (
     <div className="space-y-6">
       <PageHeader title={t("staff.audit.title")} description={t("staff.audit.description")} />
-      <select
+      <Picker
         aria-label={t("staff.audit.on")}
         value={entityType}
         onChange={(event) => setEntityType(event.target.value)}
@@ -286,7 +287,7 @@ export const AuditPage = () => {
             {type}
           </option>
         ))}
-      </select>
+      </Picker>
       <AuditLog key={entityType} entityType={entityType || undefined} />
     </div>
   );
