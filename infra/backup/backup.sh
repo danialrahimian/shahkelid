@@ -38,7 +38,7 @@ alert() {
   psql -v ON_ERROR_STOP=1 -v msg="$1" -q <<'SQL' || say "could not record the alert either"
 insert into outbox_events (topic, aggregate_type, aggregate_id, payload)
 values ('admin.alert', 'backup', gen_random_uuid(),
-        jsonb_build_object('subject', 'پشتیبان‌گیری انجام نشد', 'text', :'msg'));
+        jsonb_build_object('subject', 'Backup failed', 'text', :'msg'));
 SQL
   [ -n "${BACKUP_PING_URL:-}" ] && curl -fsS -m 10 "$BACKUP_PING_URL/fail" > /dev/null || true
 }
@@ -85,7 +85,7 @@ to_telegram() {
     tar -cf - -C "$WORK" database.dump keys.env | encrypt || return 1
     TG_NOTE="files (receipts, ticket images) left out: over Telegram's 50 MB"
   fi
-  caption="پشتیبان شاه‌کلید — $(date '+%Y-%m-%d %H:%M') — $accounts حساب${TG_NOTE:+ — بدون فایل‌ها}"
+  caption="Shah Kelid backup — $(date '+%Y-%m-%d %H:%M') — $accounts accounts${TG_NOTE:+ — without files}"
   sent=0
   for chat in $(echo "$SK_TG_CHATS" | tr ',' ' '); do
     if curl -fsS -m 300 -o /dev/null \
@@ -206,7 +206,7 @@ else
   cat "$LOG"
   say "FAILED"
   report false "$(tail -n 3 "$LOG" | tr '\n' ' ')" || true
-  alert "پشتیبان‌گیری $(date -u +%Y-%m-%dT%H:%MZ) شکست خورد. آخرین خطوط گزارش:
+  alert "The backup at $(date -u +%Y-%m-%dT%H:%MZ) failed. The last lines of its log:
 $(tail -n 15 "$LOG")"
   exit 1
 fi

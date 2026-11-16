@@ -6,6 +6,7 @@ import {
   Layers,
   LifeBuoy,
   Mail,
+  ScrollText,
   MessageSquare,
   Receipt,
   Server,
@@ -39,6 +40,7 @@ type StaffLink = {
     | "comments"
     | "team"
     | "audit"
+    | "logs"
     | "storeSettings";
   icon: typeof Users;
   permission: string;
@@ -83,6 +85,7 @@ export const STAFF_GROUPS: {
       { to: paths.staffNotifications.getHref(), label: "notifications", icon: Mail, permission: "settings:manage" },
       { to: paths.staffTeam.getHref(), label: "team", icon: UserCog, permission: "users:read" },
       { to: paths.staffAudit.getHref(), label: "audit", icon: History, permission: "audit:read" },
+      { to: paths.staffLogs.getHref(), label: "logs", icon: ScrollText, permission: "logs:read" },
     ],
   },
 ];

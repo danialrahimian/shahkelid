@@ -149,12 +149,12 @@ export const submitCardTransfer = async (
     await alertStaff(
       tx,
       {
-        subject: flags.length ? "رسید کارت‌به‌کارت تازه (مشکوک)" : "رسید کارت‌به‌کارت تازه",
+        subject: flags.length ? "New card-to-card receipt (suspicious)" : "New card-to-card receipt",
         text: [
-          `سفارش ${order.number}، مبلغ ${order.totalToman} تومان، کارت ${card.label}.`,
-          `کد پیگیری ${input.trackingNumber}، مبلغ اعلام‌شده ${input.claimedAmountToman} تومان.`,
-          flags.length ? `هشدارها: ${flags.join("، ")}` : "",
-          "برای بررسی به بخش «پرداخت‌ها» در مدیریت بروید.",
+          `Order ${order.number}, ${order.totalToman} toman, to card "${card.label}".`,
+          `Tracking number ${input.trackingNumber}, amount stated ${input.claimedAmountToman} toman.`,
+          flags.length ? `Warnings: ${flags.join(", ")}` : "",
+          "Review it under Payments in the staff area.",
         ]
           .filter(Boolean)
           .join("\n"),
@@ -249,7 +249,11 @@ export const reviewReceipt = async (
       reviewedByUserId: actor.userId,
       onlyFrom: "pending_review",
     });
-    if (result.reason === "not_waiting") throw new ApiError(409, "ALREADY_REVIEWED", "Already reviewed");
+    // "already": another reviewer approved it a moment ago, while this one
+    // waited for the payment's lock. Their approval stands; this one is late.
+    if (result.reason === "not_waiting" || result.reason === "already") {
+      throw new ApiError(409, "ALREADY_REVIEWED", "Already reviewed");
+    }
     await db
       .update(cardTransferReceipts)
       .set({ reviewNote: input.note })

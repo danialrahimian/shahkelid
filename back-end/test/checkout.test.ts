@@ -293,7 +293,7 @@ describe("Paying with Zarinpal", () => {
     assert.equal(payment!.status, "failed");
     assert.equal(payment!.failureReason, "order_cancelled");
     const [alert] = await alertsAbout(payment!.id);
-    assert.match((alert!.payload as { subject: string }).subject, /دیگر باز نیست/);
+    assert.match((alert!.payload as { subject: string }).subject, /no longer open/);
   });
 
   it("When Zarinpal holds a different amount, then nothing is settled and staff are told", async () => {

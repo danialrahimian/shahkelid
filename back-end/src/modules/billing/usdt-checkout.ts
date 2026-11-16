@@ -171,12 +171,12 @@ const recordAndMatch = async (db: Db, transfer: IncomingTransfer, blockNumber: n
     await alertStaff(
       tx,
       {
-        subject: late ? "انتقال USDT بعد از انقضای فاکتور" : "انتقال USDT بدون فاکتور",
+        subject: late ? "USDT transfer after its invoice expired" : "USDT transfer with no invoice",
         text: [
-          `${formatUsdtUnits(transfer.units)} USDT از ${transfer.from} رسید (تراکنش ${transfer.txHash}).`,
+          `${formatUsdtUnits(transfer.units)} USDT arrived from ${transfer.from} (transaction ${transfer.txHash}).`,
           late
-            ? "مبلغ دقیقاً با یک فاکتور منقضی‌شده می‌خواند. اگر مشتری دیر پرداخته، در بخش پرداخت‌ها «تسویه» را بزنید."
-            : "با هیچ فاکتوری نمی‌خواند (مبلغ اشتباه یا انتقال ناشناس). در بخش پرداخت‌ها تصمیم بگیرید.",
+            ? "The amount matches an expired invoice exactly. If the customer paid late, press \"Settle\" under Payments."
+            : "It matches no invoice (a wrong amount, or an unknown transfer). Decide under Payments.",
         ].join("\n"),
       },
       { type: "crypto_transfer", id: row.id },

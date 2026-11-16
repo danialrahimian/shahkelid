@@ -199,6 +199,33 @@ export const fromPanel = (user: PanelUser) => ({
 type Placement = { serverId: string; panelId: string; live: number; capacity: number };
 
 /**
+ * Why no server can take a plan, in words an operator can act on. Only asked
+ * once placing has failed, so the sale path stays one query.
+ */
+const whyNoServer = async (executor: Executor, planId: string, full: { live: number; capacity: number }[]) => {
+  if (full.length > 0) {
+    const seats = full.map((server) => `${server.live}/${server.capacity}`).join(", ");
+    return `Every server that sells this plan is full (customers/capacity: ${seats}). Raise a server's capacity or add a server.`;
+  }
+  const { rows } = await executor.execute<{ panels: number; active_panels: number; servers: number; open_servers: number }>(sql`
+    select
+      count(distinct pps.panel_id)::int as panels,
+      count(distinct p.id) filter (where p.is_active)::int as active_panels,
+      count(s.id) filter (where s.archived_at is null)::int as servers,
+      count(s.id) filter (where s.archived_at is null and s.accepting_new and s.status = 'online')::int as open_servers
+    from plan_panel_settings pps
+    join panels p on p.id = pps.panel_id
+    left join servers s on s.panel_id = pps.panel_id
+    where pps.plan_id = ${planId}
+  `);
+  const counts = rows[0] ?? { panels: 0, active_panels: 0, servers: 0, open_servers: 0 };
+  if (counts.panels === 0) return "This plan is not sold on any panel. Edit the plan and choose its panel.";
+  if (counts.active_panels === 0) return "The plan's panel is switched off. Turn it on under Panels.";
+  if (counts.servers === 0) return "The plan's panel has no server. Add a server on that panel under Servers.";
+  return "The plan's servers are not online or not taking new customers. Check their status under Servers.";
+};
+
+/**
  * The server a new subscription goes on: one on a panel that sells this
  * plan, taking customers, online, with room; highest priority first, then
  * the emptiest.
@@ -224,7 +251,7 @@ const placeOn = async (executor: Executor, planId: string): Promise<Placement> =
     for update of s
   `);
   if (locked.rows.length === 0) {
-    throw new ApiError(409, "NO_SERVER_AVAILABLE", "No server that sells this plan has room");
+    throw new ApiError(409, "NO_SERVER_AVAILABLE", await whyNoServer(executor, planId, []));
   }
 
   // Counted only once the locks are held, in a statement of its own: one
@@ -251,7 +278,8 @@ const placeOn = async (executor: Executor, planId: string): Promise<Placement> =
         b.priority - a.priority || a.live / a.capacity_users - b.live / b.capacity_users,
     );
   if (!chosen) {
-    throw new ApiError(409, "NO_SERVER_AVAILABLE", "No server that sells this plan has room");
+    const full = candidates.map((server) => ({ live: server.live, capacity: server.capacity_users }));
+    throw new ApiError(409, "NO_SERVER_AVAILABLE", await whyNoServer(executor, planId, full));
   }
   return {
     serverId: chosen.id,

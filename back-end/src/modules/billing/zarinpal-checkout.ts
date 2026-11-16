@@ -92,8 +92,8 @@ export const confirmZarinpal = async (db: Db, payment: PaymentRow) => {
       await alertStaff(
         tx,
         {
-          subject: "مبلغ پرداخت زرین‌پال با سفارش نمی‌خواند",
-          text: `پرداخت ${payment.id} (authority ${payment.providerReference}) با مبلغ ${payment.amountToman} تومان تأیید نشد، چون زرین‌پال مبلغ دیگری ثبت کرده است. بررسی کنید.`,
+          subject: "Zarinpal amount does not match the order",
+          text: `Payment ${payment.id} (authority ${payment.providerReference}) for ${payment.amountToman} toman was not confirmed: Zarinpal recorded a different amount. Check it.`,
         },
         { type: "payment", id: payment.id },
       );

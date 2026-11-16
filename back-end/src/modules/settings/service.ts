@@ -204,11 +204,11 @@ export const sendMailTest = async (
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
   const result = await sendWithSmtp({
     to: recipient,
-    subject: `کد آزمایشی ایمیل شاه‌کلید: ${code}`,
+    subject: `Shah Kelid test email: ${code}`,
     text: [
-      `کد آزمایشی: ${code}`,
-      "این ایمیل از بخش تنظیمات شاه‌کلید فرستاده شد تا معلوم شود ایمیل‌های سایت می‌رسند.",
-      "اگر در پوشه‌ی Spam بود، رکوردهای SPF و DKIM دامنه‌ی فرستنده را در سرویس ایمیل درست کنید.",
+      `Test code: ${code}`,
+      "This email was sent from Shah Kelid's settings, to show that the site's emails arrive.",
+      "If it landed in Spam, fix the SPF and DKIM records of the sending domain at your mail service.",
     ].join("\n\n"),
     html: undefined,
   });
@@ -263,7 +263,7 @@ export const sendTelegramTest = async (): Promise<TelegramSendView> => {
   let detail: string | null = null;
   for (const chatId of current("telegram").chatIds) {
     try {
-      await sendTelegramMessage(token, chatId, "✅ هشدارهای شاه‌کلید به این گفتگو می‌آیند.");
+      await sendTelegramMessage(token, chatId, "✅ Shah Kelid alerts will come to this chat.");
     } catch (error) {
       failed.push(chatId);
       detail = detailOf(error);
