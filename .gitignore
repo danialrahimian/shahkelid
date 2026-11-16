@@ -21,6 +21,8 @@ backups/
 
 # Logs
 logs/
+# …but not the code that reads them: the owner's log page (back-end/src/modules/logs).
+!back-end/src/modules/logs/
 *.log
 
 # Editors and operating systems
