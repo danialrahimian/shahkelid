@@ -79,7 +79,9 @@ export const savePlan = async (
 ): Promise<PlanView> => {
   const groupIds = [...new Set(input.groupIds)];
   const known = await db.select({ id: groups.id }).from(groups).where(inArray(groups.id, groupIds));
-  if (known.length !== groupIds.length) throw notFound("No such group");
+  if (known.length !== groupIds.length) {
+    throw new ApiError(400, "VALIDATION_FAILED", "No such group", { fields: [{ path: "groupIds", code: "NOT_FOUND" }] });
+  }
 
   const values = {
     slug: input.slug,

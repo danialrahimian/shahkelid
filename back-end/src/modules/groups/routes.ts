@@ -66,7 +66,8 @@ export const groupsRouter = ({ db }: { db: Db }) => {
     res.json(await renameGroup(db, staffActor(req), parseId(req.params.id), parseBody(groupInput, req.body)));
   });
   router.delete("/groups/:id", async (req, res) => {
-    res.json(await deleteGroup(db, staffActor(req), parseId(req.params.id)));
+    await deleteGroup(db, staffActor(req), parseId(req.params.id));
+    res.status(204).end();
   });
   router.put("/groups/:id/sources", async (req, res) => {
     res.json(await setSources(db, staffActor(req), parseId(req.params.id), parseBody(groupSourcesInput, req.body)));

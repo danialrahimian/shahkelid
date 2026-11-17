@@ -6,7 +6,9 @@ import logger from "../../libraries/logger";
 import type { Db } from "../../platform/db/client";
 import { ApiError } from "../../platform/http/api-error";
 import { limitPerIp } from "../../platform/http/rate-limit";
+import { linkPlans } from "../groups/link-plan";
 import { panels } from "../infrastructure/schema";
+import { shapeConfigs } from "./configs";
 import { subscriptionPanels, subscriptions } from "./schema";
 import { pageApps, pageInfo, renderPage, wantsPage } from "./page";
 import { linkFor } from "./service";
@@ -170,6 +172,9 @@ export const subscriptionLinkRouter = ({ db, redis }: { db: Db; redis: Redis }) 
       .select({
         id: subscriptions.id,
         mainPanelId: subscriptions.panelId,
+        panelUsername: subscriptions.panelUsername,
+        status: subscriptions.status,
+        onHoldDurationSeconds: subscriptions.onHoldDurationSeconds,
         usedBytes: subscriptions.usedBytes,
         dataLimitBytes: subscriptions.dataLimitBytes,
         expiresAt: subscriptions.expiresAt,
@@ -180,7 +185,7 @@ export const subscriptionLinkRouter = ({ db, redis }: { db: Db; redis: Redis }) 
       .where(and(eq(subscriptions.accessToken, token), notInArray(subscriptions.status, [...GONE])));
     if (!found) return notFound(res);
     // Every panel the subscription is on, the main one first.
-    const panelUrls = (
+    const members = (
       await db
         .select({ panelId: subscriptionPanels.panelId, url: subscriptionPanels.panelSubscriptionUrl })
         .from(subscriptionPanels)
@@ -188,7 +193,8 @@ export const subscriptionLinkRouter = ({ db, redis }: { db: Db; redis: Redis }) 
         .orderBy(asc(subscriptionPanels.createdAt), asc(subscriptionPanels.panelId))
     )
       .sort((a, b) => Number(b.panelId === found.mainPanelId) - Number(a.panelId === found.mainPanelId))
-      .map((row) => row.url!);
+      .map((row) => ({ panelId: row.panelId, url: row.url! }));
+    const panelUrls = members.map((member) => member.url);
     if (panelUrls.length === 0) return notFound(res);
     const ours = linkFor(token, found.subscriptionBaseUrl);
 
@@ -224,8 +230,14 @@ export const subscriptionLinkRouter = ({ db, redis }: { db: Db; redis: Redis }) 
 
     // Every panel is asked at once. One that is down is left out: the
     // customer still gets the others' configs.
-    const answers = (await Promise.all(panelUrls.map(ask))).map((response, index) => ({ response, panelUrl: panelUrls[index]! }));
-    const reached = answers.filter((answer): answer is { response: globalThis.Response; panelUrl: string } => answer.response !== null);
+    const answers = (await Promise.all(panelUrls.map(ask))).map((response, index) => ({
+      response,
+      panelUrl: panelUrls[index]!,
+      panelId: members[index]!.panelId,
+    }));
+    const reached = answers.filter(
+      (answer): answer is { response: globalThis.Response; panelUrl: string; panelId: string } => answer.response !== null,
+    );
     if (reached.length === 0) return res.status(502).type("text/plain").send("The service is temporarily unavailable");
     const good = reached.filter((answer) => answer.response.ok);
     const upstream = (good[0] ?? reached[0]!).response;
@@ -248,6 +260,19 @@ export const subscriptionLinkRouter = ({ db, redis }: { db: Db; redis: Redis }) 
     const type = upstream.headers.get("content-type") ?? "";
 
     if (req.method === "HEAD") return res.end();
+
+    // The configs, as the customer's groups say: picked, named, in order.
+    if ((part === null || part === "links") && good.length > 0) {
+      const bodies = await Promise.all(good.map(async ({ response, panelUrl }) => swapLink(await response.text(), panelUrl, ours)));
+      const plans = await linkPlans(db, found.id, good.map((answer) => answer.panelId)).catch((error: unknown) => {
+        logger.warn({ err: error }, "Subscription link: the groups could not be read; the panels' answers are given as they are");
+        return null;
+      });
+      const shaped = plans ? shapeConfigs(bodies, plans, { ...found, username: found.panelUsername }) : null;
+      if (good.length > 1) res.removeHeader("content-disposition");
+      return res.send(shaped ?? (good.length > 1 ? mergeConfigs(bodies) : bodies[0]!));
+    }
+
     if (good.length <= 1) {
       const body = Buffer.from(await upstream.arrayBuffer());
       // JSON may carry the panel's address; the configs apps read (often
