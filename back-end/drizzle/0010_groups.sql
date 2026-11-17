@@ -49,9 +49,10 @@ ALTER TABLE "subscription_groups" ADD CONSTRAINT "subscription_groups_subscripti
 ALTER TABLE "subscription_groups" ADD CONSTRAINT "subscription_groups_group_id_groups_id_fk" FOREIGN KEY ("group_id") REFERENCES "public"."groups"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 -- Written by hand: what plans and servers used becomes our groups, before
 -- servers, locations and plan_panel_settings go. Each panel group a plan
--- granted, or a server stood for, is one group taking all its hosts; plans
--- are sold with the groups of their panels, and live subscriptions carry
--- their plan's groups on the panels they are on.
+-- granted, or a server stood for, is one group taking all its hosts. Plans
+-- are sold with the groups of their panels (every server's, and the extras).
+-- A subscription keeps exactly what its panel users have now: on each panel,
+-- its own server's group and the plan's extras there, and no other server's.
 ALTER TABLE "subscription_panels" ADD COLUMN "group_ids" integer[] DEFAULT '{}' NOT NULL;--> statement-breakpoint
 CREATE TABLE "migrated_groups" AS
 SELECT uuidv7() AS "id", p."panel_id", p."panel_group_id", pn."name" AS "panel_name",
@@ -60,6 +61,10 @@ FROM (
   SELECT pps."panel_id", g AS "panel_group_id" FROM "plan_panel_settings" pps, unnest(pps."group_ids") g
   UNION
   SELECT s."panel_id", s."panel_group_id" FROM "servers" s WHERE s."panel_group_id" IS NOT NULL AND s."archived_at" IS NULL
+  UNION
+  -- An archived server still holds the customers it had.
+  SELECT s."panel_id", s."panel_group_id" FROM "servers" s JOIN "subscription_panels" m ON m."server_id" = s."id"
+  WHERE s."panel_group_id" IS NOT NULL
 ) p
 JOIN "panels" pn ON pn."id" = p."panel_id"
 WHERE p."panel_group_id" > 0;--> statement-breakpoint
@@ -76,11 +81,13 @@ WHERE mg."panel_group_id" = ANY (pps."group_ids")
     SELECT s."panel_group_id" FROM "servers" s WHERE s."panel_id" = pps."panel_id" AND s."archived_at" IS NULL
   );--> statement-breakpoint
 INSERT INTO "subscription_groups" ("subscription_id", "group_id")
-SELECT DISTINCT s."id", pg."group_id"
-FROM "subscriptions" s
-JOIN "plan_groups" pg ON pg."plan_id" = s."plan_id"
-JOIN "group_sources" gs ON gs."group_id" = pg."group_id"
-JOIN "subscription_panels" m ON m."subscription_id" = s."id" AND m."panel_id" = gs."panel_id";--> statement-breakpoint
+SELECT DISTINCT m."subscription_id", mg."id"
+FROM "subscription_panels" m
+JOIN "subscriptions" s ON s."id" = m."subscription_id"
+JOIN "migrated_groups" mg ON mg."panel_id" = m."panel_id"
+LEFT JOIN "servers" sv ON sv."id" = m."server_id"
+LEFT JOIN "plan_panel_settings" pps ON pps."plan_id" = s."plan_id" AND pps."panel_id" = m."panel_id"
+WHERE mg."panel_group_id" = sv."panel_group_id" OR mg."panel_group_id" = ANY (coalesce(pps."group_ids", '{}'));--> statement-breakpoint
 UPDATE "subscription_panels" m SET "group_ids" = coalesce((
   SELECT array_agg(DISTINCT gs."panel_group_id" ORDER BY gs."panel_group_id")
   FROM "subscription_groups" sg
