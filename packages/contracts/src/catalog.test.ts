@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { locationInput, panelInput, planInput } from "./catalog.ts";
+import { groupHostInput, groupInput, groupSourcesInput, hostOrderInput, panelInput, planInput } from "./catalog.ts";
 import { API_ERROR_CODES, isApiErrorCode } from "./errors.ts";
 
-/** The rules staff forms and the API share for panels, locations and plans. */
+/** The rules staff forms and the API share for panels, groups and plans. */
 
 const codeOf = (result: { success: boolean; error?: { issues: { message: string }[] } }) =>
   result.success ? undefined : result.error!.issues[0]!.message;
@@ -35,14 +35,29 @@ describe("Panels", () => {
   });
 });
 
-describe("Locations", () => {
-  it("When a code is typed in lowercase, then it is stored in capitals", () => {
-    assert.equal(locationInput.parse({ code: "de-fra", nameFa: "آلمان", nameEn: "Germany" }).code, "DE-FRA");
+describe("Groups", () => {
+  const panelId = "0190a0b4-0000-7000-8000-000000000000";
+
+  it("When a group has no name, then it is refused", () => {
+    assert.equal(codeOf(groupInput.safeParse({ name: "  " })), "REQUIRED");
+    assert.equal(groupInput.parse({ name: " آلمان " }).name, "آلمان");
   });
 
-  it("When a code is not a country code, then it is refused", () => {
-    const result = locationInput.safeParse({ code: "Germany", nameFa: "آلمان", nameEn: "Germany" });
-    assert.equal(codeOf(result), "LOCATION_CODE_INVALID");
+  it("When a source says nothing of its hosts, then it takes all of them", () => {
+    const parsed = groupSourcesInput.parse({ sources: [{ panelId, panelGroupId: 2 }] });
+    assert.equal(parsed.sources[0]!.allHosts, true);
+    assert.equal(codeOf(groupSourcesInput.safeParse({ sources: [{ panelId, panelGroupId: 0 }] })), "NUMBER_OUT_OF_RANGE");
+  });
+
+  it("When a host change says nothing, then it is refused; a name or a choice alone is enough", () => {
+    assert.equal(groupHostInput.safeParse({}).success, false);
+    assert.equal(groupHostInput.parse({ name: " 🇩🇪 {DATA_LEFT} " }).name, "🇩🇪 {DATA_LEFT}");
+    assert.equal(groupHostInput.parse({ selected: false }).selected, false);
+    assert.equal(groupHostInput.parse({ name: null }).name, null);
+  });
+
+  it("When an order names no host, then it is refused", () => {
+    assert.equal(codeOf(hostOrderInput.safeParse({ hosts: [] })), "REQUIRED");
   });
 });
 
@@ -54,7 +69,7 @@ describe("Plans", () => {
     durationDays: 30,
     deviceLimit: 2,
     priceToman: 150_000,
-    panels: [{ panelId: "0190a0b4-0000-7000-8000-000000000000", groupIds: [] }],
+    groupIds: ["0190a0b4-0000-7000-8000-000000000000"],
   };
 
   it("When volume and device limit are null, then the plan is unlimited in both", () => {
@@ -63,8 +78,8 @@ describe("Plans", () => {
     assert.equal(plan.deviceLimit, null);
   });
 
-  it("When a plan is sold on no panel, then it is refused", () => {
-    assert.equal(codeOf(planInput.safeParse({ ...aPlan, panels: [] })), "GROUPS_REQUIRED");
+  it("When a plan is sold with no group, then it is refused", () => {
+    assert.equal(codeOf(planInput.safeParse({ ...aPlan, groupIds: [] })), "GROUPS_REQUIRED");
   });
 
   it("When the duration is zero, then it is out of range", () => {

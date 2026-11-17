@@ -89,67 +89,102 @@ export type PanelView = {
   lastError: string | null;
 };
 
-export type PanelGroup = { id: number; name: string };
+/** A group on a panel (PasarGuard: a set of inbounds), as our groups pick them. */
+export type PanelGroup = { id: number; name: string; inboundTags: string[] };
 
-// ---------------------------------------------------------------- locations
+// ------------------------------------------------------------------- groups
 
-export const locationInput = z.object({
-  code: z
-    .string()
-    .trim()
-    .transform((value) => value.toUpperCase())
-    .pipe(z.string().regex(/^[A-Z]{2}(-[A-Z0-9]+)?$/, "LOCATION_CODE_INVALID")),
-  nameFa: name,
-  nameEn: name,
-  sortOrder: wholeNumber(-1000, 1000).default(0),
-  isActive: z.boolean().default(true),
+/**
+ * Our groups: what plans are sold with, and what a customer's link carries.
+ *
+ * A group takes groups from any of the connected panels (its sources), and
+ * from each either all its hosts (configs) or the ones picked. Each host can
+ * be shown under a name of our own, and the hosts, like the groups, are in
+ * an order of our own (dragged into place).
+ */
+export const groupInput = z.object({ name });
+export type GroupInput = z.input<typeof groupInput>;
+
+export const groupSourcesInput = z.object({
+  sources: z
+    .array(
+      z.object({
+        panelId: id,
+        panelGroupId: wholeNumber(1, 2_147_483_647),
+        /** Every host of the panel group, now and later; false: only the hosts picked. */
+        allHosts: z.boolean().default(true),
+      }),
+    )
+    .max(100, "TOO_LONG"),
 });
-export type LocationInput = z.input<typeof locationInput>;
+export type GroupSourcesInput = z.input<typeof groupSourcesInput>;
 
-export type LocationView = {
-  id: string;
-  code: string;
-  nameFa: string;
-  nameEn: string;
-  sortOrder: number;
-  isActive: boolean;
-};
+/** A host's name in our groups: PasarGuard's variables ({DATA_LEFT}, {DAYS_LEFT}…) work in it. */
+export const hostNameSchema = z.string().trim().max(200, "TOO_LONG");
 
-// ------------------------------------------------------------------ servers
+export const groupHostInput = z
+  .object({
+    selected: z.boolean().optional(),
+    /** null or "": the panel's own remark. */
+    name: hostNameSchema.nullable().optional(),
+  })
+  .refine((value) => value.selected !== undefined || value.name !== undefined, "REQUIRED");
+export type GroupHostInput = z.input<typeof groupHostInput>;
 
-export const SERVER_STATUSES = ["online", "degraded", "offline", "maintenance"] as const;
-export type ServerStatus = (typeof SERVER_STATUSES)[number];
+const hostRef = z.object({ panelId: id, hostId: wholeNumber(0, 2_147_483_647) });
+export const hostOrderInput = z.object({ hosts: z.array(hostRef).min(1, "REQUIRED").max(5000, "TOO_LONG") });
+export type HostOrderInput = z.input<typeof hostOrderInput>;
 
-export const serverInput = z.object({
-  panelId: id,
-  locationId: id,
-  name,
-  host: z.string().trim().min(1, "REQUIRED").max(253, "TOO_LONG"),
-  /** The panel group that gives access to this server. */
-  panelGroupId: wholeNumber(1, 2_147_483_647),
-  capacityUsers: wholeNumber(1, 100_000),
-  priority: wholeNumber(-100, 100).default(0),
-  acceptingNew: z.boolean().default(true),
-  status: z.enum(SERVER_STATUSES).default("online"),
-});
-export type ServerInput = z.input<typeof serverInput>;
+export const groupOrderInput = z.object({ ids: z.array(id).min(1, "REQUIRED").max(1000, "TOO_LONG") });
+export type GroupOrderInput = z.input<typeof groupOrderInput>;
 
-export type ServerView = {
-  id: string;
+export type GroupSourceView = {
   panelId: string;
   panelName: string;
-  locationId: string;
-  locationName: string;
+  panelGroupId: number;
+  /** As the panel last named it. */
+  panelGroupName: string;
+  allHosts: boolean;
+};
+
+export type GroupView = {
+  id: string;
   name: string;
-  host: string;
-  panelGroupId: number | null;
-  capacityUsers: number;
-  priority: number;
-  acceptingNew: boolean;
-  status: ServerStatus;
-  /** Subscriptions placed on it that still hold a place. */
-  liveSubscriptions: number;
-  archivedAt: string | null;
+  sortOrder: number;
+  sources: GroupSourceView[];
+  /** The plans sold with it. */
+  plans: { id: string; name: string }[];
+  /** Live subscriptions that carry it. */
+  subscriptions: number;
+};
+
+/** A host (one config) of a group's sources, with what our group says about it. */
+export type GroupHostView = {
+  panelId: string;
+  panelName: string;
+  hostId: number;
+  /** The panel's own remark (a template, with PasarGuard's variables). */
+  remark: string;
+  inboundTag: string | null;
+  protocol: string | null;
+  port: number | null;
+  /** Switched off on the panel: it gives no config, whatever is chosen here. */
+  disabledOnPanel: boolean;
+  /** The panel groups (of this group's sources) it is in. */
+  panelGroupIds: number[];
+  /** Given to customers: picked, or in a source that takes all its hosts. */
+  selected: boolean;
+  /** In a source that takes all its hosts: it cannot be left out on its own. */
+  forced: boolean;
+  /** Our name for it; null: the panel's remark. */
+  name: string | null;
+};
+
+export type GroupHostsView = {
+  /** In our order: as dragged, then the rest in the panels' own order. */
+  hosts: GroupHostView[];
+  /** Panels that could not be read just now: their hosts are missing from the list. */
+  unreachable: { panelId: string; panelName: string; error: string }[];
 };
 
 // -------------------------------------------------------------------- plans
@@ -180,10 +215,8 @@ export const planInput = z.object({
   isPublic: z.boolean().default(true),
   isActive: z.boolean().default(true),
   sortOrder: wholeNumber(-1000, 1000).default(0),
-  /** The panels it is sold on, and the extra panel groups it grants on each. */
-  panels: z
-    .array(z.object({ panelId: id, groupIds: z.array(wholeNumber(1, 2_147_483_647)).max(50) }))
-    .min(1, "GROUPS_REQUIRED"),
+  /** Our groups it is sold with: the customer gets their configs, on their panels. */
+  groupIds: z.array(id).min(1, "GROUPS_REQUIRED").max(50, "TOO_LONG"),
 });
 export type PlanInput = z.input<typeof planInput>;
 
@@ -201,5 +234,5 @@ export type PlanView = {
   isActive: boolean;
   sortOrder: number;
   archivedAt: string | null;
-  panels: { panelId: string; panelName: string; groupIds: number[] }[];
+  groups: { id: string; name: string }[];
 };

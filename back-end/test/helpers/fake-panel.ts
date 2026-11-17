@@ -1,11 +1,20 @@
+import type { PanelGroup } from "@shah-kelid/contracts";
+import yaml from "js-yaml";
+
 import {
   PanelRejectedError,
   PanelUnavailableError,
   type LimitsChange,
   type NewPanelUser,
   type PanelDriver,
+  type PanelHost,
+  type PanelInbound,
   type PanelUser,
 } from "../../src/modules/provisioning/driver";
+
+/** A fake host: PanelHost and the address its link points at. */
+export type FakeHost = PanelHost & { address: string };
+export type FakeInbound = PanelInbound & { port: number };
 
 /**
  * A VPN panel in memory, behaving the way the contract tests showed
@@ -17,7 +26,15 @@ import {
  */
 export class FakePanel implements PanelDriver {
   users = new Map<string, PanelUser>();
-  groups = [{ id: 1, name: "tunnel" }];
+  groups: PanelGroup[] = [{ id: 1, name: "tunnel", inboundTags: ["vless-ws"] }];
+  inbounds: FakeInbound[] = [
+    { tag: "vless-ws", protocol: "vless", network: "ws", port: 443 },
+    { tag: "vmess-tcp", protocol: "vmess", network: "tcp", port: 8080 },
+    { tag: "trojan-grpc", protocol: "trojan", network: "grpc", port: 2083 },
+  ];
+  hosts: FakeHost[] = [
+    { id: 1, remark: "🚀 {USERNAME} [{PROTOCOL}]", inboundTag: "vless-ws", port: null, priority: 1, disabled: false, statuses: [], address: "a.example.com" },
+  ];
   down = false;
   /** Answers every call with "wrong credentials". */
   refuse = false;
@@ -67,7 +84,123 @@ export class FakePanel implements PanelDriver {
 
   async listGroups() {
     this.gate("listGroups");
-    return this.groups;
+    return this.groups.map((group) => ({ ...group, inboundTags: [...(group.inboundTags ?? [])] }));
+  }
+
+  async listHosts(): Promise<PanelHost[]> {
+    this.gate("listHosts");
+    return [...this.hosts]
+      .sort((a, b) => a.priority - b.priority || a.id - b.id)
+      .map(({ address: _address, ...host }) => ({ ...host, statuses: [...host.statuses] }));
+  }
+
+  async listInbounds(): Promise<PanelInbound[]> {
+    this.gate("listInbounds");
+    return this.inbounds.map(({ port: _port, ...inbound }) => ({ ...inbound }));
+  }
+
+  // ------------------------------------------------- the user's subscription
+
+  /** The hosts a user is given, in the panel's order, as PasarGuard picks them. */
+  private hostsFor(user: PanelUser) {
+    const inbounds = new Set(
+      this.groups.filter((group) => user.groupIds.includes(group.id)).flatMap((group) => group.inboundTags ?? []),
+    );
+    return [...this.hosts]
+      .sort((a, b) => a.priority - b.priority || a.id - b.id)
+      .filter((host) => !host.disabled && host.inboundTag && inbounds.has(host.inboundTag))
+      .filter((host) => host.statuses.length === 0 || host.statuses.includes(user.status));
+  }
+
+  private remarkOf(template: string, user: PanelUser, inbound: FakeInbound) {
+    const left = user.dataLimitBytes === null ? "∞" : `${Math.max(0, user.dataLimitBytes - user.usedBytes)}B`;
+    const values: Record<string, string> = {
+      USERNAME: user.username,
+      PROTOCOL: inbound.protocol,
+      TRANSPORT: inbound.network ?? "tcp",
+      DATA_LEFT: left,
+      DAYS_LEFT: "30",
+      STATUS_EMOJI: "✅",
+    };
+    return template.replace(/\{([A-Z_]+)\}/g, (whole, key: string) => values[key] ?? "<missing>");
+  }
+
+  /**
+   * A user's configs as PasarGuard would serve them to this app: sing-box
+   * for Hiddify and sing-box apps, Clash YAML for Clash apps, and a base64
+   * list of links for everything else.
+   */
+  render(username: string, userAgent = ""): { body: string; contentType: string } {
+    const user = this.users.get(username);
+    if (!user) return { body: "Not Found", contentType: "text/plain" };
+    const items = this.hostsFor(user).map((host) => {
+      const inbound = this.inbounds.find((candidate) => candidate.tag === host.inboundTag)!;
+      return { host, inbound, remark: this.remarkOf(host.remark, user, inbound), port: host.port ?? inbound.port };
+    });
+    const secret = `uuid-${user.id}`;
+
+    if (/^(SFA|SFI|SFM|SFT|[Kk]aring|[Hh]iddify[Nn]ext)|.*[Ss]ing[-b]?ox.*/.test(userAgent)) {
+      const proxies = items.map(({ host, inbound, remark, port }) => ({
+        type: inbound.protocol === "shadowsocks" ? "shadowsocks" : inbound.protocol,
+        tag: remark,
+        server: host.address,
+        server_port: port,
+        uuid: secret,
+      }));
+      const tags = proxies.map((proxy) => proxy.tag);
+      return {
+        contentType: "application/json",
+        body: JSON.stringify({
+          log: { level: "warn" },
+          outbounds: [
+            { type: "selector", tag: "Select", outbounds: ["Auto", ...tags] },
+            { type: "urltest", tag: "Auto", outbounds: tags },
+            ...proxies,
+            { type: "direct", tag: "direct" },
+          ],
+        }),
+      };
+    }
+
+    if (/^([Cc]lash|[Ss]tash|FlClash|mihomo)/.test(userAgent)) {
+      const proxies = items.map(({ host, inbound, remark, port }) => ({
+        name: remark,
+        type: inbound.protocol === "shadowsocks" ? "ss" : inbound.protocol,
+        server: host.address,
+        port,
+        uuid: secret,
+      }));
+      const names = proxies.map((proxy) => proxy.name);
+      return {
+        contentType: "text/yaml",
+        body: yaml.dump({
+          "mixed-port": 7890,
+          proxies,
+          "proxy-groups": [
+            { name: "Select", type: "select", proxies: ["Auto", ...names] },
+            { name: "Auto", type: "url-test", proxies: names },
+          ],
+          rules: ["MATCH,Select"],
+        }),
+      };
+    }
+
+    const links = items.map(({ host, inbound, remark, port }) => {
+      const fragment = encodeURIComponent(remark);
+      switch (inbound.protocol) {
+        case "vmess":
+          return `vmess://${Buffer.from(
+            JSON.stringify({ add: host.address, id: secret, net: inbound.network, port, ps: remark, v: "2" }),
+          ).toString("base64")}`;
+        case "trojan":
+          return `trojan://${secret}@${host.address}:${port}?type=${inbound.network}#${fragment}`;
+        case "shadowsocks":
+          return `ss://${Buffer.from(`chacha20-ietf-poly1305:${secret}`).toString("base64")}@${host.address}:${port}#${fragment}`;
+        default:
+          return `${inbound.protocol}://${secret}@${host.address}:${port}?type=${inbound.network}&security=none#${fragment}`;
+      }
+    });
+    return { contentType: "text/plain", body: Buffer.from(links.join("\n")).toString("base64") };
   }
 
   async createUser(input: NewPanelUser) {
