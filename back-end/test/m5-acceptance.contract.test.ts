@@ -99,15 +99,12 @@ describe("M5 acceptance on the TRON Nile testnet", { skip: !configured && "run w
       baseUrl,
       credentials: { kind: "password", username: "u", password: "p" },
     });
-    const location = await staff.client.post("/api/v1/staff/locations", { code: "DE", nameFa: "آلمان", nameEn: "Germany" });
-    await staff.client.post("/api/v1/staff/servers", {
-      panelId: panel.data.id,
-      locationId: location.data.id,
-      name: "s1",
-      host: "s1.example.com",
-      panelGroupId: 1,
-      capacityUsers: 10,
+    const group = await staff.client.post("/api/v1/staff/groups", { name: "Germany" });
+    assert.equal(group.status, 201, JSON.stringify(group.data));
+    const sources = await staff.client.put(`/api/v1/staff/groups/${group.data.id}/sources`, {
+      sources: [{ panelId: panel.data.id, panelGroupId: 1, allHosts: true }],
     });
+    assert.equal(sources.status, 200, JSON.stringify(sources.data));
     // 3000 toman: about a cent of test USDT per payment.
     const plan = await staff.client.post("/api/v1/staff/plans", {
       slug: `m5-${tag}`,
@@ -116,7 +113,7 @@ describe("M5 acceptance on the TRON Nile testnet", { skip: !configured && "run w
       durationDays: 1,
       deviceLimit: 1,
       priceToman: 3000,
-      panels: [{ panelId: panel.data.id, groupIds: [] }],
+      groupIds: [group.data.id],
     });
     assert.equal(plan.status, 201, JSON.stringify(plan.data));
 

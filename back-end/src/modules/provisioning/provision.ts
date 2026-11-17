@@ -8,7 +8,7 @@ import { alertStaff } from "../notifications/alerts";
 import { format, notifyCustomer, siteUrl } from "../notifications/notify";
 import { panels } from "../infrastructure/schema";
 import { SYNCED, isMade, memberFromPanel, membersOf, saveMember, subscriptionFrom, type Member } from "../subscriptions/members";
-import { groupsFor, linkFor, recordHistory, type SubscriptionRow } from "../subscriptions/service";
+import { linkFor, recordHistory, type SubscriptionRow } from "../subscriptions/service";
 import { subscriptions } from "../subscriptions/schema";
 import { driverFor } from "./drivers";
 
@@ -32,7 +32,7 @@ const makeOn = async (db: Db, subscription: SubscriptionRow, plan: typeof plans.
     existing ??
     (await driver.createUser({
       username: subscription.panelUsername,
-      groupIds: await groupsFor(db, { planId: subscription.planId, panelId: member.panelId, serverId: member.serverId }),
+      groupIds: member.groupIds,
       dataLimitBytes,
       deviceLimit: subscription.deviceLimit,
       trafficReset: plan.trafficReset,

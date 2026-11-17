@@ -41,22 +41,20 @@ export const owner = async () => (ownerCache ??= await signedInStaff(["owner"]))
 
 export type Store = Awaited<ReturnType<typeof aStore>>;
 
-/** A panel, a location, servers and a plan sold on them, made through the API. */
-export const aStore = async ({
-  servers = [{ capacity: 10, priority: 0 }],
-  planGroups = [] as number[],
-}: {
-  servers?: { capacity: number; priority: number }[];
-  planGroups?: number[];
-} = {}) => {
+/**
+ * A panel and a plan sold on it through one of our groups, made through the
+ * API. The group takes the panel's group 2 ("de"), and the plan's extra
+ * panel groups when given.
+ */
+export const aStore = async ({ planGroups = [] as number[] }: { planGroups?: number[] } = {}) => {
   const staff = await owner();
   const tag = randomBytes(3).toString("hex");
   const baseUrl = `https://panel-${tag}.test`;
   const fake = fakeFor(baseUrl);
   fake.groups = [
-    { id: 1, name: "tunnel" },
-    { id: 2, name: "de" },
-    { id: 7, name: "extra" },
+    { id: 1, name: "tunnel", inboundTags: ["vless-ws"] },
+    { id: 2, name: "de", inboundTags: ["vmess-tcp"] },
+    { id: 7, name: "extra", inboundTags: ["trojan-grpc"] },
   ];
 
   const panel = await staff.client.post(`${V1}/panels`, {
@@ -67,27 +65,12 @@ export const aStore = async ({
   });
   assert.equal(panel.status, 201, JSON.stringify(panel.data));
 
-  const location = await staff.client.post(`${V1}/locations`, {
-    code: `DE-${tag.toUpperCase()}`,
-    nameFa: "آلمان",
-    nameEn: "Germany",
+  const group = await staff.client.post(`${V1}/groups`, { name: `Germany ${tag}` });
+  assert.equal(group.status, 201, JSON.stringify(group.data));
+  const sources = await staff.client.put(`${V1}/groups/${group.data.id}/sources`, {
+    sources: [2, ...planGroups].map((panelGroupId) => ({ panelId: panel.data.id, panelGroupId, allHosts: true })),
   });
-  assert.equal(location.status, 201, JSON.stringify(location.data));
-
-  const serverIds: string[] = [];
-  for (const [index, server] of servers.entries()) {
-    const made = await staff.client.post(`${V1}/servers`, {
-      panelId: panel.data.id,
-      locationId: location.data.id,
-      name: `de-${tag}-${index}`,
-      host: `de${index}.example.com`,
-      panelGroupId: 2,
-      capacityUsers: server.capacity,
-      priority: server.priority,
-    });
-    assert.equal(made.status, 201, JSON.stringify(made.data));
-    serverIds.push(made.data.id);
-  }
+  assert.equal(sources.status, 200, JSON.stringify(sources.data));
 
   const plan = await staff.client.post(`${V1}/plans`, {
     slug: `monthly-${tag}`,
@@ -96,9 +79,23 @@ export const aStore = async ({
     durationDays: 30,
     deviceLimit: 2,
     priceToman: 150_000,
-    panels: [{ panelId: panel.data.id, groupIds: planGroups }],
+    groupIds: [group.data.id],
   });
   assert.equal(plan.status, 201, JSON.stringify(plan.data));
 
-  return { staff, fake, panelId: panel.data.id as string, serverIds, planId: plan.data.id as string };
+  return { staff, fake, panelId: panel.data.id as string, groupId: group.data.id as string, planId: plan.data.id as string };
+};
+
+/** Takes everything out of the store's group: its plan then cannot be made anywhere. */
+export const emptyGroup = async (store: Store) => {
+  const response = await store.staff.client.put(`${V1}/groups/${store.groupId}/sources`, { sources: [] });
+  assert.equal(response.status, 200, JSON.stringify(response.data));
+};
+
+/** Puts the panel's group 2 back into the store's group. */
+export const refillGroup = async (store: Store) => {
+  const response = await store.staff.client.put(`${V1}/groups/${store.groupId}/sources`, {
+    sources: [{ panelId: store.panelId, panelGroupId: 2, allHosts: true }],
+  });
+  assert.equal(response.status, 200, JSON.stringify(response.data));
 };

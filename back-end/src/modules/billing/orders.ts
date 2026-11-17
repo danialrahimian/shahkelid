@@ -4,7 +4,7 @@ import { and, asc, desc, eq, exists, inArray, isNull, lt, sql } from "drizzle-or
 import config from "../../config";
 import type { Db, Executor } from "../../platform/db/client";
 import { ApiError, notFound } from "../../platform/http/api-error";
-import { planPanelSettings, plans } from "../catalog/schema";
+import { planGroups, plans } from "../catalog/schema";
 import { accountLabel, users } from "../identity/schema";
 import { post } from "../ledger/ledger";
 import { alertStaff } from "../notifications/alerts";
@@ -68,7 +68,7 @@ const onSale = and(
   eq(plans.isTrial, false),
   isNull(plans.archivedAt),
   exists(
-    sql`(select 1 from ${planPanelSettings} pps where pps.plan_id = ${plans.id})`,
+    sql`(select 1 from ${planGroups} pg where pg.plan_id = ${plans.id})`,
   ),
 );
 

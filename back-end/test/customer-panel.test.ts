@@ -235,7 +235,7 @@ describe("Renewing", () => {
       durationDays: 30,
       deviceLimit: 5,
       priceToman: 250_000,
-      panels: [{ panelId: store.panelId, groupIds: [] }],
+      groupIds: [store.groupId],
     });
     const { buyer, subscriptionId } = await aCustomerWithService(store);
 

@@ -94,12 +94,12 @@ ALTER TABLE "servers" DISABLE ROW LEVEL SECURITY;--> statement-breakpoint
 DROP TABLE "plan_panel_settings" CASCADE;--> statement-breakpoint
 DROP TABLE "locations" CASCADE;--> statement-breakpoint
 DROP TABLE "servers" CASCADE;--> statement-breakpoint
-ALTER TABLE "subscription_panels" DROP CONSTRAINT "subscription_panels_server_id_servers_id_fk";
+ALTER TABLE "subscription_panels" DROP CONSTRAINT IF EXISTS "subscription_panels_server_id_servers_id_fk";
 --> statement-breakpoint
-ALTER TABLE "subscriptions" DROP CONSTRAINT "subscriptions_server_id_servers_id_fk";
+ALTER TABLE "subscriptions" DROP CONSTRAINT IF EXISTS "subscriptions_server_id_servers_id_fk";
 --> statement-breakpoint
-DROP INDEX "subscription_panels_server_idx";--> statement-breakpoint
-DROP INDEX "subscriptions_server_idx";--> statement-breakpoint
+DROP INDEX IF EXISTS "subscription_panels_server_idx";--> statement-breakpoint
+DROP INDEX IF EXISTS "subscriptions_server_idx";--> statement-breakpoint
 CREATE INDEX "group_sources_panel_idx" ON "group_sources" USING btree ("panel_id");--> statement-breakpoint
 CREATE INDEX "subscription_groups_group_idx" ON "subscription_groups" USING btree ("group_id");--> statement-breakpoint
 ALTER TABLE "subscription_panels" DROP COLUMN "server_id";--> statement-breakpoint
