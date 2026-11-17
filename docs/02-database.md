@@ -46,11 +46,13 @@ erDiagram
 
   plans ||--o{ order_items : "sold as"
   plans ||--o{ subscriptions : "current plan"
-  plans ||--o{ plan_panel_settings : "maps to"
-  panels ||--o{ plan_panel_settings : ""
-  panels ||--o{ servers : hosts
-  locations ||--o{ servers : ""
-  servers ||--o{ subscriptions : "placed on"
+  plans ||--o{ plan_groups : "sold with"
+  groups ||--o{ plan_groups : ""
+  groups ||--o{ group_sources : "takes"
+  panels ||--o{ group_sources : ""
+  groups ||--o{ group_hosts : "picks, names, orders"
+  groups ||--o{ subscription_groups : ""
+  subscriptions ||--o{ subscription_groups : "carries"
 
   orders ||--|{ order_items : contains
   orders ||--o{ payments : "paid by"
@@ -87,7 +89,9 @@ erDiagram
 | جدول | کار | فاز |
 |---|---|---|
 | `panels` | هر نمونه‌ی پنل: درایور، آدرس، credential رمزنگاری‌شده | MVP |
-| `locations`، `servers` | سرور = جایی که مشتری روی آن قرار می‌گیرد، هزینه دارد و سود به آن نسبت داده می‌شود. در PasarGuard یعنی یک node که دسترسی به آن از طریق group داده می‌شود. | MVP |
+| `groups` | گروه‌های ما، با ترتیب نمایش. جای «سرورها و لوکیشن‌ها»ی قبلی را گرفته. | MVP |
+| `group_sources` | هر گروه از کدام گروه‌های کدام پنل‌ها کانفیگ می‌گیرد؛ «همه‌ی هاست‌ها» یا فقط انتخابی | MVP |
+| `group_hosts` | برای هر هاست در هر گروه: انتخاب‌شده یا نه، نام ما (با متغیرهای پاسارگارد)، جایش در ترتیب | MVP |
 | `server_health_checks`، `server_costs`، `status_incidents` | مانیتورینگ، هزینه‌ی ماهانه برای محاسبه‌ی سود، صفحه‌ی وضعیت | بعد |
 | `server_migrations` | جابه‌جایی گروهی کاربران بین سرورها، قابل ادامه بعد از قطعی | بعد |
 
@@ -95,7 +99,7 @@ erDiagram
 | جدول | کار | فاز |
 |---|---|---|
 | `plans` | حجم (`null` = نامحدود)، مدت به روز، محدودیت دستگاه، قیمت به تومان. **حداکثر یک پلن تست فعال** و **پلن تست قیمت ندارد**، هر دو با constraint. | MVP |
-| `plan_panel_settings` | هر پلن روی هر پنل به کدام groupها دسترسی می‌دهد | MVP |
+| `plan_groups` | هر پلن با کدام گروه‌های ما فروخته می‌شود | MVP |
 
 ### اشتراک‌ها
 | جدول | کار | فاز |
@@ -205,7 +209,7 @@ erDiagram
 | `expires_at` | `expire` | |
 | `starts_on_first_use` | `status: on_hold` + `on_hold_expire_duration` | |
 | `device_limit` | `hwid_limit` | |
-| `plan_panel_settings.group_ids` | `group_ids` | در پنل تست شما یک group به نام `tunnel` هست |
+| `subscription_panels.group_ids` (از `subscription_groups` → `group_sources`) | `group_ids` | sync هر بار اختلاف را درست می‌کند |
 | `used_bytes`، `lifetime_used_bytes`، `online_at` | `used_traffic`، `lifetime_used_traffic`، `online_at` | کپی. **پنل منبع حقیقت مصرف است.** |
 | `panel_subscription_url` | `subscription_url` | لینکی که مشتری می‌گیرد `/s/{access_token}` روی دامنه‌ی ما است |
 
@@ -216,7 +220,7 @@ erDiagram
 | ایندکس | برای چه کاری |
 |---|---|
 | `subscriptions (expires_at)` فقط برای سرویس‌های زنده | اسکن ساعتی یادآوری انقضا |
-| `subscriptions (server_id)` فقط برای سرویس‌های زنده | شمارش بار هر سرور برای انتخاب سرور مشتری جدید |
+| `subscription_groups (group_id)` | شمارش مشتری‌های هر گروه و جلوگیری از حذف گروهِ در حال استفاده |
 | `payments (order_id)` یکتا فقط برای `succeeded` | دو پرداخت نمی‌توانند یک سفارش را تسویه کنند |
 | `payments (method, provider_reference)` یکتا | callback تکراری درگاه دو بار حساب نمی‌شود |
 | `payments (status, created_at)` فقط برای پرداخت‌های باز | job استعلام پرداخت‌های معلق و صف بررسی رسیدها |

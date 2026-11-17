@@ -74,8 +74,8 @@ The old site's addresses (`/auth`, `/profile`, `/invoices`, `/dashboard`, `/admi
 Setting up, in order:
 
 1. **Panels**: add the PasarGuard panel (its address and a panel account or API key). It is checked before it is saved.
-2. **Servers and locations**: add a location, then a server on that panel, choosing the panel group that gives access to it.
-3. **Plans**: volume, days, devices, price, and the panels it is sold on. Time starts at the customer's first connection (or after 30 days regardless).
+2. **Groups**: make a group (for example "Germany") and take one or more panel groups into it, from any panel: with **All hosts**, every host that panel group gives; without it, only the hosts you tick. Hosts can be given a name of our own (PasarGuard's variables such as `{DATA_LEFT}` work, filled in from the whole subscription), and groups and hosts are put in order by dragging. The customer's link gives exactly the picked hosts, in that order and under those names, in every format apps read (link lists, sing-box, Clash, xray JSON). A panel group taken into a group later reaches existing customers at the next sync.
+3. **Plans**: volume, days, devices, price, and the groups it is sold with. A buyer's user is made on every panel those groups take from. Time starts at the customer's first connection (or after 30 days regardless).
 4. **Customers**: open a customer and make a subscription. The **worker** must be running: it puts the subscription on the panel and copies usage back every 5 minutes.
 
 The customer's link is `{PUBLIC_API_URL}/s/{token}` (default `http://localhost:5000`). To try it from a phone on the same network, set `PUBLIC_API_URL` in `back-end/.env` to this computer's address, for example `http://192.168.1.10:5000`.

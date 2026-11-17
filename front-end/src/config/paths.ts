@@ -140,9 +140,9 @@ export const paths = {
     path: "/staff/plans",
     getHref: () => "/staff/plans",
   },
-  staffServers: {
-    path: "/staff/servers",
-    getHref: () => "/staff/servers",
+  staffGroups: {
+    path: "/staff/groups",
+    getHref: () => "/staff/groups",
   },
   staffPanels: {
     path: "/staff/panels",

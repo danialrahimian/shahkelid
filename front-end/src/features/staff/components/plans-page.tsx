@@ -12,7 +12,7 @@ import { z } from "zod";
 
 import {
   useStaffArchivePlanMutation,
-  useStaffPanelsQuery,
+  useStaffGroupsQuery,
   useStaffPlansQuery,
   useStaffSavePlanMutation,
 } from "@/api/staff";
@@ -21,29 +21,15 @@ import { errorText } from "@/lib/error-text";
 
 import { formatGb, formatNumber, formatToman } from "@/lib/format";
 import { showSaveError } from "../form-errors";
-import { parseGroups } from "../group-list";
 import { CheckField, FormActions, NumberField, SelectField, TextField } from "./fields";
 import { Button, ConfirmButton, FormDialog, PageHeader, Placeholder, TableFrame } from "./staff-ui";
 
-/**
- * The plan form edits a plan the way staff think of it: tick the panels it
- * is sold on, and, only if needed, extra panel groups for each ("3, 5").
- * It becomes the API's shape (panels: [{ panelId, groupIds }]) on save.
- */
-const groupList = z
-  .string()
-  .regex(/^[\d۰-۹\s,،]*$/, "NUMBER_OUT_OF_RANGE")
-  .default("");
-
-const planForm = planInput.omit({ panels: true }).extend({
-  panelIds: z.array(z.string()).min(1, "GROUPS_REQUIRED"),
-  extraGroups: z.record(groupList).default({}),
-});
-type PlanForm = z.input<typeof planForm>;
+/** The plan form: the plan, and the groups (made on the Groups page) it is sold with. */
+type PlanForm = z.input<typeof planInput>;
 
 const PlanDialog = ({ plan, onClose }: { plan?: PlanView; onClose: () => void }) => {
   const { t } = useTranslation();
-  const { data: panels = [] } = useStaffPanelsQuery();
+  const { data: groups = [] } = useStaffGroupsQuery();
   const [save, { isLoading }] = useStaffSavePlanMutation();
 
   return (
@@ -54,7 +40,7 @@ const PlanDialog = ({ plan, onClose }: { plan?: PlanView; onClose: () => void })
       description={t("staff.plans.description")}
     >
       <Form<PlanForm>
-        schema={planForm as unknown as z.ZodType<PlanForm>}
+        schema={planInput as unknown as z.ZodType<PlanForm>}
         options={{
           defaultValues: {
             slug: plan?.slug ?? "",
@@ -69,35 +55,25 @@ const PlanDialog = ({ plan, onClose }: { plan?: PlanView; onClose: () => void })
             isPublic: plan?.isPublic ?? true,
             isActive: plan?.isActive ?? true,
             sortOrder: plan?.sortOrder ?? 0,
-            panelIds: plan?.panels.map((entry) => entry.panelId) ?? (panels[0] ? [panels[0].id] : []),
-            extraGroups: Object.fromEntries(
-              (plan?.panels ?? []).map((entry) => [entry.panelId, entry.groupIds.join(", ")]),
-            ),
+            groupIds: plan?.groups.map((group) => group.id) ?? (groups[0] ? [groups[0].id] : []),
           },
         }}
         onSubmit={async (values, methods) => {
-          const { panelIds, extraGroups, ...rest } = values;
-          const body: PlanInput = {
-            ...rest,
-            panels: panelIds.map((panelId) => ({
-              panelId,
-              groupIds: parseGroups(extraGroups?.[panelId]),
-            })),
-          };
+          const body = values as PlanInput;
           try {
             await save({ id: plan?.id, body }).unwrap();
             toast.success(t("staff.common.saved"));
             onClose();
           } catch (error) {
-            showSaveError(error, methods, { panels: "panelIds" });
+            showSaveError(error, methods);
           }
         }}
       >
         {(methods) => {
-          const selected = methods.watch("panelIds") ?? [];
+          const selected = (methods.watch("groupIds") ?? []) as string[];
           const toggle = (id: string, on: boolean) =>
             methods.setValue(
-              "panelIds",
+              "groupIds",
               on ? [...selected, id] : selected.filter((entry) => entry !== id),
               { shouldValidate: true },
             );
@@ -140,32 +116,24 @@ const PlanDialog = ({ plan, onClose }: { plan?: PlanView; onClose: () => void })
               <fieldset className="space-y-3 rounded-md border p-4">
                 <legend className="px-1 text-sm font-medium">{t("staff.plans.panels")}</legend>
                 <p className="text-xs leading-5 text-muted-foreground">{t("staff.plans.panelsHint")}</p>
-                {panels.map((panel) => {
-                  const on = selected.includes(panel.id);
-                  return (
-                    <div key={panel.id} className="space-y-2">
-                      <label className="flex items-center gap-2.5 text-sm">
-                        <input
-                          type="checkbox"
-                          className="size-4 accent-primary"
-                          checked={on}
-                          onChange={(event) => toggle(panel.id, event.target.checked)}
-                        />
-                        {panel.name}
-                      </label>
-                      {on ? (
-                        <TextField<PlanForm>
-                          name={`extraGroups.${panel.id}`}
-                          label={`${t("staff.plans.extraGroups")} (${t("staff.common.optional")})`}
-                          hint={t("staff.plans.extraGroupsHint")}
-                          dir="ltr"
-                          className="ms-6"
-                        />
-                      ) : null}
-                    </div>
-                  );
-                })}
-                <FieldError name="panelIds" />
+                {groups.length === 0 ? (
+                  <p className="text-sm text-destructive">{t("staff.plans.needGroup")}</p>
+                ) : null}
+                {groups.map((group) => (
+                  <label key={group.id} className="flex items-center gap-2.5 text-sm">
+                    <input
+                      type="checkbox"
+                      className="size-4 accent-primary"
+                      checked={selected.includes(group.id)}
+                      onChange={(event) => toggle(group.id, event.target.checked)}
+                    />
+                    <span>{group.name}</span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {group.sources.map((source) => source.panelName).join("، ")}
+                    </span>
+                  </label>
+                ))}
+                <FieldError name="groupIds" />
               </fieldset>
 
               <div className="flex flex-wrap gap-6">
@@ -208,9 +176,9 @@ const ArchivePlan = ({ plan }: { plan: PlanView }) => {
 export const PlansPage = () => {
   const { t } = useTranslation();
   const plans = useStaffPlansQuery();
-  const panels = useStaffPanelsQuery();
+  const groups = useStaffGroupsQuery();
   const [editing, setEditing] = React.useState<PlanView | "new">();
-  const hasPanel = (panels.data?.length ?? 0) > 0;
+  const hasPanel = (groups.data?.length ?? 0) > 0;
 
   return (
     <>
@@ -224,8 +192,8 @@ export const PlansPage = () => {
         }
       />
 
-      {!hasPanel && !panels.isLoading ? (
-        <Placeholder>{t("staff.plans.needPanel")}</Placeholder>
+      {!hasPanel && !groups.isLoading ? (
+        <Placeholder>{t("staff.plans.needGroup")}</Placeholder>
       ) : plans.isLoading ? (
         <Placeholder>{t("common.loading")}</Placeholder>
       ) : plans.isError ? (
@@ -241,7 +209,7 @@ export const PlansPage = () => {
               <th>{t("staff.plans.duration")}</th>
               <th>{t("staff.plans.deviceLimit")}</th>
               <th>{t("staff.plans.price")}</th>
-              <th>{t("staff.servers.panel")}</th>
+              <th>{t("staff.subscriptions.groups")}</th>
               <th>{t("staff.common.actions")}</th>
             </tr>
           </thead>
@@ -267,7 +235,7 @@ export const PlansPage = () => {
                     : t("units.devices", { amount: formatNumber(plan.deviceLimit) })}
                 </td>
                 <td className="tabular-nums">{formatToman(plan.priceToman)}</td>
-                <td>{plan.panels.map((entry) => entry.panelName).join("، ")}</td>
+                <td>{plan.groups.map((group) => group.name).join("، ")}</td>
                 <td>
                   {plan.archivedAt ? null : (
                     <div className="flex gap-2">

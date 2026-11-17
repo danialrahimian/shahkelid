@@ -34,7 +34,7 @@ export const SubscriptionsPage = () => {
     <>
       <PageHeader title={t("staff.subscriptions.title")} description={t("staff.subscriptions.description")} />
 
-      <div className="mb-4 flex flex-wrap gap-1.5" role="group" aria-label={t("staff.servers.status")}>
+      <div className="mb-4 flex flex-wrap gap-1.5" role="group" aria-label={t("staff.common.status")}>
         {[undefined, ...SUBSCRIPTION_STATUSES].map((value) => (
           <button
             key={value ?? "all"}
@@ -191,16 +191,10 @@ export const SubscriptionPage = ({ subscriptionId }: { subscriptionId: string })
           {subscription.onlineAt ? formatDateTime(subscription.onlineAt) : t("staff.common.never")}
         </Fact>
         <Fact label={t("staff.subscription.lastSync")}>{formatDateTime(subscription.lastSyncedAt)}</Fact>
-        <Fact label={t("staff.subscriptions.server")}>
-          {subscription.server ? (
-            <>
-              <bdi dir="ltr">{subscription.server.name}</bdi> · {subscription.server.locationName}
-            </>
-          ) : (
-            "—"
-          )}
+        <Fact label={t("staff.subscriptions.groups")}>
+          {subscription.groups.length > 0 ? subscription.groups.map((group) => group.name).join("، ") : "—"}
         </Fact>
-        <Fact label={t("staff.servers.panel")}>
+        <Fact label={t("staff.common.panel")}>
           {subscription.panels.length > 1 ? subscription.panels.map((panel) => panel.name).join("، ") : subscription.panel.name}
         </Fact>
         <Fact label={t("staff.subscriptions.created")}>{formatDateTime(subscription.createdAt)}</Fact>
@@ -219,8 +213,7 @@ export const SubscriptionPage = ({ subscriptionId }: { subscriptionId: string })
           <TableFrame>
             <thead>
               <tr>
-                <th>{t("staff.servers.panel")}</th>
-                <th>{t("staff.subscriptions.server")}</th>
+                <th>{t("staff.common.panel")}</th>
                 <th>{t("staff.subscription.panelUsed")}</th>
                 <th>{t("staff.subscription.panelState")}</th>
                 <th>{t("staff.subscription.lastSync")}</th>
@@ -230,9 +223,6 @@ export const SubscriptionPage = ({ subscriptionId }: { subscriptionId: string })
               {subscription.panels.map((panel) => (
                 <tr key={panel.id}>
                   <td className="font-medium">{panel.name}</td>
-                  <td>
-                    <bdi dir="ltr">{panel.serverName ?? "—"}</bdi>
-                  </td>
                   <td className="tabular-nums">{formatGb(panel.usedBytes)}</td>
                   <td>
                     {panel.onPanel ? (
