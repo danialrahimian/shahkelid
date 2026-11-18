@@ -78,6 +78,13 @@
       "when": 1794909764011,
       "tag": "0010_groups",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795011211038,
+      "tag": "0011_host_ids_from_configs",
+      "breakpoints": true
     }
   ]
 }

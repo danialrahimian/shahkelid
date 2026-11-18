@@ -1,14 +1,13 @@
 import yaml from "js-yaml";
 
-import type { PanelHost } from "../provisioning/driver";
+import { createHash } from "node:crypto";
 
 /**
  * Shaping what the panels answer to the customer's link by our groups.
  *
- * A panel gives a user one config per host of its groups, in its own order,
- * named by the host's remark template. Our groups say which of those hosts
- * the customer gets, under what name, and in what order. So each config in
- * the panel's answer is matched to its host, then:
+ * A panel gives a user one config per host of its groups. Our groups say
+ * which of those the customer gets, under what name, and in what order. So
+ * each config in the panel's answer is matched to a host, then:
  *
  * - a host the groups did not pick is left out;
  * - a host with a name of ours is renamed (PasarGuard's variables, like
@@ -21,21 +20,38 @@ import type { PanelHost } from "../provisioning/driver";
  * selectors are kept, listing the configs that are left, renamed and in
  * order.
  *
- * A config is matched to its host by its name, read against the host's
- * remark template, and its protocol, in the panel's order. One that matches
- * no host (a template that names nothing apart) is kept only where the
- * groups take every host the panel gives; where hosts are picked, giving a
- * config no one picked would be wrong. A panel that cannot be read gives
- * its configs as they are.
+ * Where the hosts come from: a panel account of a reseller cannot read the
+ * panel's hosts, so the shop keeps a subscription of its own on each panel
+ * group (groups/catalog.ts) and reads what that gives: its configs are the
+ * group's hosts. A customer's config is the host with the same protocol,
+ * port, transport and path, and of those the one whose name and address
+ * are closest. One that matches no host is kept only where the groups take
+ * every host the panel gives; where hosts are picked, giving a config no
+ * one picked would be wrong. A panel that cannot be read gives its configs
+ * as they are.
  */
 
 export type HostWanted = { rank: number; name: string | null };
 
+/** What identifies a config apart from whose it is. */
+export type Fingerprint = {
+  name: string;
+  protocol: string | null;
+  server: string | null;
+  port: number | null;
+  network: string | null;
+  path: string | null;
+  sni: string | null;
+};
+
+/** A host as read from the shop's own subscription: a config with an id of ours. */
+export type ProbeHost = Fingerprint & { id: string };
+
 export type PanelPlan = {
-  /** The hosts this panel may give the user, in the panel's order, with their protocols; null: unknown. */
-  hosts: (PanelHost & { protocol: string | null; network: string | null })[] | null;
+  /** The hosts this panel may give the user; null: unknown (the panel could not be read). */
+  hosts: ProbeHost[] | null;
   /** The hosts the groups picked, by host id. */
-  wanted: Map<number, HostWanted>;
+  wanted: Map<string, HostWanted>;
   /** Whether a config that matches no host is kept. */
   keepUnknown: boolean;
 };
@@ -112,45 +128,115 @@ export const renderName = (
 // --------------------------------------------------------------- matching
 
 const PROTOCOLS: Record<string, string> = { ss: "shadowsocks", hy2: "hysteria2", wg: "wireguard" };
-const protocolName = (name: string) => PROTOCOLS[name.toLowerCase()] ?? name.toLowerCase();
+export const protocolName = (name: string) => PROTOCOLS[name.toLowerCase()] ?? name.toLowerCase();
 
-const templateRegex = (template: string) =>
-  new RegExp(
-    `^${template
-      .split(/(\{[A-Z_]+\})/)
-      .map((part) => (/^\{[A-Z_]+\}$/.test(part) ? "[\\s\\S]*?" : part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))
-      .join("")}$`,
-    "u",
-  );
+/** tcp and raw are what no transport means. */
+const networkName = (value: unknown) => {
+  const name = typeof value === "string" ? value.toLowerCase() : "";
+  return name === "" || name === "tcp" || name === "raw" || name === "none" ? null : name;
+};
 
-/** Which host each config is: by name and protocol, taking the panel's order into account. */
-export const matchHosts = (
-  configs: { name: string; protocol: string | null }[],
-  hosts: NonNullable<PanelPlan["hosts"]>,
-) => {
-  const patterns = hosts.map((host) => templateRegex(host.remark));
+/** Early-data and other query parts are left out: the path itself is what matters. */
+const pathName = (value: unknown) => {
+  if (typeof value !== "string" || value === "") return null;
+  let path = value.split("?")[0]!;
+  try {
+    path = decodeURIComponent(path);
+  } catch {
+    // as it is
+  }
+  path = path.replace(/\/+$/, "");
+  return path === "" ? null : path;
+};
+
+const text = (value: unknown) => (typeof value === "string" && value !== "" ? value : null);
+const portOf = (value: unknown) => {
+  const port = Number(value);
+  return Number.isInteger(port) && port > 0 ? port : null;
+};
+
+const hostId = (fingerprint: Fingerprint) =>
+  createHash("sha1")
+    .update([fingerprint.protocol, fingerprint.port, fingerprint.network, fingerprint.path, fingerprint.name].join("\u0000"))
+    .digest("base64url")
+    .slice(0, 12);
+
+/**
+ * The hosts a subscription's configs stand for, each with an id that stays
+ * the same as long as the host does (its name, protocol, port, transport and
+ * path). Two configs alike in all of those are told apart by their place.
+ */
+export const probeHosts = (links: string): ProbeHost[] => {
+  const seen = new Map<string, number>();
+  return linesOf(links)
+    .filter((line) => SCHEME.test(line))
+    .map((line) => {
+      const fingerprint = linkConfig(line);
+      const base = hostId(fingerprint);
+      const count = (seen.get(base) ?? 0) + 1;
+      seen.set(base, count);
+      return { ...fingerprint, id: count === 1 ? base : `${base}-${count}` };
+    });
+};
+
+const loose = (name: string, usernames: string[]) => {
+  let out = name.toLowerCase();
+  for (const username of usernames) if (username) out = out.split(username.toLowerCase()).join("");
+  return out;
+};
+
+/** How alike two names are, 0 to 1: their common start and end against the longer. */
+const likeness = (a: string, b: string) => {
+  if (a === b) return 1;
+  const longest = Math.max(a.length, b.length);
+  if (longest === 0) return 1;
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start += 1;
+  let end = 0;
+  while (end < a.length - start && end < b.length - start && a[a.length - 1 - end] === b[b.length - 1 - end]) end += 1;
+  return (start + end) / longest;
+};
+
+const ENOUGH = 1.5;
+
+const same = (a: unknown, b: unknown) => a === null || b === null || a === b;
+
+/**
+ * Which host each config is. Only a host of the same protocol, port,
+ * transport and path can be it (a part one side does not say is not held
+ * against it); of those, the one with the closest name, then the same
+ * address and server name, then the first not taken; and only if the name
+ * is at least half alike (or the same address and server name back it).
+ */
+export const matchHosts = (configs: Fingerprint[], hosts: ProbeHost[], usernames: string[] = []) => {
   const used = new Set<number>();
-  let next = 0;
   return configs.map((config) => {
-    const fits = (index: number) =>
-      !used.has(index) &&
-      patterns[index]!.test(config.name) &&
-      (config.protocol === null || hosts[index]!.protocol === null || protocolName(hosts[index]!.protocol!) === protocolName(config.protocol));
-    let found = -1;
-    for (let index = next; index < hosts.length && found < 0; index += 1) if (fits(index)) found = index;
-    for (let index = 0; index < next && found < 0; index += 1) if (fits(index)) found = index;
-    if (found < 0) return null;
-    used.add(found);
-    next = found + 1;
-    return hosts[found]!;
+    let best = -1;
+    let bestScore = -1;
+    for (const [index, host] of hosts.entries()) {
+      if (used.has(index)) continue;
+      if (config.protocol && host.protocol && config.protocol !== host.protocol) continue;
+      if (!same(config.port, host.port) || !same(config.network, host.network) || !same(config.path, host.path)) continue;
+      const score =
+        (config.name === host.name ? 4 : 3 * likeness(loose(config.name, usernames), loose(host.name, usernames))) +
+        (config.server !== null && config.server === host.server ? 1 : 0) +
+        (config.sni !== null && config.sni === host.sni ? 0.5 : 0);
+      // Alike enough to be it: mostly by name. A config no host's name is
+      // like (one the panel added since) is not given someone else's place.
+      if (score >= ENOUGH && score > bestScore) {
+        best = index;
+        bestScore = score;
+      }
+    }
+    if (best < 0) return null;
+    used.add(best);
+    return hosts[best]!;
   });
 };
 
 // ---------------------------------------------------------------- formats
 
-type Config = { name: string; protocol: string | null; server: string | null };
-
-type Parsed<Doc, Item> = { doc: Doc; items: Item[]; configs: Config[] };
+type Parsed<Doc, Item> = { doc: Doc; items: Item[]; configs: Fingerprint[] };
 
 const SCHEME = /^([a-z][a-z0-9+.-]*):\/\//i;
 
@@ -169,11 +255,21 @@ const vmessJson = (line: string) => {
   }
 };
 
-const linkConfig = (line: string): Config => {
+const linkConfig = (line: string): Fingerprint => {
   const scheme = SCHEME.exec(line)![1]!.toLowerCase();
   if (scheme === "vmess") {
     const json = vmessJson(line);
-    if (json) return { name: String(json.ps ?? ""), protocol: "vmess", server: json.add ? String(json.add) : null };
+    if (json) {
+      return {
+        name: String(json.ps ?? ""),
+        protocol: "vmess",
+        server: text(json.add),
+        port: portOf(json.port),
+        network: networkName(json.net),
+        path: pathName(json.path),
+        sni: text(json.sni) ?? text(json.host),
+      };
+    }
   }
   const hash = line.indexOf("#");
   let name = "";
@@ -184,13 +280,22 @@ const linkConfig = (line: string): Config => {
       name = line.slice(hash + 1);
     }
   }
-  let server: string | null = null;
+  let url: URL | null = null;
   try {
-    server = new URL(hash >= 0 ? line.slice(0, hash) : line).hostname || null;
+    url = new URL(hash >= 0 ? line.slice(0, hash) : line);
   } catch {
-    server = null;
+    url = null;
   }
-  return { name, protocol: protocolName(scheme), server };
+  const query = url?.searchParams;
+  return {
+    name,
+    protocol: protocolName(scheme),
+    server: url?.hostname ? url.hostname.replace(/^\[|\]$/g, "") : null,
+    port: portOf(url?.port),
+    network: networkName(query?.get("type")),
+    path: pathName(query?.get("path") ?? query?.get("serviceName")),
+    sni: text(query?.get("sni")) ?? text(query?.get("host")),
+  };
 };
 
 const renameLink = (line: string, name: string) => {
@@ -252,7 +357,19 @@ const asSingBox = (body: string): Parsed<SingBox, Outbound> | null => {
   return {
     doc: json,
     items,
-    configs: items.map((item) => ({ name: item.tag!, protocol: protocolName(String(item.type)), server: item.server ? String(item.server) : null })),
+    configs: items.map((item) => {
+      const transport = (item.transport ?? {}) as Record<string, unknown>;
+      const tls = (item.tls ?? {}) as Record<string, unknown>;
+      return {
+        name: item.tag!,
+        protocol: protocolName(String(item.type)),
+        server: text(item.server),
+        port: portOf(item.server_port),
+        network: networkName(transport.type),
+        path: pathName(transport.path ?? transport.service_name),
+        sni: text(tls.server_name) ?? text((transport.headers as Record<string, unknown> | undefined)?.Host),
+      };
+    }),
   };
 };
 
@@ -265,11 +382,24 @@ const asXray = (body: string): Parsed<null, XrayConfig> | null => {
   return {
     doc: null,
     items,
-    configs: items.map((item) => ({
-      name: String(item.remarks ?? ""),
-      protocol: item.outbounds?.[0]?.protocol ? protocolName(item.outbounds[0].protocol) : null,
-      server: null,
-    })),
+    configs: items.map((item) => {
+      const outbound = (item.outbounds?.[0] ?? {}) as Record<string, unknown>;
+      const settings = (outbound.settings ?? {}) as Record<string, unknown>;
+      const target = ((settings.vnext ?? settings.servers) as Record<string, unknown>[] | undefined)?.[0] ?? settings;
+      const stream = (outbound.streamSettings ?? {}) as Record<string, Record<string, unknown> | string | undefined>;
+      const network = networkName(stream.network);
+      const transport = (network ? stream[`${network === "xhttp" ? "xhttp" : network}Settings`] : undefined) as Record<string, unknown> | undefined;
+      const security = (stream.tlsSettings ?? stream.realitySettings ?? {}) as Record<string, unknown>;
+      return {
+        name: String(item.remarks ?? ""),
+        protocol: typeof outbound.protocol === "string" ? protocolName(outbound.protocol) : null,
+        server: text(target.address),
+        port: portOf(target.port),
+        network,
+        path: pathName(transport?.path ?? transport?.serviceName),
+        sni: text(security.serverName),
+      };
+    }),
   };
 };
 
@@ -290,7 +420,20 @@ const asClash = (body: string): Parsed<Clash, ClashProxy> | null => {
   return {
     doc: clash,
     items,
-    configs: items.map((item) => ({ name: item.name, protocol: item.type ? protocolName(item.type) : null, server: item.server ?? null })),
+    configs: items.map((item) => {
+      const ws = (item["ws-opts"] ?? {}) as Record<string, unknown>;
+      const grpc = (item["grpc-opts"] ?? {}) as Record<string, unknown>;
+      const http = (item["h2-opts"] ?? item["http-opts"] ?? {}) as Record<string, unknown>;
+      return {
+        name: item.name,
+        protocol: item.type ? protocolName(item.type) : null,
+        server: text(item.server),
+        port: portOf(item.port),
+        network: networkName(item.network),
+        path: pathName(ws.path ?? grpc["grpc-service-name"] ?? (Array.isArray(http.path) ? http.path[0] : http.path)),
+        sni: text(item.servername) ?? text(item.sni),
+      };
+    }),
   };
 };
 
@@ -345,7 +488,14 @@ type Kept = { item: unknown; name: string; rank: number; renamed: boolean };
  * or the panels answered in different formats: the caller then passes the
  * answers on as they are.
  */
-export const shapeConfigs = (bodies: string[], plans: PanelPlan[], totals: Totals, now = new Date()): string | null => {
+export const shapeConfigs = (
+  bodies: string[],
+  plans: PanelPlan[],
+  totals: Totals,
+  now = new Date(),
+  /** Names the configs carry that say whose they are (the customer's and the shop's own usernames). */
+  usernames: string[] = [totals.username],
+): string | null => {
   const read = bodies.map(parse);
   if (read.some((entry) => entry === null)) return null;
   const format = read[0]!.format as Format;
@@ -355,7 +505,7 @@ export const shapeConfigs = (bodies: string[], plans: PanelPlan[], totals: Total
   for (const [panelIndex, entry] of read.entries()) {
     const plan = plans[panelIndex]!;
     const { items, configs } = entry!.parsed as Parsed<unknown, unknown>;
-    const hosts = plan.hosts ? matchHosts(configs, plan.hosts) : configs.map(() => null);
+    const hosts = plan.hosts ? matchHosts(configs, plan.hosts, usernames) : configs.map(() => null);
     for (const [index, config] of configs.entries()) {
       const host = hosts[index];
       const fallbackRank = 1e12 + panelIndex * 1e6 + index;
@@ -370,7 +520,7 @@ export const shapeConfigs = (bodies: string[], plans: PanelPlan[], totals: Total
       const wanted = plan.wanted.get(host.id);
       if (!wanted) continue;
       const name = wanted.name
-        ? renderName(wanted.name, totals, { protocol: host.protocol ?? config.protocol, network: host.network, server: config.server }, now)
+        ? renderName(wanted.name, totals, { protocol: config.protocol ?? host.protocol, network: config.network ?? host.network, server: config.server }, now)
         : config.name;
       kept.push({ item: items[index], name, rank: wanted.rank * 1e6 + index, renamed: name !== config.name });
     }

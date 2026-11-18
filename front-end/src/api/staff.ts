@@ -116,7 +116,7 @@ export const staffApi = api.injectEndpoints({
     }),
     staffUpdateGroupHost: builder.mutation<
       unknown,
-      { id: string; panelId: string; hostId: number; change: { selected?: boolean; name?: string | null } }
+      { id: string; panelId: string; hostId: string; change: { selected?: boolean; name?: string | null } }
     >({
       query: ({ id, panelId, hostId, change }) => ({
         url: `${STAFF}/groups/${id}/hosts/${panelId}/${hostId}`,
@@ -137,7 +137,7 @@ export const staffApi = api.injectEndpoints({
       },
       invalidatesTags: ["StaffGroupHosts"],
     }),
-    staffOrderGroupHosts: builder.mutation<unknown, { id: string; hosts: { panelId: string; hostId: number }[] }>({
+    staffOrderGroupHosts: builder.mutation<unknown, { id: string; hosts: { panelId: string; hostId: string }[] }>({
       query: ({ id, hosts }) => ({ url: `${STAFF}/groups/${id}/hosts/order`, method: "PUT", body: { hosts } }),
       invalidatesTags: ["StaffGroupHosts"],
     }),

@@ -7,14 +7,23 @@ import {
   type LimitsChange,
   type NewPanelUser,
   type PanelDriver,
-  type PanelHost,
-  type PanelInbound,
   type PanelUser,
 } from "../../src/modules/provisioning/driver";
 
-/** A fake host: PanelHost and the address its link points at. */
-export type FakeHost = PanelHost & { address: string };
-export type FakeInbound = PanelInbound & { port: number };
+/** A host on the fake panel: one config for each user whose groups grant its inbound. */
+export type FakeHost = {
+  id: number;
+  remark: string;
+  inboundTag: string | null;
+  /** null: the inbound's own port. */
+  port: number | null;
+  priority: number;
+  disabled: boolean;
+  /** The user statuses it is given to; empty: every status. */
+  statuses: string[];
+  address: string;
+};
+export type FakeInbound = { tag: string; protocol: string; network: string | null; port: number };
 
 /**
  * A VPN panel in memory, behaving the way the contract tests showed
@@ -36,6 +45,10 @@ export class FakePanel implements PanelDriver {
     { id: 1, remark: "🚀 {USERNAME} [{PROTOCOL}]", inboundTag: "vless-ws", port: null, priority: 1, disabled: false, statuses: [], address: "a.example.com" },
   ];
   down = false;
+  /** Signed in with a reseller's account: groups without their inbounds. */
+  reseller = false;
+  /** The account may not make users without a volume or an expiry (a reseller's limits). */
+  limited = false;
   /** Answers every call with "wrong credentials". */
   refuse = false;
   /** Where users' subscription links point; a test can serve them locally. */
@@ -84,19 +97,17 @@ export class FakePanel implements PanelDriver {
 
   async listGroups() {
     this.gate("listGroups");
-    return this.groups.map((group) => ({ ...group, inboundTags: [...(group.inboundTags ?? [])] }));
+    // A reseller account reads ids and names only.
+    return this.groups.map((group) =>
+      this.reseller ? { id: group.id, name: group.name } : { ...group, inboundTags: [...(group.inboundTags ?? [])] },
+    );
   }
 
-  async listHosts(): Promise<PanelHost[]> {
-    this.gate("listHosts");
-    return [...this.hosts]
-      .sort((a, b) => a.priority - b.priority || a.id - b.id)
-      .map(({ address: _address, ...host }) => ({ ...host, statuses: [...host.statuses] }));
-  }
-
-  async listInbounds(): Promise<PanelInbound[]> {
-    this.gate("listInbounds");
-    return this.inbounds.map(({ port: _port, ...inbound }) => ({ ...inbound }));
+  async readLinks(subscriptionUrl: string) {
+    this.gate("readLinks");
+    const user = [...this.users.values()].find((candidate) => candidate.subscriptionUrl === subscriptionUrl.replace(/\/+$/, ""));
+    if (!user) throw new PanelRejectedError(404, "Not Found");
+    return Buffer.from(this.render(user.username).body, "base64").toString("utf8");
   }
 
   // ------------------------------------------------- the user's subscription
@@ -207,6 +218,9 @@ export class FakePanel implements PanelDriver {
     this.gate("createUser");
     if (this.users.has(input.username)) {
       throw new PanelRejectedError(409, "User already exists");
+    }
+    if (this.limited && (input.dataLimitBytes === null || (!input.startsOnFirstUse && input.expiresAt === null))) {
+      throw new PanelRejectedError(403, "Data limit and expiry are required for this admin");
     }
     const id = this.nextId++;
     const user: PanelUser = {

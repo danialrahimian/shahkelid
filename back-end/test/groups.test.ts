@@ -94,14 +94,31 @@ const aShapedStore = async () => {
 
 const api = (store: Store) => store.staff.client;
 
-const hostsOf = async (store: Store, groupId = store.groupId) => {
+/** The fake panel's hosts by their number in these tests, read from the names the panel gives them. */
+const LABELS: Record<number, string> = { 1: "DE-1", 2: "DE-2", 3: "NL", 4: "DE-3" };
+const numberOf = (remark: string) => Number(Object.entries(LABELS).find(([, label]) => remark.split(" ")[1] === label)?.[0]);
+
+type HostRow = { hostId: string; n: number; selected: boolean; forced: boolean; name: string | null; remark: string; panelId: string };
+
+const hostsOf = async (store: Store, groupId = store.groupId): Promise<HostRow[]> => {
   const response = await api(store).get(`${V1}/groups/${groupId}/hosts`);
   assert.equal(response.status, 200, JSON.stringify(response.data));
-  return response.data.hosts as { hostId: number; selected: boolean; forced: boolean; name: string | null; remark: string; panelId: string }[];
+  return (response.data.hosts as Omit<HostRow, "n">[]).map((host) => ({ ...host, n: numberOf(host.remark) }));
 };
 
-const setHost = (store: Store, hostId: number, change: { selected?: boolean; name?: string | null }, groupId = store.groupId) =>
-  api(store).patch(`${V1}/groups/${groupId}/hosts/${store.panelId}/${hostId}`, change);
+/** Our id of a host, by its number; one the group does not have gets an id no host has. */
+const idOf = async (store: Store, n: number, groupId = store.groupId) =>
+  (await hostsOf(store, groupId)).find((host) => host.n === n)?.hostId ?? "not-in-this-group";
+
+const setHost = async (store: Store, n: number, change: { selected?: boolean; name?: string | null }, groupId = store.groupId) =>
+  api(store).patch(`${V1}/groups/${groupId}/hosts/${store.panelId}/${await idOf(store, n, groupId)}`, change);
+
+const orderHosts = async (store: Store, order: number[], groupId = store.groupId) => {
+  const hosts = await hostsOf(store, groupId);
+  return api(store).put(`${V1}/groups/${groupId}/hosts/order`, {
+    hosts: order.map((n) => ({ panelId: store.panelId, hostId: hosts.find((host) => host.n === n)!.hostId })),
+  });
+};
 
 const setSources = (store: Store, sources: { panelGroupId: number; allHosts: boolean; panelId?: string }[], groupId = store.groupId) =>
   api(store).put(`${V1}/groups/${groupId}/sources`, {
@@ -225,7 +242,7 @@ describe("What a group takes from the panels", () => {
 
     const hosts = await hostsOf(store);
 
-    assert.deepEqual(hosts.map((host) => host.hostId), [1, 2, 4], "the vless and vmess hosts, in the panel's order");
+    assert.deepEqual(hosts.map((host) => host.n), [1, 2, 4], "the vless and vmess hosts, in the panel's order");
     assert.ok(hosts.every((host) => host.selected && host.forced));
     const refused = await setHost(store, 1, { selected: false });
     assert.equal(refused.status, 409, "turn off 'all hosts' first");
@@ -241,17 +258,17 @@ describe("What a group takes from the panels", () => {
     assert.equal((await setHost(store, 1, { selected: true })).status, 200);
     assert.equal((await setHost(store, 1, { selected: false })).status, 200);
     const hosts = await hostsOf(store);
-    assert.deepEqual(hosts.filter((host) => host.selected).map((host) => host.hostId), [4]);
+    assert.deepEqual(hosts.filter((host) => host.selected).map((host) => host.n), [4]);
   });
 
   it("When another panel group is added or one is removed, then the hosts follow", async () => {
     const store = await aShapedStore();
 
     await setSources(store, [{ panelGroupId: 2, allHosts: true }, { panelGroupId: 7, allHosts: true }]);
-    assert.deepEqual((await hostsOf(store)).map((host) => host.hostId), [1, 2, 3, 4]);
+    assert.deepEqual((await hostsOf(store)).map((host) => host.n), [1, 2, 4, 3], "panel group by panel group, each in the panel's order");
 
     await setSources(store, [{ panelGroupId: 7, allHosts: true }]);
-    assert.deepEqual((await hostsOf(store)).map((host) => host.hostId), [3]);
+    assert.deepEqual((await hostsOf(store)).map((host) => host.n), [3]);
   });
 
   it("When the same panel group is given twice, then it is refused", async () => {
@@ -274,30 +291,23 @@ describe("Naming and ordering hosts and groups", () => {
     const store = await aShapedStore();
 
     assert.equal((await setHost(store, 1, { name: "  Germany {DATA_LEFT}  " })).status, 200);
-    assert.equal((await hostsOf(store)).find((host) => host.hostId === 1)!.name, "Germany {DATA_LEFT}");
+    assert.equal((await hostsOf(store)).find((host) => host.n === 1)!.name, "Germany {DATA_LEFT}");
 
     assert.equal((await setHost(store, 1, { name: "" })).status, 200);
-    assert.equal((await hostsOf(store)).find((host) => host.hostId === 1)!.name, null);
+    assert.equal((await hostsOf(store)).find((host) => host.n === 1)!.name, null);
   });
 
   it("When hosts are dragged into a new order, then that order is kept, the rest after them", async () => {
     const store = await aShapedStore();
 
-    const response = await api(store).put(`${V1}/groups/${store.groupId}/hosts/order`, {
-      hosts: [
-        { panelId: store.panelId, hostId: 4 },
-        { panelId: store.panelId, hostId: 1 },
-      ],
-    });
+    const response = await orderHosts(store, [4, 1]);
 
     assert.equal(response.status, 200, JSON.stringify(response.data));
-    assert.deepEqual((await hostsOf(store)).map((host) => host.hostId), [4, 1, 2]);
+    assert.deepEqual((await hostsOf(store)).map((host) => host.n), [4, 1, 2]);
 
     // Dragged again: the new order replaces the old one.
-    await api(store).put(`${V1}/groups/${store.groupId}/hosts/order`, {
-      hosts: [2, 4, 1].map((hostId) => ({ panelId: store.panelId, hostId })),
-    });
-    assert.deepEqual((await hostsOf(store)).map((host) => host.hostId), [2, 4, 1]);
+    await orderHosts(store, [2, 4, 1]);
+    assert.deepEqual((await hostsOf(store)).map((host) => host.n), [2, 4, 1]);
   });
 
   it("When groups are dragged into a new order, then the list follows it", async () => {
@@ -359,9 +369,7 @@ describe("The customer's link follows their groups", () => {
       [2, 1, 4],
       [1, 4, 2],
     ]) {
-      const moved = await api(store).put(`${V1}/groups/${store.groupId}/hosts/order`, {
-        hosts: order.map((hostId) => ({ panelId: store.panelId, hostId })),
-      });
+      const moved = await orderHosts(store, order);
       assert.equal(moved.status, 200);
       const { status, body } = await fetchLink(token, V2RAYNG);
       assert.equal(status, 200, "the link never breaks");
@@ -405,9 +413,7 @@ describe("The customer's link follows their groups", () => {
     await setSources(store, [{ panelGroupId: 2, allHosts: false }]);
     await setHost(store, 1, { selected: true, name: "Germany" });
     await setHost(store, 4, { selected: true });
-    await api(store).put(`${V1}/groups/${store.groupId}/hosts/order`, {
-      hosts: [4, 1].map((hostId) => ({ panelId: store.panelId, hostId })),
-    });
+    await orderHosts(store, [4, 1]);
 
     const { status, body } = await fetchLink(token, HIDDIFY);
 
@@ -425,9 +431,7 @@ describe("The customer's link follows their groups", () => {
     const store = await aShapedStore();
     const { token } = await aLive(store);
     await setHost(store, 2, { name: "Fast" });
-    await api(store).put(`${V1}/groups/${store.groupId}/hosts/order`, {
-      hosts: [2, 4, 1].map((hostId) => ({ panelId: store.panelId, hostId })),
-    });
+    await orderHosts(store, [2, 4, 1]);
 
     const { status, body } = await fetchLink(token, CLASH);
 
@@ -483,5 +487,87 @@ describe("The customer's link follows their groups", () => {
     const members = await database().select().from(subscriptionPanels).where(eq(subscriptionPanels.subscriptionId, id));
     assert.equal(members.length, 2);
     assert.ok(members.every((member) => member.panelUserId !== null));
+  });
+});
+
+// -------------------------------------------- panels a reseller signs in to
+
+describe("A panel signed in to with a reseller's account (no hosts, no inbounds)", () => {
+  it("When a group takes its panel groups, then the hosts are read through the shop's own subscription", async () => {
+    const store = await aShapedStore();
+    store.fake.reseller = true;
+
+    const groups = await api(store).get(`${V1}/panels/${store.panelId}/groups`);
+    assert.equal(groups.status, 200);
+    assert.equal(groups.data[0].inboundTags, undefined, "ids and names only");
+
+    assert.equal((await setSources(store, [{ panelGroupId: 2, allHosts: true }, { panelGroupId: 7, allHosts: false }])).status, 200);
+    const hosts = await hostsOf(store);
+    assert.deepEqual(hosts.map((host) => host.n), [1, 2, 4, 3]);
+    assert.ok(hosts.every((host) => host.n !== 3 || !host.selected), "a host of a panel group taken without 'all' waits to be picked");
+
+    const probe2 = store.fake.users.get("skprobe_g2")!;
+    const probe7 = store.fake.users.get("skprobe_g7")!;
+    assert.deepEqual(probe2.groupIds, [2]);
+    assert.deepEqual(probe7.groupIds, [7]);
+    assert.equal(probe2.dataLimitBytes, null, "unlimited where the account may");
+    assert.equal(probe2.expiresAt, null);
+    assert.equal(probe2.status, "active");
+  });
+
+  it("When customers buy, then their link is shaped as with any panel, names with their own values matched", async () => {
+    const store = await aShapedStore();
+    store.fake.reseller = true;
+    await setSources(store, [{ panelGroupId: 2, allHosts: false }, { panelGroupId: 7, allHosts: false }]);
+    const plan = (await api(store).get(`${V1}/plans/${store.planId}`)).data;
+    await setHost(store, 3, { selected: true, name: "Holland {DATA_LEFT}" });
+    await setHost(store, 1, { selected: true });
+    await orderHosts(store, [3, 1]);
+    const { token, username } = await aLive(store, plan.id);
+    assert.deepEqual(store.fake.users.get(username)!.groupIds, [2, 7]);
+
+    const names = linkNames((await fetchLink(token, V2RAYNG)).body);
+
+    assert.deepEqual(names, ["Holland 50 GB", `🇩🇪 DE-1 ${username}`]);
+  });
+
+  it("When the account's limits forbid an unlimited user, then the probe gets the least it may", async () => {
+    const store = await aShapedStore();
+    store.fake.limited = true;
+
+    await setSources(store, [{ panelGroupId: 7, allHosts: true }]);
+    assert.deepEqual((await hostsOf(store)).map((host) => host.n), [3]);
+
+    const probe = store.fake.users.get("skprobe_g7")!;
+    assert.equal(probe.dataLimitBytes, GB);
+    assert.ok(probe.expiresAt && probe.expiresAt.getTime() > Date.now() + 29 * 86_400_000);
+  });
+
+  it("When the probe user is deleted, switched off or runs out on the panel, then it is put right at the next read", async () => {
+    const store = await aShapedStore();
+    await hostsOf(store);
+    store.fake.users.delete("skprobe_g2");
+    assert.equal((await hostsOf(store)).length, 3, "made again");
+
+    const probe = store.fake.users.get("skprobe_g2")!;
+    probe.status = "expired";
+    probe.groupIds = [1];
+    await hostsOf(store);
+    assert.equal(store.fake.users.get("skprobe_g2")!.status, "active");
+    assert.deepEqual(store.fake.users.get("skprobe_g2")!.groupIds, [2]);
+  });
+
+  it("When the panels are synced, then the probe users are left alone and are no customer's", async () => {
+    const store = await aShapedStore();
+    await aLive(store);
+    await hostsOf(store);
+    const before = { ...store.fake.users.get("skprobe_g2")! };
+
+    const results = await syncAllPanels(database());
+
+    assert.ok(!("error" in results[store.panelId]!), JSON.stringify(results));
+    assert.deepEqual(store.fake.users.get("skprobe_g2"), before);
+    const owners = await database().select().from(subscriptions).where(eq(subscriptions.panelUsername, "skprobe_g2"));
+    assert.equal(owners.length, 0);
   });
 });

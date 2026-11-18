@@ -19,7 +19,8 @@ import { planGroups, plans } from "../catalog/schema";
 import { panels } from "../infrastructure/schema";
 import { findPanel, panelFailure } from "../infrastructure/service";
 import { subscriptionGroups, subscriptions } from "../subscriptions/schema";
-import { hostsOfGroups, protocolOf, readCatalog, type PanelCatalog } from "./catalog";
+import type { ProbeHost } from "../subscriptions/configs";
+import { readGroups, readProbe } from "./catalog";
 import { groupHosts, groupSources, groups } from "./schema";
 
 /**
@@ -98,51 +99,55 @@ export const findGroup = async (executor: Executor, id: string) => {
 
 type HostRow = typeof groupHosts.$inferSelect;
 
-/** A group's hosts: from each panel it takes groups from, with what the group says about each. */
+/** A group's hosts: from each panel group it takes, with what the group says about each. */
 export const groupHostsOf = async (
   executor: Executor,
   id: string,
-  read: (panel: typeof panels.$inferSelect) => Promise<PanelCatalog | null> = readCatalog,
+  read: (panel: typeof panels.$inferSelect, panelGroupId: number) => Promise<ProbeHost[] | null> = readProbe,
 ): Promise<GroupHostsView> => {
   const group = await findGroup(executor, id);
   const rows = await executor.select().from(groupHosts).where(eq(groupHosts.groupId, id));
   const byKey = new Map<string, HostRow>(rows.map((row) => [`${row.panelId}:${row.hostId}`, row]));
 
-  const panelIds = [...new Set(group.sources.map((source) => source.panelId))];
   const hosts: (GroupHostView & { place: number | null; panelOrder: number })[] = [];
   const unreachable: GroupHostsView["unreachable"] = [];
-  for (const [panelIndex, panelId] of panelIds.entries()) {
-    const panel = await findPanel(executor, panelId);
-    const sources = group.sources.filter((source) => source.panelId === panelId);
-    let catalog: PanelCatalog | null;
+  const failed = new Set<string>();
+  for (const [sourceIndex, source] of group.sources.entries()) {
+    if (failed.has(source.panelId)) continue;
+    const panel = await findPanel(executor, source.panelId);
+    let configs: ProbeHost[] | null;
     try {
-      catalog = await read(panel);
+      configs = await read(panel, source.panelGroupId);
     } catch (error) {
-      catalog = null;
-      unreachable.push({ panelId, panelName: panel.name, error: (error as Error).message.slice(0, 300) });
+      configs = null;
+      failed.add(source.panelId);
+      unreachable.push({ panelId: panel.id, panelName: panel.name, error: (error as Error).message.slice(0, 300) });
     }
-    if (!catalog) continue;
-    for (const [hostIndex, host] of hostsOfGroups(catalog, sources.map((source) => source.panelGroupId)).entries()) {
-      const inSources = sources.filter((source) =>
-        catalog!.groups.find((candidate) => candidate.id === source.panelGroupId)?.inboundTags.includes(host.inboundTag ?? ""),
-      );
-      const row = byKey.get(`${panelId}:${host.id}`);
-      const forced = inSources.some((source) => source.allHosts);
+    if (!configs) continue;
+    for (const [hostIndex, config] of configs.entries()) {
+      const seen = hosts.find((host) => host.panelId === panel.id && host.hostId === config.id);
+      if (seen) {
+        // In two of the group's panel groups: one host, "all" if either takes all.
+        seen.panelGroupIds.push(source.panelGroupId);
+        if (source.allHosts) seen.forced = seen.selected = true;
+        continue;
+      }
+      const row = byKey.get(`${panel.id}:${config.id}`);
       hosts.push({
-        panelId,
+        panelId: panel.id,
         panelName: panel.name,
-        hostId: host.id,
-        remark: host.remark,
-        inboundTag: host.inboundTag,
-        protocol: protocolOf(catalog, host),
-        port: host.port,
-        disabledOnPanel: host.disabled,
-        panelGroupIds: inSources.map((source) => source.panelGroupId),
-        selected: forced || (row?.selected ?? false),
-        forced,
+        hostId: config.id,
+        remark: config.name,
+        protocol: config.protocol,
+        address: config.server,
+        port: config.port,
+        network: config.network,
+        panelGroupIds: [source.panelGroupId],
+        selected: source.allHosts || (row?.selected ?? false),
+        forced: source.allHosts,
         name: row?.name ?? null,
         place: row?.sortOrder ?? null,
-        panelOrder: panelIndex * 1_000_000 + hostIndex,
+        panelOrder: sourceIndex * 1_000_000 + hostIndex,
       });
     }
   }
@@ -226,7 +231,7 @@ export const setSources = async (db: Db, actor: StaffActor, id: string, input: z
     const panel = await findPanel(db, panelId);
     let onPanel;
     try {
-      onPanel = (await readCatalog(panel)).groups;
+      onPanel = await readGroups(panel);
     } catch (error) {
       throw panelFailure(error);
     }
@@ -270,7 +275,7 @@ export const updateHost = async (
   actor: StaffActor,
   id: string,
   panelId: string,
-  hostId: number,
+  hostId: string,
   input: z.output<typeof groupHostInput>,
 ) => {
   const { hosts } = await groupHostsOf(db, id);

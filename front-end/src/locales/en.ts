@@ -768,7 +768,7 @@ export const en: SameShape<typeof fa> = {
       noSources: "Takes nothing from any panel yet",
       sources: "From the panels",
       sourcesHint:
-        "The panel groups this group takes configs from. With “All hosts”, every host that panel group gives (later ones too) is given; without it, only the hosts you tick below.",
+        "The panel groups this group takes configs from. With “All hosts”, every host that panel group gives (later ones too) is given; without it, only the hosts you tick below. Each panel group's configs are read from a subscription the shop makes in that group (a panel user named skprobe_g and the group's number); do not delete it on the panel.",
       panel: "Panel",
       panelGroup: "Group on the panel",
       choosePanel: "Choose a panel",
@@ -783,7 +783,6 @@ export const en: SameShape<typeof fa> = {
       noHosts: "This group has no host yet. Add a panel group above.",
       hostName: "Name for customers",
       forced: "Given by “All hosts”",
-      disabledOnPanel: "Switched off on the panel",
       unreachable: "Panel {{panel}} is not answering; its hosts are missing from the list: {{error}}",
       saveName: "Save name",
     },

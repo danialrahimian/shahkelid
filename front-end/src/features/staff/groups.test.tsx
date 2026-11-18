@@ -38,15 +38,15 @@ const group = (id: string, name: string, overrides: Partial<GroupView> = {}): Gr
   ...overrides,
 });
 
-const host = (hostId: number, remark: string, overrides: Partial<GroupHostsView["hosts"][number]> = {}) => ({
+const host = (n: number, remark: string, overrides: Partial<GroupHostsView["hosts"][number]> = {}) => ({
   panelId: "p1",
   panelName: "Panel 1",
-  hostId,
+  hostId: `h${n}`,
   remark,
-  inboundTag: "vless-ws",
   protocol: "vless",
-  port: null,
-  disabledOnPanel: false,
+  address: "de.example.com",
+  port: 443,
+  network: "ws",
   panelGroupIds: [2],
   selected: true,
   forced: false,
@@ -66,7 +66,7 @@ beforeEach(() => {
     sent.push({ method: request.method, path, body });
     const json = (data: unknown) => new Response(JSON.stringify(data), { status: 200, headers: { "content-type": "application/json" } });
     if (path === "/panels") return json([{ id: "p1", name: "Panel 1" }]);
-    if (path === "/panels/p1/groups") return json([{ id: 2, name: "de", inboundTags: [] }, { id: 7, name: "nl", inboundTags: [] }]);
+    if (path === "/panels/p1/groups") return json([{ id: 2, name: "de" }, { id: 7, name: "nl" }]);
     if (path === "/groups") return json([group("g1", "Germany"), group("g2", "Netherlands", { sources: [] })]);
     if (path === "/groups/g1/hosts")
       return json({
@@ -137,9 +137,9 @@ describe("The groups page", () => {
     await flush();
     expect(lastSent("PUT", "/groups/g1/hosts/order")?.body).toEqual({
       hosts: [
-        { panelId: "p1", hostId: 1 },
-        { panelId: "p1", hostId: 3 },
-        { panelId: "p1", hostId: 2 },
+        { panelId: "p1", hostId: "h1" },
+        { panelId: "p1", hostId: "h3" },
+        { panelId: "p1", hostId: "h2" },
       ],
     });
     act(() => root.unmount());
@@ -150,7 +150,7 @@ describe("The groups page", () => {
     const box = [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].find((each) => each.getAttribute("aria-label") === "DE-2")!;
     await act(async () => box.click());
     await flush();
-    expect(lastSent("PATCH", "/groups/g1/hosts/p1/2")?.body).toEqual({ selected: true });
+    expect(lastSent("PATCH", "/groups/g1/hosts/p1/h2")?.body).toEqual({ selected: true });
 
     const field = [...document.querySelectorAll<HTMLInputElement>("input")].find((each) => each.placeholder === "DE-1")!;
     const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
@@ -163,7 +163,7 @@ describe("The groups page", () => {
       field.blur();
     });
     await flush();
-    expect(lastSent("PATCH", "/groups/g1/hosts/p1/1")?.body).toEqual({ name: "Germany {DATA_LEFT}" });
+    expect(lastSent("PATCH", "/groups/g1/hosts/p1/h1")?.body).toEqual({ name: "Germany {DATA_LEFT}" });
     act(() => root.unmount());
   });
 

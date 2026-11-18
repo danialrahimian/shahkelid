@@ -397,15 +397,16 @@ const Hosts = ({ group }: { group: GroupView }) => {
                   </bdi>
                   {host.protocol ? (
                     <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] uppercase" dir="ltr">
-                      {host.protocol}
+                      {[host.protocol, host.network].filter(Boolean).join(" · ")}
                     </span>
+                  ) : null}
+                  {host.address ? (
+                    <bdi dir="ltr" className="font-mono text-[11px] text-muted-foreground">
+                      {host.address}
+                      {host.port ? `:${host.port}` : ""}
+                    </bdi>
                   ) : null}
                   <span className="text-xs text-muted-foreground">{host.panelName}</span>
-                  {host.disabledOnPanel ? (
-                    <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-800 dark:text-amber-300">
-                      {t("staff.groups.disabledOnPanel")}
-                    </span>
-                  ) : null}
                 </div>
                 <div className="mt-2">
                   <HostName key={host.name ?? ""} host={host} onSave={(name) => change(host, { name })} />
