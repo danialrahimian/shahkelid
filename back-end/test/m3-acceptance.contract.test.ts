@@ -62,16 +62,12 @@ describe("M3 acceptance against the real panel", { skip: !enabled && "set PASARG
     const groups = await staff.client.get(`${V1}/panels/${panel.data.id}/groups`);
     assert.ok(groups.data.some((group: { id: number }) => group.id === groupId));
 
-    const location = await staff.client.post(`${V1}/locations`, { code: "DE", nameFa: "آلمان", nameEn: "Germany" });
-    const server = await staff.client.post(`${V1}/servers`, {
-      panelId: panel.data.id,
-      locationId: location.data.id,
-      name: "test-1",
-      host: new URL(url!).host,
-      panelGroupId: groupId,
-      capacityUsers: 10,
+    const group = await staff.client.post(`${V1}/groups`, { name: "Germany" });
+    assert.equal(group.status, 201, JSON.stringify(group.data));
+    const sources = await staff.client.put(`${V1}/groups/${group.data.id}/sources`, {
+      sources: [{ panelId: panel.data.id, panelGroupId: groupId, allHosts: true }],
     });
-    assert.equal(server.status, 201, JSON.stringify(server.data));
+    assert.equal(sources.status, 200, JSON.stringify(sources.data));
 
     const plan = await staff.client.post(`${V1}/plans`, {
       slug: `acceptance-${tag}`,
@@ -80,7 +76,7 @@ describe("M3 acceptance against the real panel", { skip: !enabled && "set PASARG
       durationDays: 1,
       deviceLimit: 1,
       priceToman: 0,
-      panels: [{ panelId: panel.data.id, groupIds: [] }],
+      groupIds: [group.data.id],
     });
     assert.equal(plan.status, 201, JSON.stringify(plan.data));
 

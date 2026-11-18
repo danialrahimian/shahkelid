@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { orders, payments } from "../src/modules/billing/schema";
 import { captureEmails, closeDatabase, database, signedInCustomer, signedInStaff } from "./helpers/accounts";
 import { resetTestDatabase } from "./helpers/postgres";
-import { aStore, installFakePanels, owner } from "./helpers/store";
+import { aStore, emptyGroup, installFakePanels, owner } from "./helpers/store";
 import { startTestServer, stopTestServer } from "./helpers/test-server";
 
 /**
@@ -69,7 +69,7 @@ const aStuckSale = async () => {
   );
   assert.equal((await buyer.client.post(`/api/v1/shop/orders/${order.data.id}/pay/card`, form)).status, 201);
   const [payment] = await database().select().from(payments).where(eq(payments.orderId, order.data.id));
-  assert.equal((await staff.client.post(`/api/v1/staff/servers/${store.serverIds[0]}/archive`)).status, 200);
+  await emptyGroup(store);
   assert.equal((await staff.client.post(`/api/v1/staff/receipts/${payment!.id}/review`, { decision: "approve" })).status, 200);
   return { orderId: order.data.id as string, paymentId: payment!.id, buyer };
 };

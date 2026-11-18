@@ -73,7 +73,9 @@ export const createAppRouter = () =>
         { path: paths.staffPlans.path, element: lazyRoute(() => import("@/app/routes/staff/plans")) },
         { path: paths.staffNotifications.path, element: lazyRoute(() => import("@/app/routes/staff/notifications")) },
         { path: paths.staffSettings.path, element: lazyRoute(() => import("@/app/routes/staff/settings")) },
-        { path: paths.staffServers.path, element: lazyRoute(() => import("@/app/routes/staff/servers")) },
+        { path: paths.staffGroups.path, element: lazyRoute(() => import("@/app/routes/staff/groups")) },
+        // The old servers page became the groups page.
+        { path: "/staff/servers", element: <Navigate to={paths.staffGroups.getHref()} replace /> },
         { path: paths.staffPanels.path, element: lazyRoute(() => import("@/app/routes/staff/panels")) },
         { path: paths.staffTeam.path, element: lazyRoute(() => import("@/app/routes/staff/team")) },
         { path: paths.staffAudit.path, element: lazyRoute(() => import("@/app/routes/staff/audit")) },

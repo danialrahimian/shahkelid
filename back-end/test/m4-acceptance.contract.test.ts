@@ -64,15 +64,12 @@ describe("M4 acceptance: Zarinpal sandbox to a working link", { skip: !enabled &
       credentials: { kind: "password", username, password },
     });
     assert.equal(panel.status, 201, JSON.stringify(panel.data));
-    const location = await staff.client.post("/api/v1/staff/locations", { code: "DE", nameFa: "آلمان", nameEn: "Germany" });
-    await staff.client.post("/api/v1/staff/servers", {
-      panelId: panel.data.id,
-      locationId: location.data.id,
-      name: "test-1",
-      host: new URL(url!).host,
-      panelGroupId: groupId,
-      capacityUsers: 10,
+    const group = await staff.client.post("/api/v1/staff/groups", { name: "Germany" });
+    assert.equal(group.status, 201, JSON.stringify(group.data));
+    const sources = await staff.client.put(`/api/v1/staff/groups/${group.data.id}/sources`, {
+      sources: [{ panelId: panel.data.id, panelGroupId: groupId, allHosts: true }],
     });
+    assert.equal(sources.status, 200, JSON.stringify(sources.data));
     const plan = await staff.client.post("/api/v1/staff/plans", {
       slug: `m4-${tag}`,
       name: "آزمون خرید",
@@ -80,7 +77,7 @@ describe("M4 acceptance: Zarinpal sandbox to a working link", { skip: !enabled &
       durationDays: 1,
       deviceLimit: 1,
       priceToman: 15_000,
-      panels: [{ panelId: panel.data.id, groupIds: [] }],
+      groupIds: [group.data.id],
     });
     assert.equal(plan.status, 201, JSON.stringify(plan.data));
 

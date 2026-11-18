@@ -9,6 +9,7 @@ export * from "../../modules/catalog/schema";
 export * from "../../modules/content/schema";
 export * from "../../modules/crm/schema";
 export * from "../../modules/files/schema";
+export * from "../../modules/groups/schema";
 export * from "../../modules/identity/schema";
 export * from "../../modules/infrastructure/schema";
 export * from "../../modules/ledger/schema";

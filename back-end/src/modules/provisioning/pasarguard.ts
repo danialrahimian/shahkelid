@@ -7,6 +7,8 @@ import {
   type NewPanelUser,
   type PanelDriver,
   type PanelHealth,
+  type PanelHost,
+  type PanelInbound,
   type PanelUser,
   type PanelUserStatus,
 } from "./driver";
@@ -39,6 +41,19 @@ type RawUser = {
   online_at: string | null;
   subscription_url: string;
 };
+
+/** A host, as it arrives (only the fields we read). */
+type RawHost = {
+  id: number;
+  remark: string;
+  inbound_tag: string | null;
+  port: number | null;
+  priority: number;
+  is_disabled?: boolean;
+  status?: string[] | null;
+};
+
+type RawGroup = { id: number; name: string; inbound_tags?: string[] | null; is_disabled?: boolean };
 
 const RESET_STRATEGY: Record<TrafficReset, string> = {
   no_reset: "no_reset",
@@ -173,9 +188,32 @@ export class PasarGuardDriver implements PanelDriver {
   }
 
   async listGroups(): Promise<PanelGroup[]> {
-    const response = await this.authorized("/api/groups/simple");
-    const body = await this.read<{ groups: PanelGroup[] }>(response, "list groups");
-    return body.groups.map(({ id, name }) => ({ id, name }));
+    // The full list: the simple one leaves out the inbounds.
+    const response = await this.authorized("/api/groups");
+    const body = await this.read<{ groups: RawGroup[] }>(response, "list groups");
+    return body.groups.map(({ id, name, inbound_tags }) => ({ id, name, inboundTags: inbound_tags ?? [] }));
+  }
+
+  async listHosts(): Promise<PanelHost[]> {
+    const response = await this.authorized("/api/hosts");
+    const body = await this.read<RawHost[]>(response, "list hosts");
+    return body
+      .map((raw) => ({
+        id: raw.id,
+        remark: raw.remark,
+        inboundTag: raw.inbound_tag ?? null,
+        port: raw.port ?? null,
+        priority: raw.priority,
+        disabled: raw.is_disabled ?? false,
+        statuses: raw.status ?? [],
+      }))
+      .sort((a, b) => a.priority - b.priority || a.id - b.id);
+  }
+
+  async listInbounds(): Promise<PanelInbound[]> {
+    const response = await this.authorized("/api/inbounds/details");
+    const body = await this.read<{ tag: string; protocol: string; network?: string | null }[]>(response, "list inbounds");
+    return body.map(({ tag, protocol, network }) => ({ tag, protocol, network: network ?? null }));
   }
 
   async createUser(user: NewPanelUser): Promise<PanelUser> {

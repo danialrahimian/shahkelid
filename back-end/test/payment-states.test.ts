@@ -6,13 +6,14 @@ import { and, eq } from "drizzle-orm";
 
 import { expireLapsedOrders } from "../src/modules/billing/orders";
 import { orders, payments } from "../src/modules/billing/schema";
+import { planGroups } from "../src/modules/catalog/schema";
 import { runProvisionJob, runRenewalJob } from "../src/modules/provisioning/worker";
 import { provisionSubscription } from "../src/modules/provisioning/provision";
 import { subscriptions } from "../src/modules/subscriptions/schema";
 import { outboxEvents } from "../src/platform/db/platform-schema";
 import { captureEmails, closeDatabase, database, signedInCustomer, signedInStaff } from "./helpers/accounts";
 import { resetTestDatabase } from "./helpers/postgres";
-import { aStore, installFakePanels, owner, type Store } from "./helpers/store";
+import { aStore, emptyGroup, installFakePanels, owner, refillGroup, type Store } from "./helpers/store";
 import { getBaseUrl, startTestServer, stopTestServer } from "./helpers/test-server";
 
 /**
@@ -369,11 +370,10 @@ describe("Paid, but the service cannot be made yet", () => {
     assert.equal(await provisionFor(order.id, 1), "provisioned");
   });
 
-  it("When the receipt is approved but no server has room, then the order is paid without a subscription until staff make it", async () => {
-    const store = await aStore({ servers: [{ capacity: 1, priority: 0 }] });
-    const first = await aReceiptWaiting(store);
-    await review(first.paymentId, "approve");
+  it("When the receipt is approved but the plan's group gives nothing, then the order is paid without a subscription until staff make it", async () => {
+    const store = await aStore();
     const { buyer, order, paymentId } = await aReceiptWaiting(store);
+    await emptyGroup(store);
 
     assert.equal((await review(paymentId, "approve")).status, 200, "the money is accepted all the same");
 
@@ -382,10 +382,9 @@ describe("Paid, but the service cannot be made yet", () => {
     assert.equal(page.subscription, null, "the page can tell it is waiting for staff");
     const [alert] = await alertsAbout(order.id);
     assert.equal(alert?.subject, "Order paid, but its service was not made");
-    assert.match(alert!.text, /full \(customers\/capacity: 1\/1\)/, "says which servers and how full");
+    assert.match(alert!.text, /groups take nothing from any panel/, "says what to fix");
 
-    const [server] = (await store.staff.client.get(`${STAFF}/servers`)).data.filter((s: { id: string }) => s.id === store.serverIds[0]);
-    await store.staff.client.put(`${STAFF}/servers/${server.id}`, { ...server, capacityUsers: 2 });
+    await refillGroup(store);
     assert.equal((await store.staff.client.post(`${STAFF}/orders/${order.id}/fulfil`)).status, 200);
     assert.equal((await pageOf(buyer, order.id)).subscription?.status, "provisioning");
   });
@@ -405,7 +404,7 @@ describe("Paid, but the service cannot be made yet", () => {
 
     assert.equal((await pageOf(buyer, order.id)).status, "paid");
     const [alert] = await alertsAbout(order.id);
-    assert.match(alert!.text, /panel is switched off/);
+    assert.match(alert!.text, /is switched off/);
   });
 
   it("When staff press 'Make subscription' before fixing the cause, then they are told exactly why, and it works once fixed", async () => {
@@ -423,7 +422,7 @@ describe("Paid, but the service cannot be made yet", () => {
     const early = await store.staff.client.post(`${STAFF}/orders/${order.id}/fulfil`);
     assert.equal(early.status, 409);
     assert.equal(early.data.error.code, "NO_SERVER_AVAILABLE");
-    assert.match(early.data.error.message, /panel is switched off/);
+    assert.match(early.data.error.message, /is switched off/);
 
     await setPanel(true);
     const made = await store.staff.client.post(`${STAFF}/orders/${order.id}/fulfil`);
@@ -432,16 +431,15 @@ describe("Paid, but the service cannot be made yet", () => {
     assert.equal((await pageOf(buyer, order.id)).subscription?.status, "provisioning");
   });
 
-  it("When the plan's servers are archived, then the alert says the panel has no server", async () => {
+  it("When the plan has no group, then the alert says to choose its groups", async () => {
     const store = await aStore();
     const { order, paymentId } = await aReceiptWaiting(store);
-    const archived = await store.staff.client.post(`${STAFF}/servers/${store.serverIds[0]}/archive`);
-    assert.equal(archived.status, 200, JSON.stringify(archived.data));
+    await database().delete(planGroups).where(eq(planGroups.planId, store.planId));
 
     await review(paymentId, "approve");
 
     const [alert] = await alertsAbout(order.id);
-    assert.match(alert!.text, /has no server/);
+    assert.match(alert!.text, /has no group/);
   });
 });
 
@@ -457,7 +455,7 @@ describe("Orders with nothing to pay, and orders left unpaid", () => {
       durationDays: 1,
       deviceLimit: 1,
       priceToman: 0,
-      panels: [{ panelId: store.panelId, groupIds: [] }],
+      groupIds: [store.groupId],
     });
     assert.equal(free.status, 201, JSON.stringify(free.data));
     const buyer = await signedInCustomer(emails);

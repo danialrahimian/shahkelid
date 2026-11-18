@@ -19,7 +19,7 @@ import { createClient } from "./helpers/api-client";
 import { captureEmails, closeDatabase, database, signedInCustomer, signedInStaff } from "./helpers/accounts";
 import { FakeZarinpal } from "./helpers/fake-zarinpal";
 import { resetTestDatabase } from "./helpers/postgres";
-import { aStore, installFakePanels, owner, type Store } from "./helpers/store";
+import { aStore, emptyGroup, installFakePanels, owner, refillGroup, type Store } from "./helpers/store";
 import { getBaseUrl, startTestServer, stopTestServer } from "./helpers/test-server";
 
 /**
@@ -137,7 +137,7 @@ describe("The storefront", () => {
       deviceLimit: 1,
       priceToman: 1000,
       isPublic: false,
-      panels: [{ panelId: store.panelId, groupIds: [] }],
+      groupIds: [store.groupId],
     });
 
     const plans = await createClient().get(`${SHOP}/plans`);
@@ -414,21 +414,19 @@ describe("When the service cannot be delivered at once", () => {
     assert.ok(ready.subscription.link);
   });
 
-  it("When no server has room, then the order is paid but waits, staff are told, and can make it once there is room", async () => {
-    const store = await aStore({ servers: [{ capacity: 1, priority: 0 }] });
-    const first = await signedInCustomer(emails);
-    await buyWithZarinpal(first, store);
-    const second = await signedInCustomer(emails);
+  it("When the plan's group gives nothing, then the order is paid but waits, staff are told, and can make it once the group is fixed", async () => {
+    const store = await aStore();
+    const buyer = await signedInCustomer(emails);
+    await emptyGroup(store);
 
-    const { order } = await buyWithZarinpal(second, store);
+    const { order } = await buyWithZarinpal(buyer, store);
 
     const row = await orderRow(order.id);
     assert.equal(row.status, "paid");
     assert.equal(row.subscriptionId, null);
     assert.equal((await alertsAbout(order.id)).length, 1);
 
-    const [server] = (await store.staff.client.get(`${STAFF}/servers`)).data.filter((s: { id: string }) => s.id === store.serverIds[0]);
-    await store.staff.client.put(`${STAFF}/servers/${server.id}`, { ...server, capacityUsers: 2 });
+    await refillGroup(store);
     const fulfilled = await store.staff.client.post(`${STAFF}/orders/${order.id}/fulfil`);
     assert.equal(fulfilled.status, 200, JSON.stringify(fulfilled.data));
     assert.equal(fulfilled.data.status, "fulfilled");

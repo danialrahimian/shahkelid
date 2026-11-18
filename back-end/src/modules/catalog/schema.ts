@@ -11,7 +11,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import { panels } from "../infrastructure/schema";
+import { groups } from "../groups/schema";
 import { at, createdAt, id, updatedAt, wholeNumber } from "../../platform/db/columns";
 
 export const trafficReset = pgEnum("traffic_reset", ["no_reset", "daily", "weekly", "monthly"]);
@@ -59,18 +59,16 @@ export const plans = pgTable(
   ],
 );
 
-/** How a plan is expressed on each panel: which groups (inbounds) it grants. */
-export const planPanelSettings = pgTable(
-  "plan_panel_settings",
+/** The groups a plan is sold with: a buyer's configs are theirs, on their panels. */
+export const planGroups = pgTable(
+  "plan_groups",
   {
     planId: uuid("plan_id")
       .notNull()
       .references(() => plans.id, { onDelete: "cascade" }),
-    panelId: uuid("panel_id")
+    groupId: uuid("group_id")
       .notNull()
-      .references(() => panels.id, { onDelete: "cascade" }),
-    groupIds: integer("group_ids").array().notNull().default(sql`'{}'`),
-    userTemplateId: integer("user_template_id"),
+      .references(() => groups.id, { onDelete: "restrict" }),
   },
-  (t) => [primaryKey({ columns: [t.planId, t.panelId] })],
+  (t) => [primaryKey({ columns: [t.planId, t.groupId] })],
 );

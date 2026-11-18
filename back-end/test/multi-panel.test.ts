@@ -62,15 +62,14 @@ let bDown = false;
 
 // ----------------------------------------------------------------- arrange
 
-/** Two panels, a server on each, and a 50 GB plan sold on both. */
+/** Two panels, one of our groups taking a group from each, and a 50 GB plan sold through it. */
 const twoPanels = async () => {
   const staff = await owner();
   const tag = randomBytes(3).toString("hex");
-  const location = await staff.client.post(`${STAFF}/locations`, { code: `DE-${tag.toUpperCase()}`, nameFa: "آلمان", nameEn: "Germany" });
   const make = async (name: "a" | "b") => {
     const baseUrl = `https://panel-${name}-${tag}.test`;
     const fake = fakeFor(baseUrl);
-    fake.groups = [{ id: 2, name: "de" }];
+    fake.groups = [{ id: 2, name: "de", inboundTags: ["vless-ws"] }];
     fake.subscriptionBase = `${linkBase}/${name}/sub`;
     const panel = await staff.client.post(`${STAFF}/panels`, {
       name: `Panel ${name.toUpperCase()} ${tag}`,
@@ -79,20 +78,19 @@ const twoPanels = async () => {
       credentials: { kind: "password", username: "operator", password: "right" },
     });
     assert.equal(panel.status, 201, JSON.stringify(panel.data));
-    const server = await staff.client.post(`${STAFF}/servers`, {
-      panelId: panel.data.id,
-      locationId: location.data.id,
-      name: `${name}-${tag}`,
-      host: `${name}.example.com`,
-      panelGroupId: 2,
-      capacityUsers: 10,
-      priority: name === "a" ? 5 : 0,
-    });
-    assert.equal(server.status, 201, JSON.stringify(server.data));
-    return { fake, panelId: panel.data.id as string, serverId: server.data.id as string };
+    return { fake, panelId: panel.data.id as string };
   };
   const a = await make("a");
   const b = await make("b");
+  const group = await staff.client.post(`${STAFF}/groups`, { name: `Germany ${tag}` });
+  assert.equal(group.status, 201, JSON.stringify(group.data));
+  const sources = await staff.client.put(`${STAFF}/groups/${group.data.id}/sources`, {
+    sources: [
+      { panelId: a.panelId, panelGroupId: 2, allHosts: true },
+      { panelId: b.panelId, panelGroupId: 2, allHosts: true },
+    ],
+  });
+  assert.equal(sources.status, 200, JSON.stringify(sources.data));
   const plan = await staff.client.post(`${STAFF}/plans`, {
     slug: `both-${tag}`,
     name: "دو پنل ۵۰ گیگ",
@@ -100,13 +98,10 @@ const twoPanels = async () => {
     durationDays: 30,
     deviceLimit: 2,
     priceToman: 150_000,
-    panels: [
-      { panelId: a.panelId, groupIds: [] },
-      { panelId: b.panelId, groupIds: [] },
-    ],
+    groupIds: [group.data.id],
   });
   assert.equal(plan.status, 201, JSON.stringify(plan.data));
-  return { staff, a, b, planId: plan.data.id as string };
+  return { staff, a, b, groupId: group.data.id as string, planId: plan.data.id as string };
 };
 
 type Store = Awaited<ReturnType<typeof twoPanels>>;
@@ -146,11 +141,9 @@ describe("A plan sold on two panels", () => {
     assert.equal(subscription.status, "on_hold");
     assert.equal(subscription.panels.length, 2);
     assert.ok(subscription.panels.every((panel: { onPanel: boolean }) => panel.onPanel));
-    assert.equal(subscription.panel.id, store.a.panelId, "the higher-priority server's panel is the main one");
-
-    const servers = (await store.staff.client.get(`${STAFF}/servers`)).data as { id: string; liveSubscriptions: number }[];
-    assert.equal(servers.find((server) => server.id === store.a.serverId)!.liveSubscriptions, 1);
-    assert.equal(servers.find((server) => server.id === store.b.serverId)!.liveSubscriptions, 1, "a place is taken on each panel's server");
+    assert.equal(subscription.panel.id, store.a.panelId, "the group's first panel is the main one");
+    assert.deepEqual(on(store.a.fake, username).groupIds, [2]);
+    assert.deepEqual(on(store.b.fake, username).groupIds, [2]);
   });
 
   it("When one panel is down while it is made, then the customer gets the other at once, staff are told, and the sync adds the rest", async () => {
@@ -353,8 +346,6 @@ describe("Acting on a subscription that is on two panels", () => {
     assert.equal((await act("delete")).data.status, "deleted");
     assert.equal(store.a.fake.users.has(username), false);
     assert.equal(store.b.fake.users.has(username), false);
-    const servers = (await store.staff.client.get(`${STAFF}/servers`)).data as { id: string; liveSubscriptions: number }[];
-    assert.equal(servers.find((server) => server.id === store.b.serverId)!.liveSubscriptions, 0, "its places are free again");
   });
 
   it("When a renewal is applied, then the new volume is one total and each panel gets its share of it", async () => {

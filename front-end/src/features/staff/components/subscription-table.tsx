@@ -22,10 +22,10 @@ export const SubscriptionTable = ({
         <tr>
           {showCustomer ? <th>{t("staff.subscriptions.customer")}</th> : null}
           <th>{t("staff.subscriptions.plan")}</th>
-          <th>{t("staff.servers.status")}</th>
+          <th>{t("staff.common.status")}</th>
           <th>{t("staff.subscriptions.usage")}</th>
           <th>{t("staff.subscriptions.expires")}</th>
-          <th>{t("staff.subscriptions.server")}</th>
+          <th>{t("staff.subscriptions.groups")}</th>
         </tr>
       </thead>
       <tbody>
@@ -63,14 +63,7 @@ export const SubscriptionTable = ({
                   : "—"}
             </td>
             <td className="text-xs">
-              {subscription.server ? (
-                <>
-                  <bdi dir="ltr">{subscription.server.name}</bdi>
-                  <p className="text-muted-foreground">{subscription.server.locationName}</p>
-                </>
-              ) : (
-                "—"
-              )}
+              {subscription.groups.length > 0 ? subscription.groups.map((group) => group.name).join("، ") : "—"}
             </td>
           </tr>
         ))}

@@ -5,13 +5,14 @@ import type { Db, Executor } from "../../platform/db/client";
 import { ApiError, notFound } from "../../platform/http/api-error";
 import { recordEvent } from "../../platform/outbox/outbox";
 import { orderItems, orders } from "../billing/schema";
-import { planPanelSettings } from "../catalog/schema";
 import { format, notifyCustomer, siteUrl } from "../notifications/notify";
 import type { PanelUser } from "../provisioning/driver";
 import { driverFor } from "../provisioning/drivers";
-import { subscriptionEvents, subscriptionPanels, subscriptions } from "./schema";
+import { subscriptionEvents, subscriptionGroups, subscriptionPanels, subscriptions } from "./schema";
 import { MISSING, isMade, limitFor, memberFromPanel, membersOf, saveMember, subscriptionFrom, totalsOf, type MemberRow } from "./members";
-import { groupsFor, recordHistory } from "./service";
+import { recordHistory } from "./service";
+import { groupIdsOfPlan, panelsOfGroups } from "../groups/service";
+import { alignGroups } from "../provisioning/groups";
 
 /**
  * Renewing: more time and more volume on a subscription the customer
@@ -49,12 +50,14 @@ export const assertRenewable = async (executor: Executor, userId: string, subscr
   if (!(RENEWABLE as readonly string[]).includes(subscription.status)) {
     throw new ApiError(409, "NOT_RENEWABLE", `The subscription is ${subscription.status}`);
   }
-  const [soldThere] = await executor
-    .select({ planId: planPanelSettings.planId })
-    .from(planPanelSettings)
-    .innerJoin(subscriptionPanels, eq(subscriptionPanels.panelId, planPanelSettings.panelId))
-    .where(and(eq(planPanelSettings.planId, planId), eq(subscriptionPanels.subscriptionId, subscription.id)));
-  if (!soldThere) {
+  // Renewed where it already is: the plan's groups must take from at least
+  // one panel the subscription is on.
+  const sold = await panelsOfGroups(executor, await groupIdsOfPlan(executor, planId));
+  const on = await executor
+    .select({ panelId: subscriptionPanels.panelId })
+    .from(subscriptionPanels)
+    .where(eq(subscriptionPanels.subscriptionId, subscription.id));
+  if (!sold.some((entry) => on.some((member) => member.panelId === entry.panelId))) {
     throw new ApiError(409, "PLAN_NOT_ON_SALE", "That plan is not sold on any of this subscription's panels");
   }
   return subscription;
@@ -164,7 +167,6 @@ export const applyRenewal = async (db: Db, orderId: string) => {
       dataLimitBytes: limitFor(target.dataLimitBytes, member, used),
       deviceLimit: target.deviceLimit,
       trafficReset: target.trafficReset,
-      groupIds: await groupsFor(db, { planId: plan.id, panelId: member.panelId, serverId: member.serverId }),
       ...(target.expiresAt ? { expiresAt: new Date(target.expiresAt) } : {}),
       ...(target.onHoldDurationSeconds !== undefined ? { onHoldDurationSeconds: target.onHoldDurationSeconds } : {}),
       activate: target.activate,
@@ -187,6 +189,12 @@ export const applyRenewal = async (db: Db, orderId: string) => {
       .update(subscriptions)
       .set({ ...renewed, dataLimitBytes: target.dataLimitBytes, deviceLimit: target.deviceLimit, planId: plan.id })
       .where(eq(subscriptions.id, subscription!.id));
+    // Renewed with a plan of other groups: from now on it gets those.
+    const groupIds = await groupIdsOfPlan(tx, plan.id);
+    if (groupIds.length > 0) {
+      await tx.delete(subscriptionGroups).where(eq(subscriptionGroups.subscriptionId, subscription!.id));
+      await tx.insert(subscriptionGroups).values(groupIds.map((groupId) => ({ subscriptionId: subscription!.id, groupId })));
+    }
     await recordHistory(tx, subscription!.id, "renewed", "system", { planId: plan.id, days: plan.durationDays }, order.id);
     await notifyCustomer(tx, subscription!.userId, "subscription_renewed", {
       plan_name: plan.name,
@@ -197,5 +205,8 @@ export const applyRenewal = async (db: Db, orderId: string) => {
       account_url: siteUrl.account(),
     });
   });
+  // Panel users given the plan's groups now rather than at the next sync; a
+  // panel it was not on is made by the sync.
+  await alignGroups(db, subscription!.id).catch(() => undefined);
   return "renewed" as const;
 };

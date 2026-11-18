@@ -9,7 +9,7 @@ import {
   ScrollText,
   MessageSquare,
   Receipt,
-  Server,
+  Boxes,
   Settings,
   ShieldCheck,
   UserCog,
@@ -32,7 +32,7 @@ type StaffLink = {
     | "subscriptions"
     | "payments"
     | "plans"
-    | "servers"
+    | "groups"
     | "panels"
     | "notifications"
     | "tickets"
@@ -74,7 +74,7 @@ export const STAFF_GROUPS: {
   {
     label: "infrastructure",
     links: [
-      { to: paths.staffServers.getHref(), label: "servers", icon: Server, permission: "servers:manage" },
+      { to: paths.staffGroups.getHref(), label: "groups", icon: Boxes, permission: "servers:manage" },
       { to: paths.staffPanels.getHref(), label: "panels", icon: ShieldCheck, permission: "servers:manage" },
     ],
   },

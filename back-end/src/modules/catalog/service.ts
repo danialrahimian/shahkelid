@@ -6,12 +6,12 @@ import type { Db, Executor } from "../../platform/db/client";
 import { auditBy, type StaffActor } from "../../platform/http/actor";
 import { ApiError, notFound } from "../../platform/http/api-error";
 import { writeAudit } from "../access/audit";
-import { panels } from "../infrastructure/schema";
-import { planPanelSettings, plans } from "./schema";
+import { groups } from "../groups/schema";
+import { planGroups, plans } from "./schema";
 
 /**
- * Plans: volume and time, a device limit, a price in toman, and the panels
- * they are sold on. A plan is never deleted once it exists (orders and
+ * Plans: volume and time, a device limit, a price in toman, and the groups
+ * they are sold with (which decide the panels and configs a buyer gets). A plan is never deleted once it exists (orders and
  * subscriptions point at it): it is archived.
  *
  * What a plan says is copied onto each subscription when it is made, so
@@ -23,21 +23,16 @@ type PlanRow = typeof plans.$inferSelect;
 const views = async (executor: Executor, rows: PlanRow[]): Promise<PlanView[]> => {
   if (rows.length === 0) return [];
   const settings = await executor
-    .select({
-      planId: planPanelSettings.planId,
-      panelId: planPanelSettings.panelId,
-      groupIds: planPanelSettings.groupIds,
-      panelName: panels.name,
-    })
-    .from(planPanelSettings)
-    .innerJoin(panels, eq(panels.id, planPanelSettings.panelId))
+    .select({ planId: planGroups.planId, id: groups.id, name: groups.name })
+    .from(planGroups)
+    .innerJoin(groups, eq(groups.id, planGroups.groupId))
     .where(
       inArray(
-        planPanelSettings.planId,
+        planGroups.planId,
         rows.map((row) => row.id),
       ),
     )
-    .orderBy(asc(panels.name));
+    .orderBy(asc(groups.sortOrder), asc(groups.name));
 
   return rows.map((row) => ({
     id: row.id,
@@ -53,9 +48,7 @@ const views = async (executor: Executor, rows: PlanRow[]): Promise<PlanView[]> =
     isActive: row.isActive,
     sortOrder: row.sortOrder,
     archivedAt: row.archivedAt?.toISOString() ?? null,
-    panels: settings
-      .filter((setting) => setting.planId === row.id)
-      .map(({ panelId, panelName, groupIds }) => ({ panelId, panelName, groupIds })),
+    groups: settings.filter((setting) => setting.planId === row.id).map(({ id, name }) => ({ id, name })),
   }));
 };
 
@@ -84,14 +77,11 @@ export const savePlan = async (
   id: string | null,
   input: z.output<typeof planInput>,
 ): Promise<PlanView> => {
-  const panelIds = [...new Set(input.panels.map((entry) => entry.panelId))];
-  if (panelIds.length !== input.panels.length) {
-    throw new ApiError(400, "VALIDATION_FAILED", "A panel is listed twice", {
-      fields: [{ path: "panels", code: "GROUPS_REQUIRED" }],
-    });
+  const groupIds = [...new Set(input.groupIds)];
+  const known = await db.select({ id: groups.id }).from(groups).where(inArray(groups.id, groupIds));
+  if (known.length !== groupIds.length) {
+    throw new ApiError(400, "VALIDATION_FAILED", "No such group", { fields: [{ path: "groupIds", code: "NOT_FOUND" }] });
   }
-  const known = await db.select({ id: panels.id }).from(panels).where(inArray(panels.id, panelIds));
-  if (known.length !== panelIds.length) throw notFound("No such panel");
 
   const values = {
     slug: input.slug,
@@ -114,14 +104,8 @@ export const savePlan = async (
         ? await tx.update(plans).set(values).where(eq(plans.id, id)).returning()
         : await tx.insert(plans).values(values).returning();
 
-      await tx.delete(planPanelSettings).where(eq(planPanelSettings.planId, row!.id));
-      await tx.insert(planPanelSettings).values(
-        input.panels.map((entry) => ({
-          planId: row!.id,
-          panelId: entry.panelId,
-          groupIds: [...new Set(entry.groupIds)],
-        })),
-      );
+      await tx.delete(planGroups).where(eq(planGroups.planId, row!.id));
+      await tx.insert(planGroups).values(groupIds.map((groupId) => ({ planId: row!.id, groupId })));
 
       const after = await findPlanView(tx, row!.id);
       await writeAudit(tx, {

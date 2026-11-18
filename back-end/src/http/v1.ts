@@ -8,6 +8,7 @@ import { contentStaffRouter, journalRouter } from "../modules/content/routes";
 import { crmRouter } from "../modules/crm/routes";
 import { reportsRouter } from "../modules/reports/routes";
 import { identityRouter } from "../modules/identity/routes";
+import { groupsRouter } from "../modules/groups/routes";
 import { infrastructureRouter } from "../modules/infrastructure/routes";
 import { logsRouter } from "../modules/logs/routes";
 import { notificationsRouter } from "../modules/notifications/routes";
@@ -41,6 +42,7 @@ export const createV1Router = () => {
   router.use("/staff", accessRouter({ db }));
   router.use("/staff", logsRouter({ db }));
   router.use("/staff", infrastructureRouter({ db }));
+  router.use("/staff", groupsRouter({ db }));
   router.use("/staff", catalogRouter({ db }));
   router.use("/staff", crmRouter({ db }));
   router.use("/staff/reports", reportsRouter({ db }));

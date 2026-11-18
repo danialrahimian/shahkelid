@@ -22,11 +22,11 @@ import { createProducerConnection } from "../src/platform/redis";
 import { createClient } from "./helpers/api-client";
 import { aCustomerAccount, closeDatabase, database, signedInStaff } from "./helpers/accounts";
 import { resetTestDatabase } from "./helpers/postgres";
-import { aStore, installFakePanels, owner, type Staff } from "./helpers/store";
+import { aStore, emptyGroup, installFakePanels, owner, type Staff } from "./helpers/store";
 import { getBaseUrl, startTestServer, stopTestServer } from "./helpers/test-server";
 
 /**
- * Panels, servers, plans and subscriptions: /api/v1/staff and /s/:token.
+ * Panels, groups, plans and subscriptions: /api/v1/staff and /s/:token.
  *
  * The panel is a fake that behaves the way the contract tests showed the
  * real PasarGuard behaves (test/pasarguard.contract.test.ts). Everything
@@ -169,21 +169,15 @@ describe("Panels", () => {
     assert.equal(saved.length, 0);
   });
 
-  it("When a server names a group the panel does not have, then it is refused", async () => {
+  it("When a group takes a panel group the panel does not have, then it is refused", async () => {
     const store = await aStore();
-    const [location] = (await store.staff.client.get(`${V1}/locations`)).data;
 
-    const response = await store.staff.client.post(`${V1}/servers`, {
-      panelId: store.panelId,
-      locationId: location.id,
-      name: "nowhere",
-      host: "x.example.com",
-      panelGroupId: 99,
-      capacityUsers: 10,
+    const response = await store.staff.client.put(`${V1}/groups/${store.groupId}/sources`, {
+      sources: [{ panelId: store.panelId, panelGroupId: 99, allHosts: true }],
     });
 
     assert.equal(response.status, 400);
-    assert.equal(response.data.error.fields[0].path, "panelGroupId");
+    assert.equal(response.data.error.fields[0].path, "sources.0.panelGroupId");
   });
 
   it("When support staff (no servers:manage) ask for the panels, then it is forbidden", async () => {
@@ -204,7 +198,10 @@ describe("Plans", () => {
 
     assert.equal(plan.data.dataLimitBytes, 50 * GB);
     assert.equal(plan.data.priceToman, 150_000);
-    assert.equal(plan.data.panels.length, 1);
+    assert.deepEqual(
+      plan.data.groups.map((group: { id: string }) => group.id),
+      [store.groupId],
+    );
   });
 
   it("When a slug is taken, then the second plan is refused on that field", async () => {
@@ -218,7 +215,7 @@ describe("Plans", () => {
       durationDays: 30,
       deviceLimit: null,
       priceToman: 1,
-      panels: [{ panelId: store.panelId, groupIds: [] }],
+      groupIds: [store.groupId],
     });
 
     assert.equal(response.status, 409);
@@ -228,60 +225,44 @@ describe("Plans", () => {
 
 // ------------------------------------------------------------- placement
 
-describe("Choosing a server", () => {
-  it("When there are several servers, then the highest priority with room is chosen", async () => {
-    const store = await aStore({
-      servers: [
-        { capacity: 10, priority: 0 },
-        { capacity: 10, priority: 5 },
-      ],
-    });
+describe("Where a subscription goes", () => {
+  it("When a plan is sold through a group, then the subscription carries the group and is on its panel", async () => {
+    const store = await aStore();
 
     const { response } = await subscribe(store.staff, store.planId);
 
-    assert.equal(response.data.server.id, store.serverIds[1]);
+    assert.equal(response.status, 201, JSON.stringify(response.data));
+    assert.deepEqual(
+      response.data.groups.map((group: { id: string }) => group.id),
+      [store.groupId],
+    );
+    assert.deepEqual(
+      response.data.panels.map((panel: { id: string }) => panel.id),
+      [store.panelId],
+    );
+    assert.equal(response.data.server, undefined, "no servers any more");
   });
 
-  it("When a server is full, then the next one is used, and with none left the sale is refused", async () => {
-    const store = await aStore({
-      servers: [
-        { capacity: 1, priority: 5 },
-        { capacity: 1, priority: 0 },
-      ],
-    });
+  it("When the plan's group gives nothing, then the sale is refused with what to fix", async () => {
+    const store = await aStore();
+    await emptyGroup(store);
 
-    const first = await subscribe(store.staff, store.planId);
-    const second = await subscribe(store.staff, store.planId);
-    const third = await subscribe(store.staff, store.planId);
+    const { response } = await subscribe(store.staff, store.planId);
 
-    assert.equal(first.response.data.server.id, store.serverIds[0]);
-    assert.equal(second.response.data.server.id, store.serverIds[1]);
-    assert.equal(third.response.status, 409);
-    assert.equal(third.response.data.error.code, "NO_SERVER_AVAILABLE");
+    assert.equal(response.status, 409);
+    assert.equal(response.data.error.code, "NO_SERVER_AVAILABLE");
+    assert.match(response.data.error.message, /take nothing from any panel/);
   });
 
-  it("When customers are placed, then the server list counts them", async () => {
-    const store = await aStore({ servers: [{ capacity: 10, priority: 0 }] });
-    await subscribe(store.staff, store.planId);
-    await subscribe(store.staff, store.planId);
-
-    const list = await store.staff.client.get(`${V1}/servers`);
-
-    const server = list.data.find((row: { id: string }) => row.id === store.serverIds[0]);
-    assert.equal(server.liveSubscriptions, 2);
-  });
-
-  it("When two sales race for the last place, then only one gets it", async () => {
-    const store = await aStore({ servers: [{ capacity: 1, priority: 0 }] });
-    const [a, b] = await Promise.all([aCustomerAccount(), aCustomerAccount()]);
+  it("When many sales happen at once, then each is made: there is no seat limit", async () => {
+    const store = await aStore();
+    const customers = await Promise.all([aCustomerAccount(), aCustomerAccount(), aCustomerAccount()]);
 
     const results = await Promise.all(
-      [a, b].map((customer) =>
-        store.staff.client.post(`${V1}/subscriptions`, { userId: customer.id, planId: store.planId }),
-      ),
+      customers.map((customer) => store.staff.client.post(`${V1}/subscriptions`, { userId: customer.id, planId: store.planId })),
     );
 
-    assert.deepEqual(results.map((r) => r.status).sort(), [201, 409]);
+    assert.deepEqual(results.map((r) => r.status), [201, 201, 201]);
   });
 });
 
@@ -313,7 +294,7 @@ describe("Putting a subscription on the panel", () => {
     assert.equal(user.dataLimitBytes, 50 * GB);
     assert.equal(user.deviceLimit, 2);
     assert.equal(user.onHoldDurationSeconds, 30 * 86400);
-    assert.deepEqual(user.groupIds, [2, 7], "the server's group and the plan's extra group");
+    assert.deepEqual(user.groupIds, [2, 7], "both panel groups the plan's group takes");
 
     const detail = await store.staff.client.get(`${V1}/subscriptions/${response.data.id}`);
     assert.equal(detail.data.subscription.status, "on_hold");
@@ -591,8 +572,8 @@ describe("What staff can do to a subscription", () => {
     assert.equal(reset.data.error.code, "NOT_PROVISIONED");
   });
 
-  it("When a subscription is deleted, then it leaves the panel and its link, and frees its place", async () => {
-    const store = await aStore({ servers: [{ capacity: 1, priority: 0 }] });
+  it("When a subscription is deleted, then it leaves the panel and its link", async () => {
+    const store = await aStore();
     store.fake.subscriptionBase = linkBase;
     const subscription = await aLiveSubscription(store);
 
@@ -602,7 +583,7 @@ describe("What staff can do to a subscription", () => {
     assert.equal(store.fake.users.size, 0);
     assert.equal((await fetch(`${getBaseUrl()}${new URL(subscription.link).pathname}`)).status, 404);
     const next = await subscribe(store.staff, store.planId);
-    assert.equal(next.response.status, 201, "the server has room again");
+    assert.equal(next.response.status, 201);
   });
 });
 

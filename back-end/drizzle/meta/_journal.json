@@ -71,6 +71,13 @@
       "when": 1794841397483,
       "tag": "0009_subscription_panels",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794909764011,
+      "tag": "0010_groups",
+      "breakpoints": true
     }
   ]
 }

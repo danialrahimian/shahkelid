@@ -16,6 +16,7 @@ import { subscriptionPanels, subscriptions } from "../subscriptions/schema";
 import type { SubscriptionRow } from "../subscriptions/service";
 import type { PanelUser } from "./driver";
 import { driverFor, type PanelRow } from "./drivers";
+import { alignGroups, misaligned } from "./groups";
 import { provisionPending } from "./provision";
 
 /**
@@ -156,6 +157,16 @@ export const syncAllPanels = async (db: Db) => {
       const message = (error as Error).message.slice(0, 500);
       results[panel.id] = { error: message };
       await db.update(panels).set({ lastError: message }).where(eq(panels.id, panel.id));
+    }
+  }
+  // Groups staff changed since: each subscription's panel users given what
+  // its groups now give (new panels are made by settle, as pending ones).
+  for (const id of await misaligned(db)) {
+    try {
+      touched.add(id);
+      if (await alignGroups(db, id)) pending.add(id);
+    } catch (error) {
+      results[`groups:${id}`] = { error: (error as Error).message.slice(0, 500) };
     }
   }
   await settle(db, touched, pending);

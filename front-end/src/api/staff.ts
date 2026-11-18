@@ -1,5 +1,7 @@
 import type {
   CreateSubscriptionInput,
+  GroupHostsView,
+  GroupView,
   NotificationLogView,
   NotificationTemplateInput,
   NotificationTemplateKey,
@@ -16,16 +18,12 @@ import type {
   CustomerSegments,
   CustomerSort,
   CustomerStage,
-  LocationInput,
-  LocationView,
   PanelGroup,
   PanelInput,
   PanelUpdateInput,
   PanelView,
   PlanInput,
   PlanView,
-  ServerInput,
-  ServerView,
   SubscriptionAction,
   SubscriptionEventView,
   SubscriptionStatus,
@@ -41,7 +39,7 @@ import type {
 import { api } from "@/lib/api";
 
 /**
- * The staff area's requests (/api/v1/staff): panels, servers, plans,
+ * The staff area's requests (/api/v1/staff): panels, groups, plans,
  * customers and subscriptions.
  *
  * Every endpoint name starts with "staff". Like the account endpoints, their
@@ -74,7 +72,7 @@ export const staffApi = api.injectEndpoints({
     }),
     staffUpdatePanel: builder.mutation<PanelView, { id: string; body: PanelUpdateInput }>({
       query: ({ id, body }) => ({ url: `${STAFF}/panels/${id}`, method: "PUT", body }),
-      invalidatesTags: ["StaffPanel", "StaffServer", "StaffPlan"],
+      invalidatesTags: ["StaffPanel", "StaffPlan"],
     }),
     staffCheckPanel: builder.mutation<PanelView, string>({
       query: (id) => ({ url: `${STAFF}/panels/${id}/check`, method: "POST" }),
@@ -84,36 +82,64 @@ export const staffApi = api.injectEndpoints({
       query: (id) => `${STAFF}/panels/${id}/groups`,
     }),
 
-    // --------------------------------------------------------- locations
-    staffLocations: builder.query<LocationView[], void>({
-      query: () => `${STAFF}/locations`,
-      providesTags: ["StaffLocation"],
+    // ------------------------------------------------------------ groups
+    staffGroups: builder.query<GroupView[], void>({
+      query: () => `${STAFF}/groups`,
+      providesTags: ["StaffGroup"],
     }),
-    staffSaveLocation: builder.mutation<LocationView, { id?: string; body: LocationInput }>({
-      query: ({ id, body }) => ({
-        url: id ? `${STAFF}/locations/${id}` : `${STAFF}/locations`,
+    staffSaveGroup: builder.mutation<GroupView, { id?: string; name: string }>({
+      query: ({ id, name }) => ({
+        url: id ? `${STAFF}/groups/${id}` : `${STAFF}/groups`,
         method: id ? "PUT" : "POST",
-        body,
+        body: { name },
       }),
-      invalidatesTags: ["StaffLocation", "StaffServer"],
+      invalidatesTags: ["StaffGroup", "StaffPlan"],
     }),
-
-    // ----------------------------------------------------------- servers
-    staffServers: builder.query<ServerView[], void>({
-      query: () => `${STAFF}/servers`,
-      providesTags: ["StaffServer"],
+    staffDeleteGroup: builder.mutation<void, string>({
+      query: (id) => ({ url: `${STAFF}/groups/${id}`, method: "DELETE" }),
+      invalidatesTags: ["StaffGroup"],
     }),
-    staffSaveServer: builder.mutation<ServerView, { id?: string; body: ServerInput }>({
-      query: ({ id, body }) => ({
-        url: id ? `${STAFF}/servers/${id}` : `${STAFF}/servers`,
-        method: id ? "PUT" : "POST",
-        body,
+    staffOrderGroups: builder.mutation<GroupView[], string[]>({
+      query: (ids) => ({ url: `${STAFF}/groups/order`, method: "PUT", body: { ids } }),
+      invalidatesTags: ["StaffGroup"],
+    }),
+    staffSetGroupSources: builder.mutation<
+      GroupView,
+      { id: string; sources: { panelId: string; panelGroupId: number; allHosts: boolean }[] }
+    >({
+      query: ({ id, sources }) => ({ url: `${STAFF}/groups/${id}/sources`, method: "PUT", body: { sources } }),
+      invalidatesTags: ["StaffGroup", "StaffGroupHosts"],
+    }),
+    staffGroupHosts: builder.query<GroupHostsView, string>({
+      query: (id) => `${STAFF}/groups/${id}/hosts`,
+      providesTags: ["StaffGroupHosts"],
+    }),
+    staffUpdateGroupHost: builder.mutation<
+      unknown,
+      { id: string; panelId: string; hostId: number; change: { selected?: boolean; name?: string | null } }
+    >({
+      query: ({ id, panelId, hostId, change }) => ({
+        url: `${STAFF}/groups/${id}/hosts/${panelId}/${hostId}`,
+        method: "PATCH",
+        body: change,
       }),
-      invalidatesTags: ["StaffServer"],
+      // Shown at once (a tick should not wait for the server); put back if the save fails.
+      async onQueryStarted({ id, panelId, hostId, change }, { dispatch, queryFulfilled }) {
+        const patch = dispatch(
+          staffApi.util.updateQueryData("staffGroupHosts", id, (draft) => {
+            const host = draft.hosts.find((each) => each.panelId === panelId && each.hostId === hostId);
+            if (!host) return;
+            if (change.selected !== undefined) host.selected = change.selected;
+            if (change.name !== undefined) host.name = change.name === "" ? null : change.name;
+          }),
+        );
+        await queryFulfilled.catch(() => patch.undo());
+      },
+      invalidatesTags: ["StaffGroupHosts"],
     }),
-    staffArchiveServer: builder.mutation<ServerView, string>({
-      query: (id) => ({ url: `${STAFF}/servers/${id}/archive`, method: "POST" }),
-      invalidatesTags: ["StaffServer"],
+    staffOrderGroupHosts: builder.mutation<unknown, { id: string; hosts: { panelId: string; hostId: number }[] }>({
+      query: ({ id, hosts }) => ({ url: `${STAFF}/groups/${id}/hosts/order`, method: "PUT", body: { hosts } }),
+      invalidatesTags: ["StaffGroupHosts"],
     }),
 
     // ------------------------------------------------------------- plans
@@ -196,7 +222,7 @@ export const staffApi = api.injectEndpoints({
     }),
     staffCreateSubscription: builder.mutation<SubscriptionView, CreateSubscriptionInput>({
       query: (body) => ({ url: `${STAFF}/subscriptions`, method: "POST", body }),
-      invalidatesTags: ["StaffSubscription", "StaffCustomer", "StaffServer"],
+      invalidatesTags: ["StaffSubscription", "StaffCustomer"],
     }),
     staffSubscriptionAction: builder.mutation<
       SubscriptionView,
@@ -206,7 +232,7 @@ export const staffApi = api.injectEndpoints({
         url: `${STAFF}/subscriptions/${id}/actions/${action}`,
         method: "POST",
       }),
-      invalidatesTags: ["StaffSubscription", "StaffCustomer", "StaffServer"],
+      invalidatesTags: ["StaffSubscription", "StaffCustomer"],
     }),
 
     // ---------------------------------------------------------- payments
@@ -266,7 +292,7 @@ export const staffApi = api.injectEndpoints({
     }),
     staffFulfilOrder: builder.mutation<OrderView, string>({
       query: (id) => ({ url: `${STAFF}/orders/${id}/fulfil`, method: "POST" }),
-      invalidatesTags: ["StaffOrder", "StaffCustomer", "StaffSubscription", "StaffServer"],
+      invalidatesTags: ["StaffOrder", "StaffCustomer", "StaffSubscription"],
     }),
     staffTickets: builder.query<StaffTicketSummary[], { status?: TicketStatus; assignee: "me" | "none" | "all" }>({
       query: ({ status, assignee }) => ({ url: `${STAFF}/tickets`, params: status ? { status, assignee } : { assignee } }),
@@ -312,11 +338,14 @@ export const {
   useStaffUpdatePanelMutation,
   useStaffCheckPanelMutation,
   useStaffPanelGroupsQuery,
-  useStaffLocationsQuery,
-  useStaffSaveLocationMutation,
-  useStaffServersQuery,
-  useStaffSaveServerMutation,
-  useStaffArchiveServerMutation,
+  useStaffGroupsQuery,
+  useStaffSaveGroupMutation,
+  useStaffDeleteGroupMutation,
+  useStaffOrderGroupsMutation,
+  useStaffSetGroupSourcesMutation,
+  useStaffGroupHostsQuery,
+  useStaffUpdateGroupHostMutation,
+  useStaffOrderGroupHostsMutation,
   useStaffPlansQuery,
   useStaffSavePlanMutation,
   useStaffArchivePlanMutation,

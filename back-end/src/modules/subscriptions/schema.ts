@@ -19,7 +19,8 @@ import { actorKind } from "../access/schema";
 import { orders } from "../billing/schema";
 import { plans } from "../catalog/schema";
 import { users } from "../identity/schema";
-import { panels, servers } from "../infrastructure/schema";
+import { groups } from "../groups/schema";
+import { panels } from "../infrastructure/schema";
 import { at, createdAt, id, updatedAt, wholeNumber } from "../../platform/db/columns";
 
 export const subscriptionStatus = pgEnum("subscription_status", [
@@ -32,9 +33,6 @@ export const subscriptionStatus = pgEnum("subscription_status", [
   "disabled", // turned off by staff
   "deleted",
 ]);
-
-/** The statuses that still occupy a place on a server. */
-const LIVE = sql`('provisioning', 'on_hold', 'active', 'limited')`;
 
 export const subscriptions = pgTable(
   "subscriptions",
@@ -52,7 +50,6 @@ export const subscriptions = pgTable(
     panelId: uuid("panel_id")
       .notNull()
       .references(() => panels.id, { onDelete: "restrict" }),
-    serverId: uuid("server_id").references(() => servers.id, { onDelete: "restrict" }),
     // Derived from the subscription id, never random: a retried create finds
     // the user a lost attempt made instead of making a second one.
     panelUsername: text("panel_username").notNull(),
@@ -97,8 +94,6 @@ export const subscriptions = pgTable(
     index("subscriptions_expiry_idx")
       .on(t.expiresAt)
       .where(sql`${t.status} in ('active', 'on_hold', 'limited')`),
-    // the placement count: how many live subscriptions each server carries
-    index("subscriptions_server_idx").on(t.serverId).where(sql`${t.status} in ${LIVE}`),
     index("subscriptions_status_idx")
       .on(t.status)
       .where(sql`${t.status} in ('provisioning', 'provisioning_failed')`),
@@ -124,7 +119,6 @@ export const subscriptionPanels = pgTable(
     panelId: uuid("panel_id")
       .notNull()
       .references(() => panels.id, { onDelete: "restrict" }),
-    serverId: uuid("server_id").references(() => servers.id, { onDelete: "restrict" }),
     // null until the user is made on this panel
     panelUserId: integer("panel_user_id"),
     panelSubscriptionUrl: text("panel_subscription_url"),
@@ -139,16 +133,35 @@ export const subscriptionPanels = pgTable(
     onlineAt: at("online_at"),
     lastSyncedAt: at("last_synced_at"),
     lastError: text("last_error"),
+    // the panel groups the user has there, as last read
+    groupIds: integer("group_ids").array().notNull().default(sql`'{}'`),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [
     primaryKey({ columns: [t.subscriptionId, t.panelId] }),
     check("subscription_panels_used_not_negative", sql`${t.usedBytes} >= 0`),
-    // the sync reads a panel's members; placement counts a server's
+    // the sync reads a panel's members
     index("subscription_panels_panel_idx").on(t.panelId),
-    index("subscription_panels_server_idx").on(t.serverId),
   ],
+);
+
+/**
+ * The groups a subscription carries: its plan's, copied when it is made (and
+ * when it is renewed with another plan). What the groups say is read when
+ * the link is served, so renaming a host reaches every customer at once.
+ */
+export const subscriptionGroups = pgTable(
+  "subscription_groups",
+  {
+    subscriptionId: uuid("subscription_id")
+      .notNull()
+      .references(() => subscriptions.id, { onDelete: "cascade" }),
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "restrict" }),
+  },
+  (t) => [primaryKey({ columns: [t.subscriptionId, t.groupId] }), index("subscription_groups_group_idx").on(t.groupId)],
 );
 
 /**
