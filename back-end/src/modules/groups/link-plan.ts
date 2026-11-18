@@ -1,30 +1,37 @@
 import type { Executor } from "../../platform/db/client";
-import type { HostWanted, PanelPlan } from "../subscriptions/configs";
-import { cachedCatalog, hostsOfGroups, protocolOf, type PanelCatalog } from "./catalog";
+import type { HostWanted, PanelPlan, ProbeHost } from "../subscriptions/configs";
+import { cachedProbe, probeUsername } from "./catalog";
 import { findGroup, groupHostsOf, groupIdsOfSubscription } from "./service";
 
 /**
  * What a subscription's groups say about each panel's answer to its link
- * (see subscriptions/configs.ts): the hosts the panel may give, the ones
- * picked with their names and places, and whether configs matching no host
- * are kept. One plan per panel, in the order given.
+ * (see subscriptions/configs.ts): the hosts the panel may give (read through
+ * the shop's own subscription on each panel group), the ones picked with
+ * their names and places, and whether configs matching no host are kept.
+ * One plan per panel, in the order given.
  *
  * null for a subscription that carries no group (made before groups): its
  * link is passed on as the panels give it.
  */
-export const linkPlans = async (executor: Executor, subscriptionId: string, panelIds: string[]): Promise<PanelPlan[] | null> => {
+export const linkPlans = async (
+  executor: Executor,
+  subscriptionId: string,
+  panelIds: string[],
+): Promise<{ plans: PanelPlan[]; usernames: string[] } | null> => {
   const groupIds = await groupIdsOfSubscription(executor, subscriptionId);
   if (groupIds.length === 0) return null;
 
-  const catalogs = new Map<string, PanelCatalog | null>();
-  const read = async (panel: Parameters<typeof cachedCatalog>[0]) => {
-    if (!catalogs.has(panel.id)) catalogs.set(panel.id, await cachedCatalog(panel));
-    const catalog = catalogs.get(panel.id);
-    if (!catalog) throw new Error("The panel cannot be read");
-    return catalog;
+  // Each panel group read once, however many of the customer's groups take it.
+  const probes = new Map<string, ProbeHost[] | null>();
+  const read = async (panel: Parameters<typeof cachedProbe>[0], panelGroupId: number) => {
+    const key = `${panel.id}:${panelGroupId}`;
+    if (!probes.has(key)) probes.set(key, await cachedProbe(panel, panelGroupId));
+    const hosts = probes.get(key);
+    if (!hosts) throw new Error("The panel cannot be read");
+    return hosts;
   };
 
-  const wanted = new Map<string, Map<number, HostWanted>>();
+  const wanted = new Map<string, Map<string, HostWanted>>();
   const panelGroups = new Map<string, Set<number>>();
   const everyHost = new Map<string, boolean>();
   let rank = 0;
@@ -44,22 +51,16 @@ export const linkPlans = async (executor: Executor, subscriptionId: string, pane
     }
   }
 
-  return panelIds.map((panelId): PanelPlan => {
+  const usernames = [...new Set([...panelGroups.values()].flatMap((ids) => [...ids].map(probeUsername)))];
+  const plans = panelIds.map((panelId): PanelPlan => {
     // No group takes from this panel any more: it gives nothing (the sync
     // takes its groups off the panel user too).
     if (!panelGroups.has(panelId)) return { hosts: [], wanted: new Map(), keepUnknown: false };
-    const catalog = catalogs.get(panelId);
-    if (!catalog) return { hosts: null, wanted: new Map(), keepUnknown: true };
-    return {
-      hosts: hostsOfGroups(catalog, [...panelGroups.get(panelId)!])
-        .filter((host) => !host.disabled)
-        .map((host) => ({
-          ...host,
-          protocol: protocolOf(catalog, host),
-          network: catalog.inbounds.find((inbound) => inbound.tag === host.inboundTag)?.network ?? null,
-        })),
-      wanted: wanted.get(panelId) ?? new Map(),
-      keepUnknown: everyHost.get(panelId) ?? false,
-    };
+    const read = [...panelGroups.get(panelId)!].map((panelGroupId) => probes.get(`${panelId}:${panelGroupId}`));
+    if (read.some((hosts) => !hosts)) return { hosts: null, wanted: new Map(), keepUnknown: true };
+    const hosts: ProbeHost[] = [];
+    for (const each of read) for (const host of each!) if (!hosts.some((known) => known.id === host.id)) hosts.push(host);
+    return { hosts, wanted: wanted.get(panelId) ?? new Map(), keepUnknown: everyHost.get(panelId) ?? false };
   });
+  return { plans, usernames };
 };

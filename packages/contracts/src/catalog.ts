@@ -90,7 +90,11 @@ export type PanelView = {
 };
 
 /** A group on a panel (PasarGuard: a set of inbounds), as our groups pick them. */
-export type PanelGroup = { id: number; name: string; inboundTags: string[] };
+/**
+ * A group on a panel. Its inbounds are known only where the panel account
+ * may read them (a reseller account sees ids and names only).
+ */
+export type PanelGroup = { id: number; name: string; inboundTags?: string[] };
 
 // ------------------------------------------------------------------- groups
 
@@ -131,7 +135,9 @@ export const groupHostInput = z
   .refine((value) => value.selected !== undefined || value.name !== undefined, "REQUIRED");
 export type GroupHostInput = z.input<typeof groupHostInput>;
 
-const hostRef = z.object({ panelId: id, hostId: wholeNumber(0, 2_147_483_647) });
+/** A host is known by an id of ours, made from its config (see GroupHostView.hostId). */
+export const hostIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,40}$/, "INVALID");
+const hostRef = z.object({ panelId: id, hostId: hostIdSchema });
 export const hostOrderInput = z.object({ hosts: z.array(hostRef).min(1, "REQUIRED").max(5000, "TOO_LONG") });
 export type HostOrderInput = z.input<typeof hostOrderInput>;
 
@@ -162,14 +168,20 @@ export type GroupView = {
 export type GroupHostView = {
   panelId: string;
   panelName: string;
-  hostId: number;
-  /** The panel's own remark (a template, with PasarGuard's variables). */
+  /**
+   * Ours, made from the config the panel gives (protocol, port, transport,
+   * path and name): panels a reseller account uses do not show their hosts,
+   * so the hosts are read from a subscription the shop keeps on each panel
+   * group (a panel user named skprobe_g<id>).
+   */
+  hostId: string;
+  /** The config's name as the panel gives it to that subscription. */
   remark: string;
-  inboundTag: string | null;
   protocol: string | null;
+  address: string | null;
   port: number | null;
-  /** Switched off on the panel: it gives no config, whatever is chosen here. */
-  disabledOnPanel: boolean;
+  /** Its transport (ws, grpc, tcp…). */
+  network: string | null;
   /** The panel groups (of this group's sources) it is in. */
   panelGroupIds: number[];
   /** Given to customers: picked, or in a source that takes all its hosts. */

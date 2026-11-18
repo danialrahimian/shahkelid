@@ -2,6 +2,7 @@ import {
   groupHostInput,
   groupInput,
   groupOrderInput,
+  hostIdSchema,
   groupSourcesInput,
   hostOrderInput,
 } from "@shah-kelid/contracts";
@@ -40,7 +41,7 @@ import {
  */
 
 const hostIdOf = (req: Request) => {
-  const parsed = z.coerce.number().int().min(0).max(2_147_483_647).safeParse(req.params.hostId);
+  const parsed = hostIdSchema.safeParse(req.params.hostId);
   if (!parsed.success) throw new ApiError(404, "NOT_FOUND", "No such host");
   return parsed.data;
 };

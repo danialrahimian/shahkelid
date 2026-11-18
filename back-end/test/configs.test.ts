@@ -3,7 +3,17 @@ import { describe, it } from "node:test";
 
 import yaml from "js-yaml";
 
-import { matchHosts, readableSize, renderName, shapeConfigs, type PanelPlan, type Totals } from "../src/modules/subscriptions/configs";
+import {
+  matchHosts,
+  probeHosts,
+  readableSize,
+  renderName,
+  shapeConfigs,
+  type Fingerprint,
+  type PanelPlan,
+  type ProbeHost,
+  type Totals,
+} from "../src/modules/subscriptions/configs";
 
 /**
  * Shaping the panels' answers by our groups, without a database: matching
@@ -11,18 +21,6 @@ import { matchHosts, readableSize, renderName, shapeConfigs, type PanelPlan, typ
  */
 
 const GB = 1024 ** 3;
-
-const host = (id: number, remark: string, protocol = "vless") => ({
-  id,
-  remark,
-  inboundTag: `${protocol}-in`,
-  port: null,
-  priority: id,
-  disabled: false,
-  statuses: [],
-  protocol,
-  network: "ws",
-});
 
 const totals: Totals = {
   username: "sk_abc",
@@ -34,14 +32,31 @@ const totals: Totals = {
 };
 const now = new Date("2026-12-01T00:00:00Z");
 
-const plan = (hosts: ReturnType<typeof host>[], wanted: [number, number, string | null][], keepUnknown = false): PanelPlan => ({
+const link = (name: string, scheme = "vless", server = "a.example.com", port = 443) =>
+  `${scheme}://id@${server}:${port}?type=ws&path=%2Fws#${encodeURIComponent(name)}`;
+const b64 = (lines: string[]) => Buffer.from(lines.join("\n")).toString("base64");
+
+/** Hosts as the shop's own subscription reads them. */
+const probe = (...lines: string[]) => probeHosts(lines.join("\n"));
+
+/** A plan picking hosts by their (probe) name: [name, rank, our name]. */
+const plan = (hosts: ProbeHost[], wanted: [string, number, string | null][], keepUnknown = false): PanelPlan => ({
   hosts,
-  wanted: new Map(wanted.map(([id, rank, name]) => [id, { rank, name }])),
+  wanted: new Map(wanted.map(([name, rank, ours]) => [hosts.find((host) => host.name === name)!.id, { rank, name: ours }])),
   keepUnknown,
 });
 
-const link = (name: string, scheme = "vless", server = "a.example.com") => `${scheme}://id@${server}:443?type=ws#${encodeURIComponent(name)}`;
-const b64 = (lines: string[]) => Buffer.from(lines.join("\n")).toString("base64");
+const fp = (name: string, extra: Partial<Fingerprint> = {}): Fingerprint => ({
+  name,
+  protocol: "vless",
+  server: "a.example.com",
+  port: 443,
+  network: "ws",
+  path: "/ws",
+  sni: null,
+  ...extra,
+});
+
 const namesOf = (body: string) =>
   Buffer.from(body, "base64")
     .toString("utf8")
@@ -49,50 +64,40 @@ const namesOf = (body: string) =>
     .map((line) => decodeURIComponent(line.slice(line.indexOf("#") + 1)));
 
 describe("Matching configs to hosts", () => {
-  it("When remarks carry variables, then each config finds its host by the template around them", () => {
-    const hosts = [host(1, "DE {USERNAME}"), host(2, "NL {DATA_LEFT} left", "trojan")];
+  it("When names carry the customer's own values, then each config still finds its host", () => {
+    const hosts = probe(link("DE skprobe_g2 [∞ left]"), link("NL skprobe_g2 [∞ left]", "trojan"));
     const found = matchHosts(
-      [
-        { name: "NL 40 GB left", protocol: "trojan" },
-        { name: "DE sk_abc", protocol: "vless" },
-      ],
+      [fp("NL sk_abc [40 GB left]", { protocol: "trojan" }), fp("DE sk_abc [40 GB left]")],
       hosts,
+      ["sk_abc", "skprobe_g2"],
     );
-    assert.deepEqual(found.map((each) => each?.id), [2, 1]);
+    assert.deepEqual(found.map((each) => each?.name), ["NL skprobe_g2 [∞ left]", "DE skprobe_g2 [∞ left]"]);
   });
 
-  it("When hosts share one remark, then they are told apart by the panel's order and protocol", () => {
-    const hosts = [host(1, "Iran"), host(2, "Iran", "vmess"), host(3, "Iran")];
-    const found = matchHosts(
-      [
-        { name: "Iran", protocol: "vless" },
-        { name: "Iran", protocol: "vmess" },
-        { name: "Iran", protocol: "vless" },
-      ],
-      hosts,
-    );
-    assert.deepEqual(found.map((each) => each?.id), [1, 2, 3]);
+  it("When two hosts differ only by name, then each config goes to the one named like it", () => {
+    const hosts = probe(link("Germany 1"), link("Germany 2"), link("Turkey"));
+    const found = matchHosts([fp("Turkey"), fp("Germany 2"), fp("Germany 1")], hosts);
+    assert.deepEqual(found.map((each) => each?.name), ["Turkey", "Germany 2", "Germany 1"]);
   });
 
-  it("When a host is not given to this user, then the next config is matched past it", () => {
-    const hosts = [host(1, "A"), host(2, "B"), host(3, "C")];
-    const found = matchHosts(
-      [
-        { name: "A", protocol: "vless" },
-        { name: "C", protocol: "vless" },
-      ],
-      hosts,
-    );
-    assert.deepEqual(found.map((each) => each?.id), [1, 3]);
+  it("When two hosts share a name, then the address tells them apart", () => {
+    const hosts = probe(link("Iran", "vless", "a.example.com"), link("Iran", "vless", "b.example.com"));
+    const found = matchHosts([fp("Iran", { server: "b.example.com" }), fp("Iran", { server: "a.example.com" })], hosts);
+    assert.deepEqual(found.map((each) => each?.server), ["b.example.com", "a.example.com"]);
   });
 
-  it("When a config matches no template, then it has no host", () => {
-    assert.deepEqual(matchHosts([{ name: "Something else", protocol: "vless" }], [host(1, "DE {USERNAME}")]), [null]);
+  it("When the port or transport differs, then it is not that host", () => {
+    const hosts = probe(link("DE"));
+    assert.deepEqual(matchHosts([fp("DE", { port: 8443 })], hosts), [null]);
+    assert.deepEqual(matchHosts([fp("DE", { network: "grpc" })], hosts), [null]);
   });
 
-  it("When a remark has characters regular expressions use, then they are matched as written", () => {
-    const found = matchHosts([{ name: "DE (1) [x]+ sk_abc", protocol: "vless" }], [host(1, "DE (1) [x]+ {USERNAME}")]);
-    assert.equal(found[0]?.id, 1);
+  it("A host's id stays the same while it does; twins are numbered by place", () => {
+    const first = probe(link("DE", "vless", "a.example.com"), link("DE", "vless", "a.example.com"));
+    const again = probe(link("DE", "vless", "x.example.com"), link("DE", "vless", "y.example.com"));
+    assert.equal(first[0]!.id, again[0]!.id, "an address picked at random does not change it");
+    assert.equal(first[1]!.id, `${first[0]!.id}-2`);
+    assert.notEqual(probe(link("DE 2"))[0]!.id, first[0]!.id);
   });
 });
 
@@ -128,43 +133,43 @@ describe("PasarGuard's variables in our names", () => {
 });
 
 describe("Shaping an answer", () => {
-  const hosts = [host(1, "DE-1"), host(2, "DE-2"), host(3, "NL", "trojan")];
+  const hosts = probe(link("DE-1"), link("DE-2"), link("NL", "trojan"));
   const body = b64([link("DE-1"), link("DE-2"), link("NL", "trojan")]);
 
   it("When hosts are picked, renamed and ordered, then a base64 list is given back as base64, shaped", () => {
-    const shaped = shapeConfigs([body], [plan(hosts, [[3, 0, null], [1, 1, "Germany {DATA_LEFT}"]])], totals, now)!;
+    const shaped = shapeConfigs([body], [plan(hosts, [["NL", 0, null], ["DE-1", 1, "Germany {DATA_LEFT}"]])], totals, now)!;
     assert.deepEqual(namesOf(shaped), ["NL", "Germany 40 GB"]);
   });
 
   it("When the answer is plain links, then it stays plain", () => {
     const plain = [link("DE-1"), link("DE-2")].join("\n");
-    const shaped = shapeConfigs([plain], [plan(hosts, [[2, 0, null]])], totals, now)!;
+    const shaped = shapeConfigs([plain], [plan(hosts, [["DE-2", 0, null]])], totals, now)!;
     assert.equal(shaped, link("DE-2"));
   });
 
   it("When a vmess link is renamed, then its name inside the JSON changes", () => {
-    const vmess = `vmess://${Buffer.from(JSON.stringify({ add: "x", ps: "VM", port: 1 })).toString("base64")}`;
-    const shaped = shapeConfigs([vmess], [plan([host(9, "VM", "vmess")], [[9, 0, "Renamed"]])], totals, now)!;
+    const vmess = `vmess://${Buffer.from(JSON.stringify({ add: "x", ps: "VM", port: 1, net: "tcp" })).toString("base64")}`;
+    const shaped = shapeConfigs([vmess], [plan(probe(vmess), [["VM", 0, "Renamed"]])], totals, now)!;
     assert.equal(JSON.parse(Buffer.from(shaped.slice(8), "base64").toString("utf8")).ps, "Renamed");
   });
 
   it("When a config matches no host, then it is kept only where every host is taken", () => {
     const withExtra = b64([link("DE-1"), link("Mystery")]);
-    assert.deepEqual(namesOf(shapeConfigs([withExtra], [plan(hosts, [[1, 0, null]], false)], totals, now)!), ["DE-1"]);
-    assert.deepEqual(namesOf(shapeConfigs([withExtra], [plan(hosts, [[1, 0, null]], true)], totals, now)!), ["DE-1", "Mystery"]);
+    assert.deepEqual(namesOf(shapeConfigs([withExtra], [plan(hosts, [["DE-1", 0, null]], false)], totals, now)!), ["DE-1"]);
+    assert.deepEqual(namesOf(shapeConfigs([withExtra], [plan(hosts, [["DE-1", 0, null]], true)], totals, now)!), ["DE-1", "Mystery"]);
   });
 
   it("When a panel cannot be read, then its configs are given as they are, after the others", () => {
     const other = b64([link("Far")]);
     const unknown: PanelPlan = { hosts: null, wanted: new Map(), keepUnknown: true };
-    const shaped = shapeConfigs([other, body], [unknown, plan(hosts, [[2, 0, null]])], totals, now)!;
+    const shaped = shapeConfigs([other, body], [unknown, plan(hosts, [["DE-2", 0, null]])], totals, now)!;
     assert.deepEqual(namesOf(shaped), ["DE-2", "Far"]);
   });
 
   it("When two panels answer, then their configs are one list in the groups' order", () => {
     const a = b64([link("DE-1")]);
     const b = b64([link("NL", "trojan")]);
-    const shaped = shapeConfigs([a, b], [plan(hosts, [[1, 1, null]]), plan(hosts, [[3, 0, null]])], totals, now)!;
+    const shaped = shapeConfigs([a, b], [plan(hosts, [["DE-1", 1, null]]), plan(hosts, [["NL", 0, null]])], totals, now)!;
     assert.deepEqual(namesOf(shaped), ["NL", "DE-1"]);
   });
 
@@ -175,10 +180,10 @@ describe("Shaping an answer", () => {
 
   it("When it is xray JSON, then the configs are picked and renamed by their remarks", () => {
     const xray = JSON.stringify([
-      { remarks: "DE-1", outbounds: [{ protocol: "vless" }] },
-      { remarks: "NL", outbounds: [{ protocol: "trojan" }] },
+      { remarks: "DE-1", outbounds: [{ protocol: "vless", settings: { vnext: [{ address: "a.example.com", port: 443 }] }, streamSettings: { network: "ws", wsSettings: { path: "/ws" } } }] },
+      { remarks: "NL", outbounds: [{ protocol: "trojan", settings: { servers: [{ address: "a.example.com", port: 443 }] }, streamSettings: { network: "ws", wsSettings: { path: "/ws?ed=2048" } } }] },
     ]);
-    const shaped = JSON.parse(shapeConfigs([xray], [plan(hosts, [[3, 0, "Holland"]])], totals, now)!);
+    const shaped = JSON.parse(shapeConfigs([xray], [plan(hosts, [["NL", 0, "Holland"]])], totals, now)!);
     assert.deepEqual(shaped.map((config: { remarks: string }) => config.remarks), ["Holland"]);
   });
 
@@ -188,12 +193,12 @@ describe("Shaping an answer", () => {
         outbounds: [
           { type: "selector", tag: "Select", outbounds: ["Auto", ...tags], default: tags[0] },
           { type: "urltest", tag: "Auto", outbounds: tags },
-          ...tags.map((tag) => ({ type: "vless", tag, server: tag })),
+          ...tags.map((tag) => ({ type: "vless", tag, server: "a.example.com", server_port: 443, transport: { type: "ws", path: "/ws" } })),
           { type: "direct", tag: "direct" },
         ],
       });
     const shaped = JSON.parse(
-      shapeConfigs([profile(["DE-1", "DE-2"])], [plan(hosts, [[1, 0, "Germany"], [2, 1, "Germany"]])], totals, now)!,
+      shapeConfigs([profile(["DE-1", "DE-2"])], [plan(hosts, [["DE-1", 0, "Germany"], ["DE-2", 1, "Germany"]])], totals, now)!,
     ) as { outbounds: { tag: string; outbounds?: string[]; default?: string }[] };
     assert.deepEqual(shaped.outbounds.map((outbound) => outbound.tag), ["Select", "Auto", "Germany", "Germany 2", "direct"]);
     assert.deepEqual(shaped.outbounds[0]!.outbounds, ["Auto", "Germany", "Germany 2"]);
@@ -203,12 +208,12 @@ describe("Shaping an answer", () => {
   it("When Clash proxies are left out, then the proxy groups no longer name them", () => {
     const clash = yaml.dump({
       proxies: [
-        { name: "DE-1", type: "vless", server: "a" },
-        { name: "NL", type: "trojan", server: "b" },
+        { name: "DE-1", type: "vless", server: "a.example.com", port: 443, network: "ws", "ws-opts": { path: "/ws" } },
+        { name: "NL", type: "trojan", server: "a.example.com", port: 443, network: "ws", "ws-opts": { path: "/ws" } },
       ],
       "proxy-groups": [{ name: "Select", type: "select", proxies: ["DE-1", "NL", "DIRECT"] }],
     });
-    const shaped = yaml.load(shapeConfigs([clash], [plan(hosts, [[3, 0, null]])], totals, now)!) as {
+    const shaped = yaml.load(shapeConfigs([clash], [plan(hosts, [["NL", 0, null]])], totals, now)!) as {
       proxies: { name: string }[];
       "proxy-groups": { proxies: string[] }[];
     };

@@ -51,7 +51,7 @@ export type NewPanelUser = Limits & {
         /** ...or at this moment, whichever comes first. */
         startsAtLatest: Date;
       }
-    | { startsOnFirstUse: false; expiresAt: Date }
+    | { startsOnFirstUse: false; /** null: never. */ expiresAt: Date | null }
   );
 
 export type LimitsChange = Partial<Limits> & {
@@ -64,34 +64,12 @@ export type LimitsChange = Partial<Limits> & {
 
 export type PanelHealth = { version: string | null };
 
-/**
- * A host: one config a panel gives each user whose groups include its
- * inbound. Its remark is a template (PasarGuard's variables, like
- * {USERNAME} or {DATA_LEFT}), filled in per user when the link is made.
- */
-export type PanelHost = {
-  id: number;
-  remark: string;
-  inboundTag: string | null;
-  /** null: the inbound's own port. */
-  port: number | null;
-  /** The panel gives hosts in this order (lowest first). */
-  priority: number;
-  disabled: boolean;
-  /** The user statuses it is given to; empty: every status. */
-  statuses: string[];
-};
-
-/** An inbound: what a host's link is made for (vless, vmess, trojan…). */
-export type PanelInbound = { tag: string; protocol: string; network: string | null };
-
 export interface PanelDriver {
   health(): Promise<PanelHealth>;
-  /** The panel's groups, each with the inbounds it grants. */
+  /** The panel's groups (with the inbounds each grants, where the account may read them). */
   listGroups(): Promise<PanelGroup[]>;
-  /** Every host, in the panel's own order. */
-  listHosts(): Promise<PanelHost[]>;
-  listInbounds(): Promise<PanelInbound[]>;
+  /** A user's configs, as links (one per line), read from their subscription link. */
+  readLinks(subscriptionUrl: string): Promise<string>;
   createUser(user: NewPanelUser): Promise<PanelUser>;
   /** null when there is no such user. */
   getUser(username: string): Promise<PanelUser | null>;

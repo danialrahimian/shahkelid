@@ -43,7 +43,8 @@ export const groupSources = pgTable(
 
 /**
  * What our group says about one of its hosts (a host is one config on a
- * panel, addressed by the panel's own id): picked or not, our name for it,
+ * panel, addressed by an id made from the config: groups/catalog.ts): picked
+ * or not, our name for it,
  * and its place. A host with no row is in its source's default (all hosts,
  * or not picked), under the panel's remark, after the ordered ones.
  */
@@ -56,7 +57,7 @@ export const groupHosts = pgTable(
     panelId: uuid("panel_id")
       .notNull()
       .references(() => panels.id, { onDelete: "restrict" }),
-    hostId: integer("host_id").notNull(),
+    hostId: text("host_id").notNull(),
     selected: boolean("selected").notNull().default(false),
     // null: the panel's remark
     name: text("name"),

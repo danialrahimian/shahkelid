@@ -7,8 +7,6 @@ import {
   type NewPanelUser,
   type PanelDriver,
   type PanelHealth,
-  type PanelHost,
-  type PanelInbound,
   type PanelUser,
   type PanelUserStatus,
 } from "./driver";
@@ -40,17 +38,6 @@ type RawUser = {
   group_ids: number[] | null;
   online_at: string | null;
   subscription_url: string;
-};
-
-/** A host, as it arrives (only the fields we read). */
-type RawHost = {
-  id: number;
-  remark: string;
-  inbound_tag: string | null;
-  port: number | null;
-  priority: number;
-  is_disabled?: boolean;
-  status?: string[] | null;
 };
 
 type RawGroup = { id: number; name: string; inbound_tags?: string[] | null; is_disabled?: boolean };
@@ -188,32 +175,51 @@ export class PasarGuardDriver implements PanelDriver {
   }
 
   async listGroups(): Promise<PanelGroup[]> {
-    // The full list: the simple one leaves out the inbounds.
+    // The full list says which inbounds each group grants. A reseller
+    // account may not read it, only ids and names: that is enough, the
+    // configs are read from a subscription (groups/catalog.ts).
     const response = await this.authorized("/api/groups");
+    if (response.status === 403) {
+      const simple = await this.read<{ groups: { id: number; name: string }[] }>(
+        await this.authorized("/api/groups/simple"),
+        "list groups",
+      );
+      return simple.groups.map(({ id, name }) => ({ id, name }));
+    }
     const body = await this.read<{ groups: RawGroup[] }>(response, "list groups");
     return body.groups.map(({ id, name, inbound_tags }) => ({ id, name, inboundTags: inbound_tags ?? [] }));
   }
 
-  async listHosts(): Promise<PanelHost[]> {
-    const response = await this.authorized("/api/hosts");
-    const body = await this.read<RawHost[]>(response, "list hosts");
-    return body
-      .map((raw) => ({
-        id: raw.id,
-        remark: raw.remark,
-        inboundTag: raw.inbound_tag ?? null,
-        port: raw.port ?? null,
-        priority: raw.priority,
-        disabled: raw.is_disabled ?? false,
-        statuses: raw.status ?? [],
-      }))
-      .sort((a, b) => a.priority - b.priority || a.id - b.id);
-  }
-
-  async listInbounds(): Promise<PanelInbound[]> {
-    const response = await this.authorized("/api/inbounds/details");
-    const body = await this.read<{ tag: string; protocol: string; network?: string | null }[]>(response, "list inbounds");
-    return body.map(({ tag, protocol, network }) => ({ tag, protocol, network: network ?? null }));
+  /**
+   * A user's configs as a list of links, from their subscription link: the
+   * plain list, else the base64 one, else what a links app is given (the
+   * panel may have switched formats off).
+   */
+  async readLinks(subscriptionUrl: string): Promise<string> {
+    const bare = subscriptionUrl.replace(/\/+$/, "");
+    const tries: [string, Record<string, string>][] = [
+      [`${bare}/links`, {}],
+      [`${bare}/links_base64`, {}],
+      [bare, { "user-agent": "v2rayNG/1.9.0" }],
+    ];
+    let last: Error | undefined;
+    for (const [url, headers] of tries) {
+      let response: Response;
+      try {
+        response = await this.fetchImpl(url, { headers, signal: AbortSignal.timeout(TIMEOUT_MS), redirect: "follow" });
+      } catch (error) {
+        throw new PanelUnavailableError(`Could not read a subscription link: ${(error as Error).message}`, { cause: error });
+      }
+      const text = await response.text();
+      if (response.ok) {
+        const compact = text.replace(/\s+/g, "");
+        const decoded = /^[A-Za-z0-9+/_-]+=*$/.test(compact) ? Buffer.from(compact, "base64").toString("utf8") : null;
+        const links = decoded && decoded.includes("://") ? decoded : text;
+        if (links.includes("://") || text.trim() === "") return links;
+      }
+      last = new PanelRejectedError(response.status, `read a subscription link: HTTP ${response.status} ${text.slice(0, 200)}`);
+    }
+    throw last!;
   }
 
   async createUser(user: NewPanelUser): Promise<PanelUser> {
@@ -224,7 +230,7 @@ export class PasarGuardDriver implements PanelDriver {
           on_hold_timeout: user.startsAtLatest.toISOString(),
           expire: null,
         }
-      : { status: "active", expire: user.expiresAt.toISOString() };
+      : { status: "active", expire: user.expiresAt?.toISOString() ?? null };
 
     const response = await this.authorized("/api/user", {
       method: "POST",

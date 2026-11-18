@@ -268,7 +268,9 @@ export const subscriptionLinkRouter = ({ db, redis }: { db: Db; redis: Redis }) 
         logger.warn({ err: error }, "Subscription link: the groups could not be read; the panels' answers are given as they are");
         return null;
       });
-      const shaped = plans ? shapeConfigs(bodies, plans, { ...found, username: found.panelUsername }) : null;
+      const shaped = plans
+        ? shapeConfigs(bodies, plans.plans, { ...found, username: found.panelUsername }, new Date(), [found.panelUsername, ...plans.usernames])
+        : null;
       if (good.length > 1) res.removeHeader("content-disposition");
       return res.send(shaped ?? (good.length > 1 ? mergeConfigs(bodies) : bodies[0]!));
     }
