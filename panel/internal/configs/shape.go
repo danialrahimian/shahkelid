@@ -337,3 +337,45 @@ func contains(list []string, value string) bool {
 	}
 	return false
 }
+
+// Merge gives several panels' answers as one, unshaped: a list of links
+// (plain or base64) joined, a JSON list joined. A format that cannot be
+// joined safely (a sing-box or Clash profile) is the main panel's alone.
+func Merge(bodies []string) string {
+	answers := make([]parsed, len(bodies))
+	for i, body := range bodies {
+		answers[i] = parse(body)
+	}
+	switch answers[0].format {
+	case Links:
+		var lines []string
+		seen := map[string]bool{}
+		for _, answer := range answers {
+			if answer.format != Links {
+				return bodies[0]
+			}
+			for _, line := range answer.lines {
+				if !seen[line] {
+					seen[line] = true
+					lines = append(lines, line)
+				}
+			}
+		}
+		text := strings.Join(lines, "\n")
+		if answers[0].base64 {
+			return base64.StdEncoding.EncodeToString([]byte(text))
+		}
+		return text
+	case XrayJSON:
+		var all []map[string]any
+		for _, answer := range answers {
+			if answer.format != XrayJSON {
+				return bodies[0]
+			}
+			all = append(all, answer.xray...)
+		}
+		return writeJSON(all, true)
+	default:
+		return bodies[0]
+	}
+}

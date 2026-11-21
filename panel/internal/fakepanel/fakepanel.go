@@ -76,6 +76,8 @@ type Panel struct {
 	Limited bool
 	// Down answers every API call with 503.
 	Down bool
+	// XrayOff switches the "xray" subscription format off, as an admin may.
+	XrayOff bool
 	// Calls counts requests by "METHOD path" (without the query).
 	Calls map[string]int
 	// PageSize caps how many users one list request gives.
@@ -161,7 +163,7 @@ func (p *Panel) CallCount(key string) int {
 // -------------------------------------------------------------------- HTTP
 
 var userPath = regexp.MustCompile(`^/api/user/by-username/([^/]+)(/disabled)?$`)
-var subPath = regexp.MustCompile(`^/sub/([^/]+)/?(links|links_base64)?$`)
+var subPath = regexp.MustCompile(`^/sub/([^/]+)/?(links|links_base64|xray)?$`)
 
 func (p *Panel) serve(w http.ResponseWriter, r *http.Request) {
 	p.Mu.Lock()
@@ -447,6 +449,34 @@ func (p *Panel) subscription(w http.ResponseWriter, r *http.Request, token, form
 	w.Header().Set("subscription-userinfo", fmt.Sprintf("upload=0; download=%d; total=%d; expire=0", user.Used, user.DataLimit))
 
 	switch {
+	case format == "xray":
+		if p.XrayOff {
+			writeJSON(w, http.StatusNotAcceptable, map[string]string{"detail": "Client not supported"})
+			return
+		}
+		out := []map[string]any{}
+		for _, c := range configs {
+			stream := map[string]any{"network": c.inbound.Network, "sockopt": map[string]any{"dialerProxy": "fragment"}}
+			if c.inbound.Network == "ws" {
+				stream["wsSettings"] = map[string]any{"path": c.inbound.Path}
+			} else if c.inbound.Network == "grpc" {
+				stream["grpcSettings"] = map[string]any{"serviceName": c.inbound.Path}
+			}
+			var settings map[string]any
+			if c.inbound.Protocol == "trojan" {
+				settings = map[string]any{"servers": []any{map[string]any{"address": c.host.Address, "port": c.host.Port, "password": secret}}}
+			} else {
+				settings = map[string]any{"vnext": []any{map[string]any{"address": c.host.Address, "port": c.host.Port, "users": []any{map[string]any{"id": secret}}}}}
+			}
+			out = append(out, map[string]any{
+				"remarks": c.remark,
+				"outbounds": []any{
+					map[string]any{"protocol": c.inbound.Protocol, "settings": settings, "streamSettings": stream, "tag": "proxy"},
+					map[string]any{"protocol": "freedom", "tag": "fragment", "settings": map[string]any{"fragment": map[string]any{"packets": "tlshello"}}},
+				},
+			})
+		}
+		writeJSON(w, http.StatusOK, out)
 	case format == "" && singBoxApps.MatchString(userAgent):
 		var tags []string
 		outbounds := []map[string]any{}
