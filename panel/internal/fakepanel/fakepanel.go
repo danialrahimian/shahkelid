@@ -124,7 +124,8 @@ func (p *Panel) Use(username string, bytes int64) {
 	user := p.Users[username]
 	user.Used += bytes
 	user.Lifetime += bytes
-	now := time.Now().UTC()
+	// PasarGuard keeps seconds.
+	now := time.Now().UTC().Truncate(time.Second)
 	user.OnlineAt = &now
 	if user.Status == "on_hold" {
 		user.Status = "active"
