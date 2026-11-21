@@ -6,11 +6,15 @@
 // Settings come from the environment (see internal/config). It stops
 // cleanly on SIGINT or SIGTERM: requests in flight finish, the sync in
 // progress ends at its next step.
+//
+// With -health it asks a running service's /health and exits 0 when it
+// answers: the container's health check, in an image without a shell.
 package main
 
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -27,6 +31,11 @@ import (
 )
 
 func main() {
+	health := flag.Bool("health", false, "ask the running service's /health and exit 0 if it is healthy")
+	flag.Parse()
+	if *health {
+		os.Exit(checkHealth())
+	}
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	if err := run(log); err != nil {
 		log.Error("the panel service stopped", "err", err)
@@ -49,7 +58,7 @@ func run(log *slog.Logger) error {
 	defer db.Close()
 
 	clients := panels.New(cfg.EncryptionKey)
-	sync := &syncer.Syncer{
+	usageSync := &syncer.Syncer{
 		Store:            db,
 		Panels:           func(p store.Panel) (syncer.Panel, error) { return clients.For(p) },
 		PanelsAtOnce:     cfg.PanelsAtOnce,
@@ -84,7 +93,7 @@ func run(log *slog.Logger) error {
 	}
 
 	if cfg.SyncEvery > 0 {
-		go sync.Every(ctx, cfg.SyncEvery)
+		go usageSync.Every(ctx, cfg.SyncEvery)
 		go housekeeping(ctx, db, log)
 	}
 
@@ -122,4 +131,25 @@ func housekeeping(ctx context.Context, db *store.Store, log *slog.Logger) {
 		case <-ticker.C:
 		}
 	}
+}
+
+// checkHealth asks the service listening on PANEL_LISTEN (default :7000).
+func checkHealth() int {
+	listen := os.Getenv("PANEL_LISTEN")
+	if listen == "" {
+		listen = ":7000"
+	}
+	if listen[0] == ':' {
+		listen = "127.0.0.1" + listen
+	}
+	client := &http.Client{Timeout: 3 * time.Second}
+	response, err := client.Get("http://" + listen + "/health")
+	if err != nil {
+		return 1
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return 1
+	}
+	return 0
 }
