@@ -85,6 +85,7 @@ func run(log *slog.Logger) error {
 
 	if cfg.SyncEvery > 0 {
 		go sync.Every(ctx, cfg.SyncEvery)
+		go housekeeping(ctx, db, log)
 	}
 
 	failed := make(chan error, 1)
@@ -103,4 +104,22 @@ func run(log *slog.Logger) error {
 	shutdown, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	return server.Shutdown(shutdown)
+}
+
+// housekeeping prunes, once a day, what deleted subscriptions leave behind.
+func housekeeping(ctx context.Context, db *store.Store, log *slog.Logger) {
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+	for {
+		if removed, err := db.PruneDeleted(ctx, 30*24*time.Hour); err != nil {
+			log.Error("pruning deleted subscriptions' copies", "err", err)
+		} else if removed > 0 {
+			log.Info("pruned deleted subscriptions' copies", "rows", removed)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }

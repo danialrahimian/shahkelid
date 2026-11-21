@@ -379,3 +379,24 @@ func (s *Store) SaveSubscriptions(ctx context.Context, updates []SubscriptionUpd
 
 // ErrNotFound is returned when a row asked for is not there.
 var ErrNotFound = errors.New("not found")
+
+// PruneDeleted removes the panel copies and group links of subscriptions
+// deleted more than keep ago. The subscription row stays (orders and
+// tickets point at it, and it keeps its last totals); its copies only
+// matter while it is live.
+func (s *Store) PruneDeleted(ctx context.Context, keep time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-keep)
+	copies, err := s.Pool.Exec(ctx, `
+		delete from subscription_panels m using subscriptions s
+		where s.id = m.subscription_id and s.status = 'deleted' and s.updated_at < $1`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	groups, err := s.Pool.Exec(ctx, `
+		delete from subscription_groups g using subscriptions s
+		where s.id = g.subscription_id and s.status = 'deleted' and s.updated_at < $1`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return copies.RowsAffected() + groups.RowsAffected(), nil
+}

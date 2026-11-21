@@ -78,6 +78,8 @@ type Panel struct {
 	Down bool
 	// XrayOff switches the "xray" subscription format off, as an admin may.
 	XrayOff bool
+	// SubRequests holds the last request for each subscription link, by token.
+	SubRequests map[string]*http.Request
 	// Calls counts requests by "METHOD path" (without the query).
 	Calls map[string]int
 	// PageSize caps how many users one list request gives.
@@ -163,7 +165,7 @@ func (p *Panel) CallCount(key string) int {
 // -------------------------------------------------------------------- HTTP
 
 var userPath = regexp.MustCompile(`^/api/user/by-username/([^/]+)(/disabled)?$`)
-var subPath = regexp.MustCompile(`^/sub/([^/]+)/?(links|links_base64|xray)?$`)
+var subPath = regexp.MustCompile(`^/sub/([^/]+)/?(links|links_base64|xray|usage)?$`)
 
 func (p *Panel) serve(w http.ResponseWriter, r *http.Request) {
 	p.Mu.Lock()
@@ -433,6 +435,10 @@ var singBoxApps = regexp.MustCompile(`^(SFA|SFI|SFM|SFT|[Kk]aring|[Hh]iddify[Nn]
 var clashApps = regexp.MustCompile(`^([Cc]lash|[Ss]tash|FlClash|mihomo)`)
 
 func (p *Panel) subscription(w http.ResponseWriter, r *http.Request, token, format string) {
+	if p.SubRequests == nil {
+		p.SubRequests = map[string]*http.Request{}
+	}
+	p.SubRequests[token] = r.Clone(r.Context())
 	var user *User
 	for _, candidate := range p.Users {
 		if candidate.Token == token {
@@ -447,6 +453,12 @@ func (p *Panel) subscription(w http.ResponseWriter, r *http.Request, token, form
 	secret := fmt.Sprintf("uuid-%d", user.ID)
 	userAgent := r.Header.Get("user-agent")
 	w.Header().Set("subscription-userinfo", fmt.Sprintf("upload=0; download=%d; total=%d; expire=0", user.Used, user.DataLimit))
+	w.Header().Set("profile-web-page-url", p.URL()+"/sub/"+token)
+	w.Header().Set("x-powered-by-panel", "pasarguard")
+	if format == "usage" {
+		writeJSON(w, http.StatusOK, map[string]any{"query": r.URL.RawQuery, "stats": []any{map[string]any{"at": "t", "used": user.Used}}})
+		return
+	}
 
 	switch {
 	case format == "xray":

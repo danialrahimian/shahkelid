@@ -9,7 +9,7 @@ import { TOPIC_ROUTES } from "../platform/queue/routes";
 import { createProducerConnection } from "../platform/redis";
 import { scheduleReminders, startNotificationsWorker } from "../modules/notifications/email-worker";
 import { scheduleBilling, startBillingWorker } from "../modules/billing/worker";
-import { scheduleUsageSync, startProvisioningWorker } from "../modules/provisioning/worker";
+import { retireUsageSync, startProvisioningWorker } from "../modules/provisioning/worker";
 import { writeBackupEnvironment } from "../modules/settings/backup-control";
 import { startSettingsRefresh, stopSettingsRefresh } from "../modules/settings/live";
 
@@ -66,7 +66,7 @@ const main = async () => {
   const billing = startBillingWorker({ db });
   // Redis may be down at start; the relay copes with that, and so does this.
   const schedule = () =>
-    Promise.all([scheduleUsageSync(), scheduleBilling(), scheduleReminders()]).catch((error: unknown) => {
+    Promise.all([retireUsageSync(), scheduleBilling(), scheduleReminders()]).catch((error: unknown) => {
       logger.warn({ err: error }, "Could not schedule the recurring jobs yet; trying again in 30 s");
       setTimeout(schedule, 30_000).unref();
     });

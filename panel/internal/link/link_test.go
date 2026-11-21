@@ -371,3 +371,143 @@ func TestHeadAsksOnlyForHeaders(t *testing.T) {
 		t.Fatalf("status %d headers %v", response.StatusCode, response.Header)
 	}
 }
+
+// ----------------------------------------- what reaches and leaves a panel
+
+func TestHeadersReachingAndLeavingThePanel(t *testing.T) {
+	w := newWorld(t)
+	token, username := w.customer()
+
+	response, _ := w.get("/s/"+token, oldV2rayNG, "x-hwid", "device-1", "cookie", "secret=1")
+
+	w.panel.Mu.Lock()
+	asked := w.panel.SubRequests["cust"+username]
+	w.panel.Mu.Unlock()
+	if asked.Header.Get("user-agent") != oldV2rayNG || asked.Header.Get("x-hwid") != "device-1" {
+		t.Fatalf("the app's name and device id reach the panel: %v", asked.Header)
+	}
+	if asked.Header.Get("cookie") != "" {
+		t.Fatal("cookies do not")
+	}
+	if response.Header.Get("x-powered-by-panel") != "" {
+		t.Fatal("nothing else from the panel comes back")
+	}
+	if response.Header.Get("profile-web-page-url") != "https://shop.test/s/"+token {
+		t.Fatalf("the shop's link, not the panel's: %q", response.Header.Get("profile-web-page-url"))
+	}
+}
+
+func TestUsageHistoryComesFromThePanel(t *testing.T) {
+	w := newWorld(t)
+	token, _ := w.customer()
+
+	response, body := w.get("/s/"+token+"/usage?period=day", oldV2rayNG)
+
+	if response.StatusCode != 200 || !strings.Contains(body, `"query":"period=day"`) {
+		t.Fatalf("status %d body %s", response.StatusCode, body)
+	}
+}
+
+func TestWithoutGroupsTheAnswerIsPassedOnAsItIs(t *testing.T) {
+	w := newWorld(t)
+	token, username := w.customer()
+	if _, err := w.s.Pool.Exec(context.Background(), `delete from subscription_groups`); err != nil {
+		t.Fatal(err)
+	}
+
+	_, body := w.get("/s/"+token, oldV2rayNG)
+
+	request, _ := http.NewRequest(http.MethodGet, w.panel.URL()+"/sub/cust"+username, nil)
+	request.Header.Set("user-agent", oldV2rayNG)
+	direct, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(direct.Body)
+	direct.Body.Close()
+	if body != string(raw) {
+		t.Fatalf("not byte for byte:\n%s\n%s", body, raw)
+	}
+}
+
+// --------------------------------------------------------- groups in order
+
+func TestTwoGroupsInTheirOrderAndReorderingNeverBreaksTheLink(t *testing.T) {
+	w := newWorld(t)
+	nl := testdb.Group(t, w.s, "Netherlands", testdb.Source{PanelID: w.panelID, PanelGroupID: 7, AllHosts: true})
+	token, username := w.customer(2, 7)
+	if _, err := w.s.Pool.Exec(context.Background(), `insert into subscription_groups (subscription_id, group_id)
+		select id, $2 from subscriptions where access_token = $1`, token, nl); err != nil {
+		t.Fatal(err)
+	}
+	order := func(first, second string) {
+		t.Helper()
+		if _, err := w.s.Pool.Exec(context.Background(), `update groups set sort_order = case id when $1::uuid then 0 else 1 end where id in ($1, $2)`, first, second); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := []string{"🇩🇪 DE-1 " + username, "🇩🇪 DE-2 [vmess]", "🇳🇱 NL 53687091200B"}
+
+	order(w.group, nl)
+	if _, body := w.get("/s/"+token, oldV2rayNG); strings.Join(names(t, body), ",") != strings.Join(want, ",") {
+		t.Fatalf("Germany first: %v", names(t, body))
+	}
+	order(nl, w.group)
+	if _, body := w.get("/s/"+token, oldV2rayNG); strings.Join(names(t, body), ",") != strings.Join([]string{want[2], want[0], want[1]}, ",") {
+		t.Fatalf("Netherlands first: %v", names(t, body))
+	}
+
+	de1, de2 := w.hostID(2, "🇩🇪 DE-1"), w.hostID(2, "🇩🇪 DE-2")
+	for i, places := range [][2]int{{1, 0}, {0, 1}, {1, 0}} {
+		w.setHost(de1, true, nil, ptr(places[0]))
+		w.setHost(de2, true, nil, ptr(places[1]))
+		response, body := w.get("/s/"+token, oldV2rayNG)
+		if response.StatusCode != 200 || len(names(t, body)) != 3 {
+			t.Fatalf("round %d: status %d, %v: the link never breaks", i, response.StatusCode, names(t, body))
+		}
+		first := names(t, body)[1]
+		if (places[0] == 0) != strings.HasPrefix(first, "🇩🇪 DE-1") {
+			t.Fatalf("round %d: %v", i, names(t, body))
+		}
+	}
+}
+
+// --------------------------------------------------------------- two panels
+
+func TestTwoPanelsOneListAndTheWholeVolume(t *testing.T) {
+	w := newWorld(t)
+	other := fakepanel.New()
+	t.Cleanup(other.Close)
+	otherID := testdb.Panel(t, w.s, "Other", other.URL())
+	testdb.SetSources(t, w.s, w.group, testdb.Source{PanelID: w.panelID, PanelGroupID: 2, AllHosts: true}, testdb.Source{PanelID: otherID, PanelGroupID: 7, AllHosts: true})
+	token, username := w.customer()
+	ctx := context.Background()
+	other.Mu.Lock()
+	other.Users[username] = &fakepanel.User{ID: 5, Username: username, Status: "active", DataLimit: 40 * gb, Used: 10 * gb, GroupIDs: []int64{7}, Token: "b" + username}
+	other.Mu.Unlock()
+	if _, err := w.s.Pool.Exec(ctx, `insert into subscription_panels (subscription_id, panel_id, panel_user_id, panel_subscription_url)
+		select id, $2, 5, $3 from subscriptions where access_token = $1`, token, otherID, other.URL()+"/sub/b"+username); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.s.Pool.Exec(ctx, `update subscriptions set used_bytes = $2 where access_token = $1`, token, 12*gb); err != nil {
+		t.Fatal(err)
+	}
+
+	response, body := w.get("/s/"+token, oldV2rayNG)
+
+	if got := names(t, body); len(got) != 3 || !strings.HasPrefix(got[2], "🇳🇱 NL") {
+		t.Fatalf("both panels' configs in one list: %v", got)
+	}
+	if got := response.Header.Get("subscription-userinfo"); !strings.Contains(got, "download=12884901888") || !strings.Contains(got, "total=53687091200") {
+		t.Fatalf("the whole volume, not one panel's share: %q", got)
+	}
+
+	other.Mu.Lock()
+	other.Server.CloseClientConnections()
+	other.Mu.Unlock()
+	other.Close()
+	response, body = w.get("/s/"+token, oldV2rayNG)
+	if response.StatusCode != 200 || len(names(t, body)) != 2 {
+		t.Fatalf("one panel not answering: status %d, %v", response.StatusCode, names(t, body))
+	}
+}

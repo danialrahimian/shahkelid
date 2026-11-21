@@ -10,6 +10,7 @@ import type { PanelUser } from "../src/modules/provisioning/driver";
 import { provisionSubscription } from "../src/modules/provisioning/provision";
 import { runRenewalJob } from "../src/modules/provisioning/worker";
 import { renewalTarget } from "../src/modules/subscriptions/renewal";
+import { panels } from "../src/modules/infrastructure/schema";
 import { subscriptionEvents, subscriptions } from "../src/modules/subscriptions/schema";
 import { panelUsernameFor } from "../src/modules/subscriptions/service";
 import { outboxEvents } from "../src/platform/db/platform-schema";
@@ -26,6 +27,13 @@ import { getBaseUrl, startTestServer, stopTestServer } from "./helpers/test-serv
  * Days are added to the current expiry, volume to what is left; an expired
  * service starts again from today.
  */
+
+/** As if neither the subscription nor its panel had been read for a while. */
+const notReadFor = async (subscriptionId: string, ms: number) => {
+  const at = new Date(Date.now() - ms);
+  const [row] = await database().update(subscriptions).set({ lastSyncedAt: at }).where(eq(subscriptions.id, subscriptionId)).returning();
+  await database().update(panels).set({ lastOkAt: at }).where(eq(panels.id, row!.panelId));
+};
 
 const SHOP = "/api/v1/shop";
 const GB = 1024 ** 3;
@@ -164,7 +172,7 @@ describe("Renewing", () => {
     const username = panelUsernameFor(subscriptionId);
     store.fake.use(username, 10 * GB); // starts the clock: 30 days, 40 GB left
     // A few minutes later the customer opens their panel, which reads it.
-    await database().update(subscriptions).set({ lastSyncedAt: new Date(Date.now() - 5 * 60_000) }).where(eq(subscriptions.id, subscriptionId));
+    await notReadFor(subscriptionId, 5 * 60_000);
     const before = (await buyer.client.get(`${SHOP}/subscriptions`)).data[0];
     const expiryBefore = Date.parse(before.expiresAt);
 
@@ -280,7 +288,7 @@ describe("My services", () => {
     const store = await aStore();
     const { buyer, subscriptionId } = await aCustomerWithService(store);
     store.fake.use(panelUsernameFor(subscriptionId), 3 * GB);
-    await database().update(subscriptions).set({ lastSyncedAt: new Date(Date.now() - 5 * 60_000) }).where(eq(subscriptions.id, subscriptionId));
+    await notReadFor(subscriptionId, 5 * 60_000);
 
     const [mine] = (await buyer.client.get(`${SHOP}/subscriptions`)).data;
 
@@ -290,6 +298,22 @@ describe("My services", () => {
     assert.ok(mine.expiresAt);
     assert.match(mine.link, /\/s\//);
     assert.equal(mine.renewable, true);
+  });
+
+  it("When the panel service read the panel a moment ago, then opening the panel does not ask the panel again", async () => {
+    const store = await aStore();
+    const { buyer, subscriptionId } = await aCustomerWithService(store);
+    await notReadFor(subscriptionId, 60 * 60_000);
+    // The panel service's sync read the panel just now and found nothing new
+    // for this subscription: it rewrote no row, only the panel's time.
+    const justNow = new Date();
+    await database().update(panels).set({ lastOkAt: justNow }).where(eq(panels.id, store.panelId));
+    const asked = store.fake.calls.length;
+
+    const [mine] = (await buyer.client.get(`${SHOP}/subscriptions`)).data;
+
+    assert.equal(store.fake.calls.length, asked, "the panel was not asked again");
+    assert.equal(Date.parse(mine.lastSyncedAt), justNow.getTime(), "read when its panel was");
   });
 
   it("When the service has not been used yet, then it shows the days that start at first use", async () => {
@@ -307,7 +331,7 @@ describe("My services", () => {
     const store = await aStore();
     const { buyer, subscriptionId } = await aCustomerWithService(store);
     store.fake.down = true;
-    await database().update(subscriptions).set({ lastSyncedAt: new Date(Date.now() - 5 * 60_000) }).where(eq(subscriptions.id, subscriptionId));
+    await notReadFor(subscriptionId, 5 * 60_000);
 
     const response = await buyer.client.get(`${SHOP}/subscriptions`);
 

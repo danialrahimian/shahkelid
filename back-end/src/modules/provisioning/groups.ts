@@ -20,46 +20,12 @@ import { driverFor } from "./drivers";
  * - On a panel it is not on yet: a row is added, and the user is made on
  *   that panel by the same path as a panel that was down at purchase.
  *
- * The sync looks for subscriptions out of step with one query each run, so
- * a change reaches customers within a sync interval.
+ * The panel service's sync (panel/, in Go) finds the subscriptions out of
+ * step at every run; this is for one subscription now (after a renewal with
+ * a plan of other groups).
  */
 
 const same = (a: number[], b: number[]) => a.length === b.length && [...a].sort((x, y) => x - y).every((id, i) => id === [...b].sort((x, y) => x - y)[i]);
-
-/** Live subscriptions whose panel users' groups differ from what their groups give. */
-export const misaligned = async (db: Db): Promise<string[]> => {
-  const live = sql.join(
-    SYNCED.map((status) => sql`${status}`),
-    sql`, `,
-  );
-  const { rows } = await db.execute<{ id: string }>(sql`
-    with grouped as (
-      select distinct sg.subscription_id
-      from subscription_groups sg
-      join subscriptions s on s.id = sg.subscription_id and s.status in (${live})
-    ),
-    desired as (
-      select sg.subscription_id, gs.panel_id, array_agg(distinct gs.panel_group_id order by gs.panel_group_id) as ids
-      from subscription_groups sg
-      join grouped g on g.subscription_id = sg.subscription_id
-      join group_sources gs on gs.group_id = sg.group_id
-      join panels p on p.id = gs.panel_id and p.is_active
-      group by sg.subscription_id, gs.panel_id
-    ),
-    current as (
-      select m.subscription_id, m.panel_id,
-        coalesce((select array_agg(x order by x) from unnest(m.group_ids) x), '{}') as ids
-      from subscription_panels m
-      join grouped g on g.subscription_id = m.subscription_id
-      join panels p on p.id = m.panel_id and p.is_active
-    )
-    select distinct coalesce(d.subscription_id, c.subscription_id) as id
-    from desired d
-    full join current c on c.subscription_id = d.subscription_id and c.panel_id = d.panel_id
-    where c.subscription_id is null or coalesce(d.ids, '{}') <> c.ids
-  `);
-  return rows.map((row) => row.id);
-};
 
 /**
  * Sets one subscription's panel users to its groups. Returns whether a panel

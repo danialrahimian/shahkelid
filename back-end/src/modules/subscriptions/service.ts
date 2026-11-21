@@ -53,8 +53,26 @@ const iso = (date: Date | null) => date?.toISOString() ?? null;
 
 // ---------------------------------------------------------------- reading
 
+/**
+ * When a subscription's usage was last read. The panel service writes a row
+ * only when something in it changed, not "checked just now" every few
+ * minutes; so a subscription on its panel was read at least as recently
+ * as its panel was.
+ */
+export const checkedAt = (
+  row: { status: string; panelUserId: number | null; lastSyncedAt: Date | null },
+  panelLastOkAt: Date | null,
+) => {
+  const onPanel = row.panelUserId !== null && ["on_hold", "active", "limited", "expired", "disabled"].includes(row.status);
+  const read = onPanel ? panelLastOkAt : null;
+  if (!row.lastSyncedAt) return read;
+  if (!read) return row.lastSyncedAt;
+  return read > row.lastSyncedAt ? read : row.lastSyncedAt;
+};
+
 const viewColumns = {
   subscription: subscriptions,
+  panelLastOkAt: panels.lastOkAt,
   userEmail: accountLabel(),
   planName: plans.name,
   panelName: panels.name,
@@ -68,7 +86,7 @@ const panelsOf = async (executor: Executor, ids: string[]): Promise<PanelsOf> =>
   const byId: PanelsOf = new Map();
   if (ids.length === 0) return byId;
   const rows = await executor
-    .select({ member: subscriptionPanels, panelName: panels.name })
+    .select({ member: subscriptionPanels, panelName: panels.name, panelLastOkAt: panels.lastOkAt })
     .from(subscriptionPanels)
     .innerJoin(panels, eq(panels.id, subscriptionPanels.panelId))
     .where(inArray(subscriptionPanels.subscriptionId, ids))
@@ -85,14 +103,18 @@ const panelsOf = async (executor: Executor, ids: string[]): Promise<PanelsOf> =>
       groups: carried.filter((row) => row.subscriptionId === id).map(({ id: groupId, name }) => ({ id: groupId, name })),
     });
   }
-  for (const { member, panelName } of rows) {
+  for (const { member, panelName, panelLastOkAt } of rows) {
     byId.get(member.subscriptionId)!.panels.push({
       id: member.panelId,
       name: panelName,
       onPanel: member.panelUserId !== null,
       status: member.panelStatus,
       usedBytes: member.usedBytes,
-      lastSyncedAt: iso(member.lastSyncedAt),
+      lastSyncedAt: iso(
+        member.panelUserId !== null && panelLastOkAt && (!member.lastSyncedAt || panelLastOkAt > member.lastSyncedAt)
+          ? panelLastOkAt
+          : member.lastSyncedAt,
+      ),
       lastError: member.lastError,
     });
   }
@@ -101,6 +123,7 @@ const panelsOf = async (executor: Executor, ids: string[]): Promise<PanelsOf> =>
 
 const toView = (row: {
   subscription: SubscriptionRow;
+  panelLastOkAt: Date | null;
   userEmail: string;
   planName: string;
   panelName: string;
@@ -123,7 +146,7 @@ const toView = (row: {
     expiresAt: iso(s.expiresAt),
     startsOnFirstUse: s.startsOnFirstUse,
     onlineAt: iso(s.onlineAt),
-    lastSyncedAt: iso(s.lastSyncedAt),
+    lastSyncedAt: iso(checkedAt(s, row.panelLastOkAt)),
     link: linkFor(s.accessToken, row.subscriptionBaseUrl),
     provisionedAt: iso(s.provisionedAt),
     lastError: s.lastError,

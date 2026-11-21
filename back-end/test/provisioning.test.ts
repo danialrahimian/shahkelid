@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
+import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, describe, it } from "node:test";
 
@@ -10,7 +10,7 @@ import { auditLogs } from "../src/modules/access/schema";
 import { panels } from "../src/modules/infrastructure/schema";
 import { setDriverFactory } from "../src/modules/provisioning/drivers";
 import { provisionSubscription } from "../src/modules/provisioning/provision";
-import { syncAllPanels, syncSubscription } from "../src/modules/provisioning/sync";
+import { syncSubscription } from "../src/modules/provisioning/sync";
 import { runProvisionJob, startProvisioningWorker } from "../src/modules/provisioning/worker";
 import { subscriptionEvents, subscriptions } from "../src/modules/subscriptions/schema";
 import { panelUsernameFor, PROVISION_TOPIC } from "../src/modules/subscriptions/service";
@@ -38,8 +38,6 @@ const GB = 1024 ** 3;
 
 /** A stand-in for the panel's own subscription links, served locally. */
 let linkServer: Server;
-let lastLinkRequest: IncomingHttpHeaders = {};
-let lastLinkUrl = "";
 let linkBase = "";
 
 before(async () => {
@@ -48,8 +46,6 @@ before(async () => {
   installFakePanels();
 
   linkServer = createServer((req, res) => {
-    lastLinkRequest = req.headers;
-    lastLinkUrl = req.url ?? "";
     // As PasarGuard: the subscription page for browsers, and what the page
     // reads beside itself, all naming the panel's own subscription address.
     const self = `${linkBase.replace(/\/sub$/, "")}${(req.url ?? "").split("?")[0]!.replace(/\/(info|apps|links|raw|usage)$/, "")}`;
@@ -421,14 +417,19 @@ describe("Putting a subscription on the panel", () => {
 
 // ------------------------------------------------------------------- usage
 
-describe("Keeping usage in step with the panel", () => {
-  it("[acceptance] When the customer uses the service, then staff see the usage after the sync", async () => {
+/**
+ * The whole fleet is synced by the panel service (panel/, Go, with its own
+ * tests). These are one subscription read now, as when a customer or staff
+ * opens it.
+ */
+describe("Reading one subscription's usage from its panel", () => {
+  it("[acceptance] When the customer uses the service, then staff see the usage once it is read", async () => {
     const store = await aStore();
     const subscription = await aLiveSubscription(store);
     const username = panelUsernameFor(subscription.id);
 
     store.fake.use(username, 3 * GB);
-    await syncAllPanels(database());
+    await syncSubscription(database(), { id: subscription.id, panelUsername: username });
 
     const detail = await store.staff.client.get(`${V1}/subscriptions/${subscription.id}`);
     assert.equal(detail.data.subscription.usedBytes, 3 * GB);
@@ -451,18 +452,18 @@ describe("Keeping usage in step with the panel", () => {
     const subscription = await aLiveSubscription(store);
 
     store.fake.use(panelUsernameFor(subscription.id), 50 * GB);
-    await syncAllPanels(database());
+    await syncSubscription(database(), { id: subscription.id, panelUsername: panelUsernameFor(subscription.id) });
 
     assert.equal((await rowOf(subscription.id)).status, "limited");
   });
 
-  it("When a user disappears from the panel, then it is flagged once, not every sync", async () => {
+  it("When a user disappears from the panel, then it is flagged once, not every read", async () => {
     const store = await aStore();
     const subscription = await aLiveSubscription(store);
     store.fake.users.delete(panelUsernameFor(subscription.id));
 
-    await syncAllPanels(database());
-    await syncAllPanels(database());
+    await syncSubscription(database(), { id: subscription.id, panelUsername: panelUsernameFor(subscription.id) });
+    await syncSubscription(database(), { id: subscription.id, panelUsername: panelUsernameFor(subscription.id) });
 
     assert.equal((await rowOf(subscription.id)).lastError, "Not found on the panel");
     assert.equal((await historyOf(subscription.id)).filter((kind) => kind === "missing_on_panel").length, 1);
@@ -496,20 +497,6 @@ describe("Keeping usage in step with the panel", () => {
     assert.equal(store.fake.users.has(panelUsernameFor(id)), false, "nothing left on the panel taking a place");
     assert.equal((await rowOf(id)).status, "deleted");
   });
-
-  it("When one panel is down, then the others still sync, and the down one says why", async () => {
-    const down = await aStore();
-    const up = await aStore();
-    const subscription = await aLiveSubscription(up);
-    down.fake.down = true;
-    up.fake.use(panelUsernameFor(subscription.id), GB);
-
-    await syncAllPanels(database());
-
-    assert.equal((await rowOf(subscription.id)).usedBytes, GB);
-    const [row] = await database().select().from(panels).where(eq(panels.id, down.panelId));
-    assert.match(row!.lastError ?? "", /down/);
-  });
 });
 
 // ----------------------------------------------------------- staff actions
@@ -525,8 +512,8 @@ describe("What staff can do to a subscription", () => {
 
     assert.equal(revoked.status, 200);
     assert.notEqual(revoked.data.link, subscription.link);
-    assert.equal((await fetch(`${getBaseUrl()}${oldPath}`)).status, 404);
-    assert.equal((await fetch(`${getBaseUrl()}${new URL(revoked.data.link).pathname}`)).status, 200);
+    assert.equal((await fetch(`${getBaseUrl()}${oldPath}/info`)).status, 404);
+    assert.equal((await fetch(`${getBaseUrl()}${new URL(revoked.data.link).pathname}/info`)).status, 200);
   });
 
   it("When staff disable, enable and reset usage, then the panel does it and the history says who", async () => {
@@ -581,7 +568,7 @@ describe("What staff can do to a subscription", () => {
 
     assert.equal(deleted.data.status, "deleted");
     assert.equal(store.fake.users.size, 0);
-    assert.equal((await fetch(`${getBaseUrl()}${new URL(subscription.link).pathname}`)).status, 404);
+    assert.equal((await fetch(`${getBaseUrl()}${new URL(subscription.link).pathname}/info`)).status, 404);
     const next = await subscribe(store.staff, store.planId);
     assert.equal(next.response.status, 201);
   });
@@ -589,38 +576,12 @@ describe("What staff can do to a subscription", () => {
 
 // -------------------------------------------------------- the customer link
 
-describe("The customer's link (/s/:token)", () => {
-  it("When a VPN app fetches the link, then it gets the panel's answer, without the panel's address", async () => {
-    const store = await aStore();
-    store.fake.subscriptionBase = linkBase;
-    const subscription = await aLiveSubscription(store);
-    const path = new URL(subscription.link).pathname;
-
-    const response = await fetch(`${getBaseUrl()}${path}`, {
-      headers: { "user-agent": "v2rayNG/1.9.0", "x-hwid": "device-1", cookie: "secret=1" },
-    });
-
-    assert.equal(response.status, 200);
-    assert.equal(await response.text(), "vless://example@1.2.3.4:443#DE");
-    assert.match(response.headers.get("subscription-userinfo") ?? "", /total=53687091200/);
-    assert.equal(response.headers.get("profile-web-page-url"), subscription.link, "our link, not the panel's");
-    assert.equal(response.headers.get("x-powered-by-panel"), null, "nothing else from the panel");
-    assert.equal(lastLinkRequest["user-agent"], "v2rayNG/1.9.0", "the app's name reaches the panel");
-    assert.equal(lastLinkRequest["x-hwid"], "device-1", "and so does the device id, for the device limit");
-    assert.equal(lastLinkRequest.cookie, undefined, "cookies do not");
-  });
-
-  it("When an app asks for headers only, then HEAD works too", async () => {
-    const store = await aStore();
-    store.fake.subscriptionBase = linkBase;
-    const subscription = await aLiveSubscription(store);
-
-    const response = await fetch(`${getBaseUrl()}${new URL(subscription.link).pathname}`, { method: "HEAD" });
-
-    assert.equal(response.status, 200);
-    assert.match(response.headers.get("subscription-userinfo") ?? "", /total=/);
-  });
-
+/**
+ * The link's configs are the panel service's (panel/, Go, with its own
+ * tests: formats, groups, headers passed and kept back). What the shop
+ * answers from its own records is here: the page, /info and /apps.
+ */
+describe("The customer's link (/s/:token): the page and what it reads", () => {
   it("When the token is unknown or malformed, then it is a plain 404", async () => {
     assert.equal((await fetch(`${getBaseUrl()}/s/${"a".repeat(32)}`)).status, 404);
     assert.equal((await fetch(`${getBaseUrl()}/s/..%2F..%2Fetc`)).status, 404);
@@ -668,32 +629,14 @@ describe("The customer's link (/s/:token)", () => {
     assert.equal(v2rayng?.import_url, `v2rayng://install-config?url=${encodeURIComponent(subscription.link)}`);
     assert.ok(apps.every((app) => !app.import_url || app.import_url.includes(subscription.link) || app.import_url.includes(encodeURIComponent(subscription.link))));
 
-    const usage = (await (await fetch(`${getBaseUrl()}${path}/usage?period=day`)).json()) as { query: string };
-    assert.equal(usage.query, "period=day", "usage history still comes from the panel");
-
     assert.equal((await fetch(`${getBaseUrl()}${path}/admin`)).status, 404, "nothing else is reachable");
-  });
-
-  it("When v2rayN on Windows fetches the link, then it gets the configs byte for byte", async () => {
-    const store = await aStore();
-    store.fake.subscriptionBase = linkBase;
-    const subscription = await aLiveSubscription(store);
-
-    const response = await fetch(`${getBaseUrl()}${new URL(subscription.link).pathname}`, {
-      headers: { "user-agent": "v2rayN/7.10.5" },
-    });
-
-    assert.equal(response.status, 200);
-    assert.equal(await response.text(), "vless://example@1.2.3.4:443#DE");
-    assert.equal(lastLinkRequest["user-agent"], "v2rayN/7.10.5", "the panel picks the format v2rayN reads");
-    assert.match(response.headers.get("subscription-userinfo") ?? "", /total=/);
   });
 
   it("When the subscription is still being made, then its link is not served yet", async () => {
     const store = await aStore();
     const { response } = await subscribe(store.staff, store.planId);
 
-    assert.equal((await fetch(`${getBaseUrl()}${new URL(response.data.link).pathname}`)).status, 404);
+    assert.equal((await fetch(`${getBaseUrl()}${new URL(response.data.link).pathname}/info`)).status, 404);
   });
 });
 

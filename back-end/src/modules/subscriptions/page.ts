@@ -12,7 +12,7 @@ import { users } from "../identity/schema";
 import { panels } from "../infrastructure/schema";
 import { syncSubscription } from "../provisioning/sync";
 import { subscriptions } from "./schema";
-import { linkFor } from "./service";
+import { checkedAt, linkFor } from "./service";
 
 /**
  * The page a customer sees when they open their subscription link in a
@@ -64,6 +64,7 @@ const read = (db: Db, token: string) =>
       username: users.username,
       email: users.email,
       subscriptionBaseUrl: panels.subscriptionBaseUrl,
+      panelLastOkAt: panels.lastOkAt,
     })
     .from(subscriptions)
     .innerJoin(plans, eq(plans.id, subscriptions.planId))
@@ -84,7 +85,7 @@ const read = (db: Db, token: string) =>
 export const pageInfo = async (db: Db, token: string) => {
   let [row] = await read(db, token);
   if (!row) return null;
-  const synced = row.subscription.lastSyncedAt?.getTime() ?? 0;
+  const synced = checkedAt(row.subscription, row.panelLastOkAt)?.getTime() ?? 0;
   if ((SHOWN as readonly string[]).includes(row.subscription.status) && Date.now() - synced > FRESH_MS) {
     const work = syncSubscription(db, row.subscription).catch((error: unknown) =>
       logger.debug({ err: error }, "Subscription page: the panel was not read; showing the last usage"),

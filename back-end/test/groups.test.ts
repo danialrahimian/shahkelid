@@ -5,17 +5,15 @@ import type { AddressInfo } from "node:net";
 import { after, before, beforeEach, describe, it } from "node:test";
 
 import { eq } from "drizzle-orm";
-import yaml from "js-yaml";
 
 import { forgetCatalog } from "../src/modules/groups/catalog";
 import { provisionSubscription } from "../src/modules/provisioning/provision";
-import { syncAllPanels } from "../src/modules/provisioning/sync";
-import { subscriptionPanels, subscriptions } from "../src/modules/subscriptions/schema";
+import { subscriptions } from "../src/modules/subscriptions/schema";
 import { aCustomerAccount, closeDatabase, database, signedInStaff } from "./helpers/accounts";
 import type { FakePanel } from "./helpers/fake-panel";
 import { resetTestDatabase } from "./helpers/postgres";
-import { aStore, fakeFor, installFakePanels, type Store } from "./helpers/store";
-import { getBaseUrl, startTestServer, stopTestServer } from "./helpers/test-server";
+import { aStore, installFakePanels, type Store } from "./helpers/store";
+import { startTestServer, stopTestServer } from "./helpers/test-server";
 
 /**
  * Our groups, end to end: staff make a group from the panels' groups, pick
@@ -135,27 +133,6 @@ const aLive = async (store: Store, planId = store.planId) => {
   return { id: row!.id, token: row!.accessToken, username: row!.panelUsername };
 };
 
-const fetchLink = async (token: string, userAgent: string) => {
-  forgetCatalog();
-  const response = await fetch(`${getBaseUrl()}/s/${token}`, { headers: { "user-agent": userAgent } });
-  return { status: response.status, body: await response.text() };
-};
-
-/** The names in a base64 list of links, in order. */
-const linkNames = (body: string) =>
-  Buffer.from(body, "base64")
-    .toString("utf8")
-    .split("\n")
-    .filter(Boolean)
-    .map((line) =>
-      line.startsWith("vmess://")
-        ? (JSON.parse(Buffer.from(line.slice(8), "base64").toString("utf8")) as { ps: string }).ps
-        : decodeURIComponent(line.slice(line.indexOf("#") + 1)),
-    );
-
-const V2RAYNG = "v2rayNG/1.9.0";
-const HIDDIFY = "HiddifyNext/2.5.7";
-const CLASH = "ClashMetaForAndroid/2.11.0";
 
 // ------------------------------------------------------------ the groups
 
@@ -326,170 +303,6 @@ describe("Naming and ordering hosts and groups", () => {
 
 // ------------------------------------------------------- the customer's link
 
-describe("The customer's link follows their groups", () => {
-  it("When every host is taken, then the link gives them all, as the panel names and orders them", async () => {
-    const store = await aShapedStore();
-    const { token, username } = await aLive(store);
-
-    const { status, body } = await fetchLink(token, V2RAYNG);
-
-    assert.equal(status, 200);
-    assert.deepEqual(linkNames(body), [`🇩🇪 DE-1 ${username}`, "🇩🇪 DE-2 [vmess]", "🇩🇪 DE-3"]);
-  });
-
-  it("When some hosts are picked, then only those are given", async () => {
-    const store = await aShapedStore();
-    const { token } = await aLive(store);
-    await setSources(store, [{ panelGroupId: 2, allHosts: false }]);
-    await setHost(store, 2, { selected: true });
-    await setHost(store, 4, { selected: true });
-
-    assert.deepEqual(linkNames((await fetchLink(token, V2RAYNG)).body), ["🇩🇪 DE-2 [vmess]", "🇩🇪 DE-3"]);
-  });
-
-  it("When a host is renamed with variables, then the customer sees our name, filled in from their subscription", async () => {
-    const store = await aShapedStore();
-    const { token, username } = await aLive(store);
-    store.fake.use(username, 10 * GB);
-    await syncAllPanels(database());
-    await setHost(store, 1, { name: "Germany · {DATA_LEFT} left · {PROTOCOL}" });
-    await setHost(store, 2, { name: "Fast {STATUS_EMOJI}" });
-
-    const names = linkNames((await fetchLink(token, V2RAYNG)).body);
-
-    assert.deepEqual(names, ["Germany · 40 GB left · vless", "Fast ✅", "🇩🇪 DE-3"]);
-  });
-
-  it("When hosts are reordered, then the link follows the new order and keeps working", async () => {
-    const store = await aShapedStore();
-    const { token } = await aLive(store);
-
-    for (const order of [
-      [4, 2, 1],
-      [2, 1, 4],
-      [1, 4, 2],
-    ]) {
-      const moved = await orderHosts(store, order);
-      assert.equal(moved.status, 200);
-      const { status, body } = await fetchLink(token, V2RAYNG);
-      assert.equal(status, 200, "the link never breaks");
-      const expected = order.map((id) => ({ 1: "DE-1", 2: "DE-2", 4: "DE-3" })[id as 1 | 2 | 4]);
-      assert.deepEqual(
-        linkNames(body).map((name) => name.split(" ")[1]),
-        expected,
-      );
-    }
-  });
-
-  it("When a plan has two groups and staff reorder the groups, then the link gives the groups in that order", async () => {
-    const store = await aShapedStore();
-    const nl = (await api(store).post(`${V1}/groups`, { name: "Netherlands" })).data.id as string;
-    await setSources(store, [{ panelGroupId: 7, allHosts: true }], nl);
-    const plan = await api(store).post(`${V1}/plans`, {
-      slug: `two-${randomBytes(3).toString("hex")}`,
-      name: "two",
-      dataLimitGb: 50,
-      durationDays: 30,
-      deviceLimit: 2,
-      priceToman: 1000,
-      groupIds: [store.groupId, nl],
-    });
-    assert.equal(plan.status, 201, JSON.stringify(plan.data));
-    const { token, username } = await aLive(store, plan.data.id);
-    assert.deepEqual(store.fake.users.get(username)!.groupIds, [2, 7], "the panel user has both panel groups");
-
-    await api(store).put(`${V1}/groups/order`, { ids: [store.groupId, nl] });
-    const first = linkNames((await fetchLink(token, V2RAYNG)).body).map((name) => name.split(" ")[1]);
-    assert.deepEqual(first, ["DE-1", "DE-2", "DE-3", "NL"]);
-
-    await api(store).put(`${V1}/groups/order`, { ids: [nl, store.groupId] });
-    const second = linkNames((await fetchLink(token, V2RAYNG)).body).map((name) => name.split(" ")[1]);
-    assert.deepEqual(second, ["NL", "DE-1", "DE-2", "DE-3"]);
-  });
-
-  it("When a sing-box app (Hiddify) fetches it, then the profile's configs and selectors are picked, renamed and ordered", async () => {
-    const store = await aShapedStore();
-    const { token } = await aLive(store);
-    await setSources(store, [{ panelGroupId: 2, allHosts: false }]);
-    await setHost(store, 1, { selected: true, name: "Germany" });
-    await setHost(store, 4, { selected: true });
-    await orderHosts(store, [4, 1]);
-
-    const { status, body } = await fetchLink(token, HIDDIFY);
-
-    assert.equal(status, 200);
-    const profile = JSON.parse(body) as { outbounds: { tag: string; type: string; outbounds?: string[]; server?: string }[] };
-    const proxies = profile.outbounds.filter((outbound) => outbound.type === "vless" || outbound.type === "vmess");
-    assert.deepEqual(proxies.map((proxy) => proxy.tag), ["🇩🇪 DE-3", "Germany"]);
-    assert.deepEqual(proxies.map((proxy) => proxy.server), ["de3.example.com", "de1.example.com"]);
-    assert.deepEqual(profile.outbounds.find((outbound) => outbound.tag === "Select")!.outbounds, ["Auto", "🇩🇪 DE-3", "Germany"]);
-    assert.deepEqual(profile.outbounds.find((outbound) => outbound.tag === "Auto")!.outbounds, ["🇩🇪 DE-3", "Germany"]);
-    assert.ok(profile.outbounds.some((outbound) => outbound.tag === "direct"), "the rest of the profile is kept");
-  });
-
-  it("When a Clash app fetches it, then the proxies and proxy groups are picked, renamed and ordered", async () => {
-    const store = await aShapedStore();
-    const { token } = await aLive(store);
-    await setHost(store, 2, { name: "Fast" });
-    await orderHosts(store, [2, 4, 1]);
-
-    const { status, body } = await fetchLink(token, CLASH);
-
-    assert.equal(status, 200);
-    const profile = yaml.load(body) as { proxies: { name: string; type: string }[]; "proxy-groups": { name: string; proxies: string[] }[]; rules: string[] };
-    const names = profile.proxies.map((proxy) => proxy.name);
-    assert.equal(names[0], "Fast");
-    assert.deepEqual(names.slice(1).map((name) => name.split(" ")[1]), ["DE-3", "DE-1"]);
-    assert.deepEqual(profile["proxy-groups"][0]!.proxies, ["Auto", ...names]);
-    assert.deepEqual(profile["proxy-groups"][1]!.proxies, names);
-    assert.deepEqual(profile.rules, ["MATCH,Select"]);
-  });
-
-  it("When staff take another panel group into the group, then the sync gives it to existing customers", async () => {
-    const store = await aShapedStore();
-    const { token, username } = await aLive(store);
-    assert.deepEqual(store.fake.users.get(username)!.groupIds, [2]);
-
-    await setSources(store, [{ panelGroupId: 2, allHosts: true }, { panelGroupId: 7, allHosts: true }]);
-    await syncAllPanels(database());
-
-    assert.deepEqual(store.fake.users.get(username)!.groupIds, [2, 7], "the panel user got the new group");
-    assert.ok(linkNames((await fetchLink(token, V2RAYNG)).body).some((name) => name.startsWith("🇳🇱 NL")));
-
-    await setSources(store, [{ panelGroupId: 7, allHosts: true }]);
-    await syncAllPanels(database());
-    assert.deepEqual(store.fake.users.get(username)!.groupIds, [7], "and lost the one taken out");
-    assert.deepEqual(linkNames((await fetchLink(token, V2RAYNG)).body).map((name) => name.split(" ")[1]), ["NL"]);
-  });
-
-  it("When staff take a group from another panel into the group, then the sync makes the customer there too", async () => {
-    const store = await aShapedStore();
-    const { id, username } = await aLive(store);
-    const otherUrl = `https://panel-other-${randomBytes(3).toString("hex")}.test`;
-    const other = fakeFor(otherUrl);
-    shape(other);
-    const panel = await api(store).post(`${V1}/panels`, {
-      name: `Other ${randomBytes(2).toString("hex")}`,
-      driver: "pasarguard",
-      baseUrl: otherUrl,
-      credentials: { kind: "password", username: "operator", password: "right" },
-    });
-    assert.equal(panel.status, 201, JSON.stringify(panel.data));
-
-    const added = await setSources(store, [
-      { panelGroupId: 2, allHosts: true },
-      { panelGroupId: 7, allHosts: true, panelId: panel.data.id },
-    ]);
-    assert.equal(added.status, 200, JSON.stringify(added.data));
-    await syncAllPanels(database());
-
-    assert.deepEqual(other.users.get(username)?.groupIds, [7], "made on the other panel with its group");
-    const members = await database().select().from(subscriptionPanels).where(eq(subscriptionPanels.subscriptionId, id));
-    assert.equal(members.length, 2);
-    assert.ok(members.every((member) => member.panelUserId !== null));
-  });
-});
-
 // -------------------------------------------- panels a reseller signs in to
 
 describe("A panel signed in to with a reseller's account (no hosts, no inbounds)", () => {
@@ -513,22 +326,6 @@ describe("A panel signed in to with a reseller's account (no hosts, no inbounds)
     assert.equal(probe2.dataLimitBytes, null, "unlimited where the account may");
     assert.equal(probe2.expiresAt, null);
     assert.equal(probe2.status, "active");
-  });
-
-  it("When customers buy, then their link is shaped as with any panel, names with their own values matched", async () => {
-    const store = await aShapedStore();
-    store.fake.reseller = true;
-    await setSources(store, [{ panelGroupId: 2, allHosts: false }, { panelGroupId: 7, allHosts: false }]);
-    const plan = (await api(store).get(`${V1}/plans/${store.planId}`)).data;
-    await setHost(store, 3, { selected: true, name: "Holland {DATA_LEFT}" });
-    await setHost(store, 1, { selected: true });
-    await orderHosts(store, [3, 1]);
-    const { token, username } = await aLive(store, plan.id);
-    assert.deepEqual(store.fake.users.get(username)!.groupIds, [2, 7]);
-
-    const names = linkNames((await fetchLink(token, V2RAYNG)).body);
-
-    assert.deepEqual(names, ["Holland 50 GB", `🇩🇪 DE-1 ${username}`]);
   });
 
   it("When the account's limits forbid an unlimited user, then the probe gets the least it may", async () => {
@@ -555,19 +352,5 @@ describe("A panel signed in to with a reseller's account (no hosts, no inbounds)
     await hostsOf(store);
     assert.equal(store.fake.users.get("skprobe_g2")!.status, "active");
     assert.deepEqual(store.fake.users.get("skprobe_g2")!.groupIds, [2]);
-  });
-
-  it("When the panels are synced, then the probe users are left alone and are no customer's", async () => {
-    const store = await aShapedStore();
-    await aLive(store);
-    await hostsOf(store);
-    const before = { ...store.fake.users.get("skprobe_g2")! };
-
-    const results = await syncAllPanels(database());
-
-    assert.ok(!("error" in results[store.panelId]!), JSON.stringify(results));
-    assert.deepEqual(store.fake.users.get("skprobe_g2"), before);
-    const owners = await database().select().from(subscriptions).where(eq(subscriptions.panelUsername, "skprobe_g2"));
-    assert.equal(owners.length, 0);
   });
 });
