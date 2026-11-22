@@ -402,9 +402,17 @@ func (h *Handler) shape(ctx context.Context, sub store.LinkSubscription, bodies,
 	if plans != nil {
 		totals := configs.Totals{Username: sub.Username, Status: sub.Status, UsedBytes: sub.UsedBytes,
 			DataLimitBytes: sub.DataLimitBytes, ExpiresAt: sub.ExpiresAt, OnHoldDurationSeconds: sub.OnHoldDurationSeconds}
-		if shaped, _, ok := configs.Shape(bodies, plans, totals, h.Now(), append([]string{sub.Username}, usernames...)); ok {
+		names := append([]string{sub.Username}, usernames...)
+		if shaped, _, ok := configs.Shape(bodies, plans, totals, h.Now(), names); ok {
+			if configs.Count(shaped) == 0 {
+				h.Log.Warn("subscription link: no configs to give", "subscription", sub.ID, "status", sub.Status,
+					"explain", configs.Explain(bodies, plans, names))
+			}
 			return shaped
 		}
+		// Given as the panels gave them; said why, for whoever reads the log.
+		h.Log.Warn("subscription link: the configs could not be shaped by the groups; given as the panels gave them",
+			"subscription", sub.ID, "explain", configs.Explain(bodies, plans, names))
 	}
 	if len(bodies) == 1 {
 		return bodies[0]

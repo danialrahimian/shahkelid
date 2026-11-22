@@ -166,3 +166,22 @@ func TestExpiredCustomersKeepThePanelsNotice(t *testing.T) {
 		t.Fatalf("an active customer gets only what the groups pick: %v", linkNames(t, active))
 	}
 }
+
+// TestNoneRecognisedIsNotAnEmptyLink: hosts are picked but the panel's
+// configs are none of them (its answer differs from the probe's): given
+// as they are, not as an empty link the app reads as "no servers".
+func TestNoneRecognisedIsNotAnEmptyLink(t *testing.T) {
+	body := b64(l("Somewhere else"), l("Other place"))
+	if _, _, ok := Shape([]string{body}, []Plan{plan(deHosts, map[string]Wanted{"DE-1": {}}, false)}, totals, now, nil); ok {
+		t.Fatal("not shaped: the panel's configs are given as they are")
+	}
+	explained := Explain([]string{body}, []Plan{plan(deHosts, map[string]Wanted{"DE-1": {}}, false)}, nil)
+	if !strings.Contains(explained, `config "Somewhere else" (vless/ws) -> -`) || !strings.Contains(explained, `host "DE-1" (vless/ws) picked=true`) {
+		t.Fatalf("explained:\n%s", explained)
+	}
+	// Nothing picked on purpose: nothing given.
+	got, _, ok := Shape([]string{b64(l("DE-1"))}, []Plan{plan(deHosts, map[string]Wanted{}, false)}, totals, now, nil)
+	if !ok || len(linkNames(t, got)) != 0 {
+		t.Fatalf("nothing picked gives nothing: %q", got)
+	}
+}

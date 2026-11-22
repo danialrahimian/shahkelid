@@ -112,6 +112,22 @@ func Shape(bodies []string, plans []Plan, totals Totals, now time.Time, username
 	}
 	sort.SliceStable(list, func(a, b int) bool { return list[a].rank < list[b].rank })
 
+	// Hosts are picked, the panels gave configs, and none of them is one of
+	// those hosts: the configs were not recognised (a panel answering
+	// otherwise than its probe user's subscription), not left out on
+	// purpose. An empty link would leave the customer with nothing: not
+	// shaped, so the panels' configs are given as they are.
+	if len(list) == 0 {
+		wanted, given := false, false
+		for i, answer := range answers {
+			wanted = wanted || len(plans[i].Wanted) > 0
+			given = given || len(answer.configs) > 0
+		}
+		if wanted && given {
+			return "", format, false
+		}
+	}
+
 	switch format {
 	case Links:
 		return shapeLinks(answers, list), Links, true
@@ -443,4 +459,46 @@ func Merge(bodies []string) string {
 	default:
 		return bodies[0]
 	}
+}
+
+// Explain says, for the log, what each panel gave and which of the picked
+// hosts each config was taken for: why a link came out as it did.
+func Explain(bodies []string, plans []Plan, usernames []string) string {
+	var out strings.Builder
+	for i, body := range bodies {
+		answer := parse(body)
+		fmt.Fprintf(&out, "panel %d: %s, %d configs", i, answer.format, len(answer.configs))
+		if i >= len(plans) {
+			out.WriteString("\n")
+			continue
+		}
+		plan := plans[i]
+		fmt.Fprintf(&out, "; %d hosts known (known=%v, keep unknown=%v), %d picked\n", len(plan.Hosts), plan.Known, plan.KeepUnknown, len(plan.Wanted))
+		var matched []*Host
+		if plan.Known {
+			matched = MatchHosts(answer.configs, plan.Hosts, usernames)
+		}
+		for j, config := range answer.configs {
+			host := "-"
+			if j < len(matched) && matched[j] != nil {
+				_, picked := plan.Wanted[matched[j].ID]
+				host = fmt.Sprintf("%q picked=%v", matched[j].Name, picked)
+			}
+			fmt.Fprintf(&out, "  config %q (%s/%s) -> %s\n", config.Name, deref(config.Protocol), deref(config.Network), host)
+		}
+		for _, host := range plan.Hosts {
+			_, picked := plan.Wanted[host.ID]
+			fmt.Fprintf(&out, "  host %q (%s/%s) picked=%v\n", host.Name, deref(host.Protocol), deref(host.Network), picked)
+		}
+	}
+	return out.String()
+}
+
+// Count is how many configs an answer holds (-1: a format not read here).
+func Count(body string) int {
+	answer := parse(body)
+	if answer.format == Unknown {
+		return -1
+	}
+	return len(answer.configs)
 }
