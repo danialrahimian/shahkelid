@@ -12,9 +12,11 @@
   },
   "scripts": {
     "check": "npm run lint && npm run typecheck && npm test",
-    "lint": "npm run lint --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present && npm run lint:panel",
+    "lint:panel": "cd panel && test -z \"$(gofmt -l .)\" && go vet ./...",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm test --workspaces --if-present",
+    "test": "npm test --workspaces --if-present && npm run test:panel",
+    "test:panel": "cd panel && go test -p 1 -race ./...",
     "services:up": "docker compose up -d --wait",
     "services:down": "docker compose down",
     "services:reset": "docker compose down --volumes"

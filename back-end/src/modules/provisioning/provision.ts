@@ -134,18 +134,6 @@ export const provisionSubscription = async (db: Db, id: string): Promise<Provisi
   return "provisioned";
 };
 
-/**
- * A live subscription that is not on all of its panels yet: tries the rest.
- * Called by the sync. True when a panel was added (the limits then need
- * setting again).
- */
-export const provisionPending = async (db: Db, id: string) => {
-  const [subscription] = await db.select().from(subscriptions).where(eq(subscriptions.id, id));
-  if (!subscription || !(SYNCED as readonly string[]).includes(subscription.status)) return false;
-  const { made } = await makeOnPending(db, subscription);
-  return made.length > 0;
-};
-
 /** Remembers why the last attempt failed, for the dashboard. */
 export const noteAttemptFailed = (db: Db, id: string, error: Error) =>
   db

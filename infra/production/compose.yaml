@@ -1,7 +1,9 @@
 # Shah Kelid on one server. Run from this folder, through ./sk (see
 # docs/05-install.md), which is `docker compose` with this file and .env.
 #
-#   web     Caddy: TLS, the web app, and /api + /s passed to the app
+#   web     Caddy: TLS, the web app, /api passed to the app, /s to panel
+#   panel   the panel service (Go): customers' subscription links, and the
+#           usage sync with the VPN panels every few minutes
 #   app     the API
 #   worker  outbox relay, queues, schedules (provisioning, reminders, billing)
 #   migrate runs the migrations, then exits; app and worker wait for it
@@ -66,6 +68,26 @@ services:
       - caddy-config:/config
     depends_on:
       app: { condition: service_healthy }
+      panel: { condition: service_healthy }
+    networks: [internal, public]
+    logging: *logging
+
+  panel:
+    image: shah-kelid-panel:${RELEASE:-latest}
+    build:
+      context: ../..
+      target: panel
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_URL: postgres://shah_kelid:${POSTGRES_PASSWORD}@postgres:5432/shah_kelid
+      PUBLIC_API_URL: https://${MAIN_DOMAIN}
+      # The page, /info and /apps of a link are the app's: passed to it.
+      PANEL_APP_URL: http://app:5000
+      PANEL_LISTEN: ":7000"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    # public: it calls out to the panels.
     networks: [internal, public]
     logging: *logging
 

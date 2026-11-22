@@ -4,14 +4,13 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, describe, it } from "node:test";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { orderItems, orders } from "../src/modules/billing/schema";
 import { provisionSubscription } from "../src/modules/provisioning/provision";
-import { syncAllPanels } from "../src/modules/provisioning/sync";
+import { syncSubscription } from "../src/modules/provisioning/sync";
 import { applyRenewal } from "../src/modules/subscriptions/renewal";
-import { mergeConfigs } from "../src/modules/subscriptions/link";
-import { SLACK_BYTES } from "../src/modules/subscriptions/members";
+import { SLACK_BYTES, SYNCED } from "../src/modules/subscriptions/members";
 import { subscriptionPanels, subscriptions } from "../src/modules/subscriptions/schema";
 import { outboxEvents } from "../src/platform/db/platform-schema";
 import { aCustomerAccount, closeDatabase, database } from "./helpers/accounts";
@@ -121,6 +120,19 @@ const aLive = async (store: Store) => {
   return { id, customer, username: row!.panelUsername, token: row!.accessToken };
 };
 
+/**
+ * Every live subscription read from its panels now, as the shop does when
+ * one is opened. (The fleet sync is the panel service's, in Go, tested
+ * there; the rules of one volume are the same on both sides.)
+ */
+const readAll = async () => {
+  const live = await database()
+    .select({ id: subscriptions.id, panelUsername: subscriptions.panelUsername })
+    .from(subscriptions)
+    .where(inArray(subscriptions.status, [...SYNCED]));
+  for (const row of live) await syncSubscription(database(), row).catch(() => undefined);
+};
+
 const view = async (store: Store, id: string) => (await store.staff.client.get(`${STAFF}/subscriptions/${id}`)).data.subscription;
 const on = (fake: FakePanel, username: string) => fake.users.get(username)!;
 const used = (panels: { name: string; usedBytes: number }[], letter: string) =>
@@ -146,7 +158,7 @@ describe("A plan sold on two panels", () => {
     assert.deepEqual(on(store.b.fake, username).groupIds, [2]);
   });
 
-  it("When one panel is down while it is made, then the customer gets the other at once, staff are told, and the sync adds the rest", async () => {
+  it("When one panel is down while it is made, then the customer gets the other at once, and staff are told", async () => {
     const store = await twoPanels();
     const { id } = await subscribe(store);
     store.b.fake.down = true;
@@ -163,14 +175,7 @@ describe("A plan sold on two panels", () => {
       .where(and(eq(outboxEvents.topic, "admin.alert"), eq(outboxEvents.aggregateId, id)));
     assert.equal((alerts[0]!.payload as { subject: string }).subject, "A service was made on some of its panels only");
 
-    // Meanwhile 10 GB is used on A. B joins with what is left, not 50 GB again.
-    store.a.fake.use(row!.panelUsername, 10 * GB);
-    store.b.fake.down = false;
-    await syncAllPanels(database());
-
-    assert.ok(on(store.b.fake, row!.panelUsername), "made on B by the sync");
-    assert.equal(on(store.b.fake, row!.panelUsername).dataLimitBytes, 40 * GB);
-    assert.ok((await view(store, id)).panels.every((panel: { onPanel: boolean }) => panel.onPanel));
+    // The panel service's sync makes it on B later, with what is left (its tests).
   });
 
   it("When both panels are down, then the attempt fails and is retried, as with one panel", async () => {
@@ -196,7 +201,7 @@ describe("One volume across the panels", () => {
     store.a.fake.use(username, 1 * GB);
     store.b.fake.use(username, 2 * GB);
 
-    await syncAllPanels(database());
+    await readAll();
 
     const subscription = await view(store, id);
     assert.equal(subscription.usedBytes, 3 * GB);
@@ -214,15 +219,15 @@ describe("One volume across the panels", () => {
     const store = await twoPanels();
     const { username } = await aLive(store);
     store.a.fake.use(username, 1 * GB);
-    await syncAllPanels(database());
+    await readAll();
     const before = store.b.fake.updates.length;
 
     store.a.fake.use(username, SLACK_BYTES / 2);
-    await syncAllPanels(database());
+    await readAll();
     assert.equal(store.b.fake.updates.length, before, "a few megabytes: left for later");
 
     store.a.fake.use(username, 2 * SLACK_BYTES);
-    await syncAllPanels(database());
+    await readAll();
     assert.equal(store.b.fake.updates.length, before + 1);
     assert.equal(on(store.b.fake, username).dataLimitBytes, 50 * GB - on(store.a.fake, username).usedBytes);
   });
@@ -233,7 +238,7 @@ describe("One volume across the panels", () => {
     store.a.fake.use(username, 30 * GB);
     store.b.fake.use(username, 20 * GB);
 
-    await syncAllPanels(database());
+    await readAll();
 
     const subscription = await view(store, id);
     assert.equal(subscription.status, "limited");
@@ -249,7 +254,7 @@ describe("One volume across the panels", () => {
     store.b.fake.use(username, 1024);
     assert.equal(on(store.a.fake, username).status, "on_hold");
 
-    await syncAllPanels(database());
+    await readAll();
 
     const expiry = on(store.b.fake, username).expiresAt!;
     assert.equal(on(store.a.fake, username).status, "active");
@@ -264,62 +269,20 @@ describe("One volume across the panels", () => {
     const { id, username } = await aLive(store);
     store.a.fake.use(username, 1 * GB);
     store.b.fake.use(username, 2 * GB);
-    await syncAllPanels(database());
+    await readAll();
 
     store.b.fake.down = true;
     store.a.fake.use(username, 4 * GB);
-    await syncAllPanels(database());
+    await readAll();
 
     assert.equal((await view(store, id)).usedBytes, 7 * GB, "5 on A now, and B's last known 2");
     store.b.fake.down = false;
-    await syncAllPanels(database());
+    await readAll();
     assert.equal(on(store.b.fake, username).dataLimitBytes, 2 * GB + 43 * GB);
   });
 });
 
 // -------------------------------------------------------------------- link
-
-describe("One link for both panels", () => {
-  it("[acceptance] When an app fetches the link, then it gets both panels' configs in one list, and the whole volume", async () => {
-    const store = await twoPanels();
-    const { username, token } = await aLive(store);
-    store.a.fake.use(username, 1 * GB);
-    store.b.fake.use(username, 2 * GB);
-    await syncAllPanels(database());
-
-    const response = await fetch(`${getBaseUrl()}/s/${token}`, { headers: { "user-agent": "v2rayN/7.10.5" } });
-
-    assert.equal(response.status, 200);
-    const links = Buffer.from(await response.text(), "base64").toString("utf8").split("\n");
-    assert.deepEqual(links, ["vless://a1@1.1.1.1:443#A-1", "vless://a2@1.1.1.2:443#A-2", "trojan://b1@2.2.2.2:443#B-1"]);
-    const info = response.headers.get("subscription-userinfo") ?? "";
-    assert.match(info, new RegExp(`download=${3 * GB}; total=${50 * GB}`), "3 of 50 GB, not one panel's share");
-  });
-
-  it("When one panel does not answer, then the link still gives the other's configs", async () => {
-    const store = await twoPanels();
-    const { token } = await aLive(store);
-    bDown = true;
-    try {
-      const response = await fetch(`${getBaseUrl()}/s/${token}`, { headers: { "user-agent": "v2rayN/7.10.5" } });
-      assert.equal(response.status, 200);
-      const links = Buffer.from(await response.text(), "base64").toString("utf8").split("\n");
-      assert.deepEqual(links, ["vless://a1@1.1.1.1:443#A-1", "vless://a2@1.1.1.2:443#A-2"]);
-    } finally {
-      bDown = false;
-    }
-  });
-
-  it("When the answers are plain links, a JSON list, or a profile, then they are joined only where that is safe", () => {
-    assert.equal(mergeConfigs(["vless://a@1:1#A\n", "trojan://b@2:2#B"]), "vless://a@1:1#A\ntrojan://b@2:2#B");
-    assert.equal(mergeConfigs(['[{"tag":"a"}]', '[{"tag":"b"}]']), '[{"tag":"a"},{"tag":"b"}]');
-    const clash = "proxies:\n  - name: a\n";
-    assert.equal(mergeConfigs([clash, "proxies:\n  - name: b\n"]), clash, "a Clash profile is the main panel's alone");
-    assert.equal(mergeConfigs(['{"outbounds":[]}', '{"outbounds":[1]}']), '{"outbounds":[]}');
-  });
-});
-
-// ----------------------------------------------------------------- actions
 
 describe("Acting on a subscription that is on two panels", () => {
   it("When staff reset usage, disable, enable and delete, then both panels do it", async () => {
@@ -327,7 +290,7 @@ describe("Acting on a subscription that is on two panels", () => {
     const { id, username } = await aLive(store);
     store.a.fake.use(username, 5 * GB);
     store.b.fake.use(username, 5 * GB);
-    await syncAllPanels(database());
+    await readAll();
     const act = (action: string) => store.staff.client.post(`${STAFF}/subscriptions/${id}/actions/${action}`);
 
     const reset = await act("reset_usage");
@@ -353,7 +316,7 @@ describe("Acting on a subscription that is on two panels", () => {
     const { id, customer, username } = await aLive(store);
     store.a.fake.use(username, 10 * GB);
     store.b.fake.use(username, 20 * GB);
-    await syncAllPanels(database());
+    await readAll();
     const expiryBefore = on(store.a.fake, username).expiresAt!.getTime();
 
     // A paid renewal order for the same plan, as checkout leaves it.

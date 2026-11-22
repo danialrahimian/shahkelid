@@ -22,7 +22,12 @@ Each in its own terminal:
 npm run dev -w back-end          # the API, on :5000
 npm run dev:worker -w back-end   # the worker: outbox relay, queues
 npm run dev -w front-end         # the web app, on :5173
+# the panel service (Go 1.24): customers' links on :7000, and the usage sync
+cd panel && POSTGRES_URL=postgres://shah_kelid:dev-only-password@127.0.0.1:5432/shah_kelid \
+  APP_ENCRYPTION_KEY=<the same as back-end/.env> PANEL_APP_URL=http://localhost:5000 go run ./cmd/panel
 ```
+
+Customers' links are the panel service's: set `PUBLIC_API_URL=http://localhost:7000` in `back-end/.env` so the links the shop shows point at it. It passes a link's page, `/info` and `/apps` on to the API itself.
 
 ## Signing in (the new accounts)
 
@@ -76,9 +81,9 @@ Setting up, in order:
 1. **Panels**: add the PasarGuard panel (its address and a panel account or API key). It is checked before it is saved.
 2. **Groups**: make a group (for example "Germany") and take one or more panel groups into it, from any panel: with **All hosts**, every host that panel group gives; without it, only the hosts you tick. Hosts can be given a name of our own (PasarGuard's variables such as `{DATA_LEFT}` work, filled in from the whole subscription), and groups and hosts are put in order by dragging. Hosts are read from a subscription the shop makes on each panel group it uses (a panel user named `skprobe_g<id>`, unlimited where the panel account may, else the least it may), so this works with a reseller's panel account, which cannot read the panel's hosts; do not delete those users on the panel. The customer's link gives exactly the picked hosts, in that order and under those names, in every format apps read (link lists, sing-box, Clash, xray JSON). A panel group taken into a group later reaches existing customers at the next sync.
 3. **Plans**: volume, days, devices, price, and the groups it is sold with. A buyer's user is made on every panel those groups take from. Time starts at the customer's first connection (or after 30 days regardless).
-4. **Customers**: open a customer and make a subscription. The **worker** must be running: it puts the subscription on the panel and copies usage back every 5 minutes.
+4. **Customers**: open a customer and make a subscription. The **worker** must be running: it puts the subscription on the panel. The **panel service** copies usage back from every panel every 5 minutes (`USAGE_SYNC_EVERY_MS`).
 
-The customer's link is `{PUBLIC_API_URL}/s/{token}` (default `http://localhost:5000`). To try it from a phone on the same network, set `PUBLIC_API_URL` in `back-end/.env` to this computer's address, for example `http://192.168.1.10:5000`.
+The customer's link is `{PUBLIC_API_URL}/s/{token}`, served by the panel service. To try it from a phone on the same network, set `PUBLIC_API_URL` in `back-end/.env` to this computer's address, for example `http://192.168.1.10:5000`.
 
 ## Buying
 
@@ -119,12 +124,13 @@ npm run test:contract -w back-end
 npm run check
 ```
 
-Runs lint, typecheck and every test of every package. The back-end tests use their own database (`shah_kelid_test`) and Redis database (1), so they never touch development data, and they refuse to reset any database whose name does not end in `_test`.
+Runs lint, typecheck and every test of every package, the panel service's (`go vet`, `go test -race`) too. The back-end tests use their own database (`shah_kelid_test`) and Redis database (1), so they never touch development data, and they refuse to reset any database whose name does not end in `_test`.
 
 ## Layout
 
 ```
 back-end/            the API and the worker (Node, Express, TypeScript, PostgreSQL)
+panel/               the panel service (Go): customers' links and the usage sync; see panel/README.md
   src/modules/       one folder per module, each owning its tables
   src/platform/      database, queues, outbox
   drizzle/           migrations
@@ -135,7 +141,7 @@ infra/production/    the server: compose.yaml, .env.example, and ./sk
 infra/caddy/         the Caddyfile
 infra/backup/        the backup image: backup.sh, restore.sh
 infra/loadtest/      the 10,000-customer load test (seed, fake panel, k6)
-Dockerfile           the app image (API, worker, migrations) and the web image (Caddy + the built site)
+Dockerfile           the app image (API, worker, migrations), the web image (Caddy + the built site) and the panel image
 compose.yaml         local PostgreSQL and Redis, for development
 ```
 

@@ -4,7 +4,7 @@ import { after, before, describe, it } from "node:test";
 
 import { PasarGuardDriver } from "../src/modules/provisioning/pasarguard";
 import { provisionSubscription } from "../src/modules/provisioning/provision";
-import { syncAllPanels } from "../src/modules/provisioning/sync";
+import { syncSubscription } from "../src/modules/provisioning/sync";
 import { panelUsernameFor } from "../src/modules/subscriptions/service";
 import { aCustomerAccount, closeDatabase, database, signedInStaff } from "./helpers/accounts";
 import { resetTestDatabase } from "./helpers/postgres";
@@ -15,7 +15,7 @@ import { getBaseUrl, startTestServer, stopTestServer } from "./helpers/test-serv
  *
  *   staff define a panel, a location, a server and a plan → make a
  *   subscription for a customer → it appears on the panel → our /s/ link
- *   serves the panel's configurations to a VPN app → usage is synced back.
+ *   gives the page its account data → usage is read back.
  *
  *   npm run test:contract
  *
@@ -95,21 +95,14 @@ describe("M3 acceptance against the real panel", { skip: !enabled && "set PASARG
     assert.equal(onPanel.dataLimitBytes, 1024 ** 3);
     assert.equal(onPanel.deviceLimit, 1);
 
+    // The link's configs are the panel service's (panel/, Go); its contract
+    // with a real panel is tried there. The page's account data is the shop's.
     const detail = await staff.client.get(`${V1}/subscriptions/${id}`);
     const link = new URL(detail.data.subscription.link);
-    const response = await fetch(`${getBaseUrl()}${link.pathname}`, {
-      headers: { "user-agent": "v2rayNG/1.9.0", "x-hwid": `acceptance-${tag}` },
-    });
-    const body = await response.text();
-    assert.equal(response.status, 200);
-    assert.match(response.headers.get("subscription-userinfo") ?? "", /total=1073741824/);
-    assert.doesNotMatch(response.headers.get("profile-web-page-url") ?? "", new RegExp(new URL(url!).host));
-    // v2rayNG reads base64 of one link per line.
-    const decoded = Buffer.from(body, "base64").toString("utf8");
-    assert.match(decoded, /^(vless|vmess|trojan|ss):\/\//m, "configurations a VPN app can import");
+    const info = await fetch(`${getBaseUrl()}${link.pathname}/info`);
+    assert.equal(info.status, 200);
 
-    const synced = await syncAllPanels(database());
-    assert.ok(!("error" in synced[panel.data.id]!), JSON.stringify(synced));
+    await syncSubscription(database(), { id, panelUsername: panelUsernameFor(id) });
     const customerPage = await staff.client.get(`${V1}/customers/${customer.id}`);
     assert.equal(customerPage.data.subscriptions[0].id, id);
     assert.ok(customerPage.data.subscriptions[0].lastSyncedAt, "usage read back from the panel");

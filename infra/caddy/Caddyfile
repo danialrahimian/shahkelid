@@ -39,8 +39,17 @@
 		-Server
 	}
 
-	# The API, customers' subscription links, and the health check.
-	@app path /api/* /s/* /health
+	# Customers' subscription links: the panel service. It passes the page,
+	# /info and /apps of a link on to the app itself.
+	@links path /s/*
+	handle @links {
+		reverse_proxy panel:7000 {
+			header_up X-Forwarded-For {client_ip}
+		}
+	}
+
+	# The API and the health check.
+	@app path /api/* /health
 	handle @app {
 		reverse_proxy app:5000 {
 			# The visitor's address as Caddy worked it out (Cloudflare's

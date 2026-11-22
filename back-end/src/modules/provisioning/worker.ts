@@ -1,6 +1,5 @@
 import { Queue, UnrecoverableError, Worker, type Job } from "bullmq";
 
-import config from "../../config";
 import logger from "../../libraries/logger";
 import type { Db } from "../../platform/db/client";
 import { QUEUES } from "../../platform/queue/routes";
@@ -17,7 +16,6 @@ import {
   provisionSubscription,
   provisioningAlert,
 } from "./provision";
-import { syncAllPanels } from "./sync";
 
 /**
  * The provisioning queue's consumer, in the worker process:
@@ -26,7 +24,9 @@ import { syncAllPanels } from "./sync";
  *   on its panel. A panel that is down is retried with backoff (12 attempts,
  *   about an hour); a panel that says no is not, since asking again will not
  *   change its answer. Either way the subscription then waits for staff.
- * - "subscriptions.sync" (every few minutes): copy usage from the panels.
+ *
+ * The usage sync is the panel service's (panel/, in Go) since it was moved
+ * there; a "subscriptions.sync" job still queued from before is dropped.
  */
 
 export const SYNC_JOB = "subscriptions.sync";
@@ -108,7 +108,8 @@ export const startProvisioningWorker = ({ db, prefix }: { db: Db; prefix?: strin
     async (job: Job) => {
       if (job.name === PROVISION_TOPIC) return runProvisionJob(db, job as Job<OutboxJob>);
       if (job.name === RENEWAL_TOPIC) return runRenewalJob(db, job as Job<OutboxJob>);
-      if (job.name === SYNC_JOB) return syncAllPanels(db);
+      // Queued before the sync moved to the panel service: nothing to do.
+      if (job.name === SYNC_JOB) return "moved";
       if (job.name === SUBSCRIPTION_REMOVE_TOPIC) return removeFromPanel(db, (job.data as OutboxJob).aggregateId);
       throw new UnrecoverableError(`No handler for job "${job.name}"`);
     },
@@ -134,18 +135,14 @@ export const startProvisioningWorker = ({ db, prefix }: { db: Db; prefix?: strin
 };
 
 /**
- * Registers the recurring usage sync. Idempotent: BullMQ keeps one schedule
- * under this name however many workers start, and runs each tick once.
+ * The usage sync is the panel service's now: the schedule an earlier release
+ * left in Redis is removed, so no worker keeps being woken for it.
  */
-export const scheduleUsageSync = async () => {
+export const retireUsageSync = async () => {
   const connection = createProducerConnection();
   const queue = new Queue(QUEUES.provisioning, { connection });
   try {
-    await queue.upsertJobScheduler(
-      "usage-sync",
-      { every: config.provisioning.syncEveryMs },
-      { name: SYNC_JOB, opts: { removeOnComplete: 100, removeOnFail: 100 } },
-    );
+    await queue.removeJobScheduler("usage-sync");
   } finally {
     await queue.close();
     connection.disconnect();

@@ -1,14 +1,17 @@
 # syntax=docker/dockerfile:1
 
-# Two images from one file:
+# Three images from one file:
 #
 #   app  the API and the worker (one image, two commands), plus the one-off
 #        jobs: migrations and create-owner.
 #   web  Caddy, with the built web app inside it. It serves the site, takes
-#        TLS certificates, and passes /api and /s to the app.
+#        TLS certificates, passes /api to the app and /s to the panel service.
+#   panel  the panel service (panel/, Go): customers' subscription links and
+#        the usage sync with the VPN panels.
 #
 #   docker build --target app -t shah-kelid-app .
 #   docker build --target web -t shah-kelid-web .
+#   docker build --target panel -t shah-kelid-panel .
 
 ARG NODE_VERSION=24
 
@@ -57,3 +60,20 @@ EXPOSE 5000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
   CMD wget -qO- http://127.0.0.1:5000/health > /dev/null || exit 1
 CMD ["npx", "tsx", "index.js"]
+
+# ----------------------------------------------------------- panel: build
+FROM golang:1.24-alpine AS panel-build
+WORKDIR /src
+COPY panel/go.mod panel/go.sum ./
+RUN go mod download
+COPY panel ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/panel ./cmd/panel
+
+# ----------------------------------------------------------------- panel
+# Distroless: the binary, CA certificates (to reach the panels over TLS) and
+# time zones (for the Persian date), as a user that is not root. No shell.
+FROM gcr.io/distroless/static-debian12:nonroot AS panel
+COPY --from=panel-build /out/panel /panel
+EXPOSE 7000
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 CMD ["/panel", "-health"]
+ENTRYPOINT ["/panel"]
