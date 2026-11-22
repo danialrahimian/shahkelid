@@ -21,7 +21,32 @@ as the Node app:
 
 Panel accounts of a reseller cannot read the panel's hosts: each panel
 group's hosts are read from a panel user the shop keeps in it,
-`skprobe_g<id>`.
+`skprobe_g<id>` (in PasarGuard's Xray format, which carries every host,
+else as links).
+
+**When the panel's hosts change.** A host's id is made from its protocol,
+transport and name only: PasarGuard picks addresses, ports, server names
+and paths at random from a host's lists on every request, so those would
+not stay put. A group keeps a row for every host it has seen, with what
+the host was (`group_hosts.fp_*`); each read settles those rows against
+what the panel gives now (`configs.Settle`, the same in the Node app): a
+new host is recorded (picked only if its panel group takes all hosts); a
+host renamed on the panel gets the settings saved for the old name when it
+is plainly the same host (same protocol and transport, and a name much
+alike or the same address or server name); a host deleted on the panel
+leaves its settings in place for if it comes back and never hands them to
+a sibling. Settings saved under the id earlier releases gave are moved.
+Changes are written under a lock on the group, only when there are any.
+
+Every app is served what it reads: base64 or plain links (with the header
+lines PasarGuard may write into the body kept, and the panel's address in
+them swapped for the shop's), Xray JSON, sing-box (outbounds and
+endpoints), Clash/Mihomo, Outline. Customers whose service has stopped
+still get the notice configs the panel gives them. `HEAD` is answered
+from a `GET` to the panel (PasarGuard answers `GET` only). Requests are
+limited per address and link (120 a minute), and ten times that per
+address across links, as mobile carriers put many customers behind one
+address.
 
 ## Layout
 

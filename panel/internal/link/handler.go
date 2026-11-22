@@ -51,7 +51,9 @@ type Handler struct {
 	PublicURL string
 	// HTTP asks the panels' links; nil: a client with a ten-second timeout.
 	HTTP *http.Client
-	// Limit is how many requests one address may make a minute (0: 120).
+	// Limit is how many requests one address may make a minute for one
+	// link (0: 120). An address may ask for ten times that across links:
+	// mobile carriers put many customers behind one address.
 	Limit int
 	Now   func() time.Time
 	Log   *slog.Logger
@@ -59,6 +61,7 @@ type Handler struct {
 	once    sync.Once
 	proxy   *httputil.ReverseProxy
 	limiter *limiter
+	shared  *limiter
 }
 
 var token = regexp.MustCompile(`^[A-Za-z0-9_-]{20,64}$`)
@@ -89,6 +92,7 @@ func (h *Handler) setup() {
 			h.Limit = 120
 		}
 		h.limiter = newLimiter(h.Limit, time.Minute, h.Now)
+		h.shared = newLimiter(10*h.Limit, time.Minute, h.Now)
 		if target, err := url.Parse(h.AppURL); err == nil {
 			h.proxy = httputil.NewSingleHostReverseProxy(target)
 		}
@@ -108,13 +112,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+	segments := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/s/"), "/"), "/")
 	// Apps read status codes, not JSON: answered in plain text.
-	if !h.limiter.allow(clientAddress(r)) {
+	address := clientAddress(r)
+	if !h.shared.allow(address) || !h.limiter.allow(address+" "+segments[0]) {
 		w.Header().Set("retry-after", "60")
 		http.Error(w, "Too many requests", http.StatusTooManyRequests)
 		return
 	}
-	segments := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/s/"), "/"), "/")
 	if len(segments) > 2 || !token.MatchString(segments[0]) || (len(segments) == 2 && !parts[segments[1]]) {
 		notFound(w)
 		return
@@ -178,7 +183,8 @@ func (h *Handler) ask(ctx context.Context, r *http.Request, panels []store.LinkP
 			if r.URL.RawQuery != "" {
 				target += "?" + r.URL.RawQuery
 			}
-			request, err := http.NewRequestWithContext(ctx, r.Method, target, nil)
+			// GET for a HEAD too: PasarGuard answers GET only.
+			request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 			if err != nil {
 				return
 			}
@@ -254,6 +260,7 @@ func (h *Handler) serveConfigs(ctx context.Context, w http.ResponseWriter, r *ht
 		}
 	}
 	// One volume across the panels: the app is told the whole, not one panel's share.
+	userinfo := ""
 	if len(sub.Panels) > 1 {
 		total, expire := int64(0), int64(0)
 		if sub.DataLimitBytes != nil {
@@ -262,7 +269,8 @@ func (h *Handler) serveConfigs(ctx context.Context, w http.ResponseWriter, r *ht
 		if sub.ExpiresAt != nil {
 			expire = sub.ExpiresAt.Unix()
 		}
-		header.Set("subscription-userinfo", fmt.Sprintf("upload=0; download=%d; total=%d; expire=%d", sub.UsedBytes, total, expire))
+		userinfo = fmt.Sprintf("upload=0; download=%d; total=%d; expire=%d", sub.UsedBytes, total, expire)
+		header.Set("subscription-userinfo", userinfo)
 	}
 	// The panel names its own address here; the customer's page is the shop's link.
 	header.Set("profile-web-page-url", ours)
@@ -295,6 +303,10 @@ func (h *Handler) serveConfigs(ctx context.Context, w http.ResponseWriter, r *ht
 	switch part {
 	case "", "links":
 		out = h.shape(ctx, sub, bodies, panelIDs)
+		if userinfo != "" {
+			// Where the panel writes its headers into the body too ("header placement").
+			out = configs.SetHeaderLine(out, "subscription-userinfo", userinfo)
+		}
 	case "usage":
 		out = bodies[0]
 		if len(bodies) > 1 {
@@ -344,7 +356,8 @@ func (h *Handler) shape(ctx context.Context, sub store.LinkSubscription, bodies,
 }
 
 // swapLink puts the shop's link in place of the panel's, plain and
-// URL-encoded, with or without a trailing slash.
+// URL-encoded, with or without a trailing slash; in a base64 list of
+// links too, where the panel may write its headers.
 func swapLink(body, panelURL, ours string) []byte {
 	bare := strings.TrimRight(panelURL, "/")
 	replacer := strings.NewReplacer(
@@ -353,7 +366,7 @@ func swapLink(body, panelURL, ours string) []byte {
 		url.QueryEscape(bare+"/"), url.QueryEscape(ours+"/"),
 		url.QueryEscape(bare), url.QueryEscape(ours),
 	)
-	return []byte(replacer.Replace(body))
+	return []byte(configs.Rewrite(body, replacer.Replace))
 }
 
 // mergeUsage gives several panels' usage history as one list of points;

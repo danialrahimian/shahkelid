@@ -546,6 +546,28 @@ func (c *Client) ReadLinks(ctx context.Context, subscriptionURL string) (string,
 	return "", last
 }
 
+// ReadConfigs reads a user's configs for the shop to read its hosts from:
+// PasarGuard's Xray JSON, which carries every host whatever its transport,
+// else (the format switched off) the list of links.
+func (c *Client) ReadConfigs(ctx context.Context, subscriptionURL string) (string, error) {
+	requestCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	request, err := http.NewRequestWithContext(requestCtx, http.MethodGet, strings.TrimRight(subscriptionURL, "/")+"/xray", nil)
+	if err != nil {
+		return "", err
+	}
+	response, err := c.http.Do(request)
+	if err != nil {
+		return "", &Unavailable{Message: "could not read a subscription link: " + err.Error()}
+	}
+	data, _ := io.ReadAll(io.LimitReader(response.Body, 16<<20))
+	response.Body.Close()
+	if response.StatusCode >= 200 && response.StatusCode < 300 && strings.HasPrefix(strings.TrimSpace(string(data)), "[") {
+		return string(data), nil
+	}
+	return c.ReadLinks(ctx, subscriptionURL)
+}
+
 // DecodeBase64Links decodes a base64 list of links, or gives "" when the
 // text is not one.
 func DecodeBase64Links(text string) string {

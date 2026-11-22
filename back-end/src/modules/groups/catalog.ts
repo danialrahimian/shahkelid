@@ -3,7 +3,7 @@ import type { PanelGroup } from "@shah-kelid/contracts";
 import logger from "../../libraries/logger";
 import { PanelRejectedError, type PanelDriver } from "../provisioning/driver";
 import { driverFor, type PanelRow } from "../provisioning/drivers";
-import { probeHosts, type ProbeHost } from "../subscriptions/configs";
+import { probeHosts, type ProbeHostWithLegacy } from "../subscriptions/configs";
 
 /**
  * What a panel offers our groups.
@@ -29,7 +29,7 @@ const FRESH_MS = 60_000;
 const STALE_MS = 60 * 60_000;
 const GB = 1024 ** 3;
 
-type Probe = { hosts: ProbeHost[]; readAt: number };
+type Probe = { hosts: ProbeHostWithLegacy[]; readAt: number };
 const cache = new Map<string, Probe>();
 const keyOf = (panelId: string, panelGroupId: number) => `${panelId}:${panelGroupId}`;
 
@@ -87,16 +87,16 @@ const ensureProbe = async (driver: PanelDriver, panelGroupId: number) => {
 };
 
 /** A panel group's hosts, read now through its probe user. */
-export const readProbe = async (panel: PanelRow, panelGroupId: number): Promise<ProbeHost[]> => {
+export const readProbe = async (panel: PanelRow, panelGroupId: number): Promise<ProbeHostWithLegacy[]> => {
   const driver = driverFor(panel);
   const probe = await ensureProbe(driver, panelGroupId);
-  const hosts = probeHosts(await driver.readLinks(probe.subscriptionUrl));
+  const hosts = probeHosts(await driver.readConfigs(probe.subscriptionUrl));
   cache.set(keyOf(panel.id, panelGroupId), { hosts, readAt: Date.now() });
   return hosts;
 };
 
 /** For the customer's link: at most a minute old, or older (up to an hour) when the panel is down. */
-export const cachedProbe = async (panel: PanelRow, panelGroupId: number): Promise<ProbeHost[] | null> => {
+export const cachedProbe = async (panel: PanelRow, panelGroupId: number): Promise<ProbeHostWithLegacy[] | null> => {
   const known = cache.get(keyOf(panel.id, panelGroupId));
   if (known && Date.now() - known.readAt < FRESH_MS) return known.hosts;
   try {

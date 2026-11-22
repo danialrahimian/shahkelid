@@ -22,67 +22,101 @@ var totals = Totals{Username: "sk_abc", Status: "active", UsedBytes: 10 * gb, Da
 // ------------------------------------------------- the same as the Node app
 
 // TestHostIDsAreTheNodeAppsOwn: the staff pages (Node) save picks and names
-// under these ids, and the link (here) must find them.
+// under these ids, and the link (here) must find them. The same values are
+// pinned in back-end/test/configs.test.ts.
 func TestHostIDsAreTheNodeAppsOwn(t *testing.T) {
 	vmess := "vmess://" + base64.StdEncoding.EncodeToString([]byte(`{"add":"x","ps":"VM","port":"8080","net":"tcp"}`))
 	hosts := ProbeHosts(strings.Join([]string{
 		"vless://u@a.example.com:443?type=ws&path=%2Fws#DE-1",
-		"vless://u@b.example.com:443?type=ws&path=%2Fws%3Fed%3D2048#DE-1",
+		"vless://u@b.example.com:8443?type=ws&path=%2Fws%3Fed%3D2048#DE-1",
 		"trojan://p@n.example.com:2083?type=grpc&serviceName=tg#%F0%9F%87%B3%F0%9F%87%B1%20NL%20%E2%88%9E",
 		vmess,
 		"ss://YWVzLTI1Ni1nY206cA@s.example.com:8388#SS",
+		"hysteria2://p@h.example.com:443#HY",
 	}, "\n"))
-	// As back-end/src/modules/subscriptions/configs.ts gives them.
-	want := []string{"6K3FdTiXmihf", "6K3FdTiXmihf-2", "yWK4Ru09aMKj", "FqnAjBweQ0Nb", "iQLNP3-x739d"}
+	want := [][2]string{
+		{"nQKKpF6UxsQg", "6K3FdTiXmihf"}, {"nQKKpF6UxsQg-2", "vAJjwJ3-3urX-2"}, {"v5CXst6CvdAs", "yWK4Ru09aMKj"},
+		{"M4wnKhw10xUp", "FqnAjBweQ0Nb"}, {"TGNMA2wPincl", "iQLNP3-x739d"}, {"wZDR2vid1Avh", "qx9jYoW3P76I"},
+	}
 	if len(hosts) != len(want) {
 		t.Fatalf("read %d hosts", len(hosts))
 	}
 	for i, host := range hosts {
-		if host.ID != want[i] {
-			t.Errorf("host %d (%s): id %s; Node's is %s", i, host.Name, host.ID, want[i])
+		if host.ID != want[i][0] || host.LegacyID != want[i][1] {
+			t.Errorf("host %d (%s): ids %s, %s; Node's are %s, %s", i, host.Name, host.ID, host.LegacyID, want[i][0], want[i][1])
 		}
-	}
-	if *hosts[2].Path != "tg" || *hosts[1].Path != "/ws" || hosts[3].Network != nil || *hosts[4].Protocol != "shadowsocks" {
-		t.Fatalf("fingerprints %+v", hosts)
 	}
 }
 
-func TestVariablesAreTheNodeAppsOwn(t *testing.T) {
-	got := RenderName("{USERNAME}|{DATA_USAGE}|{DATA_LIMIT}|{DATA_LEFT}|{USAGE_PERCENTAGE}|{DAYS_LEFT}|{TIME_LEFT}|{EXPIRE_DATE}|{JALALI_EXPIRE_DATE}|{STATUS_EMOJI}|{NOPE}",
-		totals, Fingerprint{Protocol: ptr("vless"), Network: ptr("ws"), Server: ptr("1.2.3.4")}, time.Date(2026, 12, 1, 5, 30, 0, 0, time.UTC))
-	if want := "sk_abc|10 GB|50 GB|40 GB|20|29|29d 18h|2026-12-31|1405/10/10|✅|{NOPE}"; got != want {
-		t.Fatalf("got  %s\nwant %s", got, want)
+// TestProbeFromXrayJSON: the shop reads its own subscription in PasarGuard's
+// Xray format, which carries every host; the ids are those links give.
+func TestProbeFromXrayJSON(t *testing.T) {
+	xray := `[{"remarks":"DE-1","outbounds":[{"protocol":"vless","settings":{"vnext":[{"address":"a.example.com","port":443}]},"streamSettings":{"network":"ws","wsSettings":{"path":"/ws"}}}]},
+	{"remarks":"XH","outbounds":[{"protocol":"vless","settings":{"vnext":[{"address":"x.example.com","port":443}]},"streamSettings":{"network":"xhttp","xhttpSettings":{"path":"/x"}}}]},
+	{"remarks":"HY","outbounds":[{"protocol":"hysteria","settings":{"version":2,"address":"h.example.com","port":443}}]}]`
+	hosts := ProbeHosts(xray)
+	got := []string{}
+	for _, h := range hosts {
+		got = append(got, h.ID+" "+h.Name+" "+deref(h.Network))
+	}
+	if strings.Join(got, ",") != "nQKKpF6UxsQg DE-1 ws,VGCBsn4-Oq0r XH xhttp,wZDR2vid1Avh HY " {
+		t.Fatalf("got %v", got)
+	}
+}
+
+// TestVariablesArePasarGuards: as PasarGuard's setup_format_variables writes
+// them; the expected values were made by running its own functions.
+func TestVariablesArePasarGuards(t *testing.T) {
+	now := time.Date(2026, 12, 1, 5, 30, 0, 0, time.UTC)
+	at := func(y int, m time.Month, d, h, min int) *time.Time {
+		v := time.Date(y, m, d, h, min, 0, 0, time.UTC)
+		return &v
+	}
+	tests := []struct {
+		totals Totals
+		want   string
+	}{
+		{Totals{Status: "active", UsedBytes: 10 * gb, DataLimitBytes: ptr(50 * gb), ExpiresAt: at(2026, 12, 31, 0, 0)}, "10.0 GB|50.0 GB|40.0 GB|20.0|30|29d|2026-12-31|1405-10-10"},
+		{Totals{Status: "active", UsedBytes: 0, DataLimitBytes: ptr(50 * gb), ExpiresAt: at(2026, 12, 1, 5, 45)}, "0 B|50.0 GB|50.0 GB|0.0|1|15m|2026-12-01|1405-09-10"},
+		{Totals{Status: "active", UsedBytes: 1536, DataLimitBytes: ptr(3*gb + gb/3), ExpiresAt: at(2027, 3, 20, 23, 0)}, "1.5 KB|3.33 GB|3.33 GB|0.0|110|3m 19d|2027-03-20|1405-12-29"},
+		{Totals{Status: "expired", UsedBytes: 7 * gb, DataLimitBytes: ptr(5 * gb), ExpiresAt: at(2026, 11, 30, 0, 0)}, "7.0 GB|5.0 GB|0 B|140.0|0|0|2026-11-30|1405-09-09"},
+		{Totals{Status: "on_hold", DataLimitBytes: ptr(20 * gb), OnHoldDurationSeconds: ptr(int64(45*86400 + 3600))}, "0 B|20.0 GB|20.0 GB|0.0|45|1m 15d|-|-"},
+		{Totals{Status: "on_hold"}, "0 B|∞|∞|∞|∞|∞|∞|∞"},
+		{Totals{Status: "active", UsedBytes: 123456789}, "117.74 MB|∞|∞|∞|∞|∞|∞|∞"},
+		{Totals{Status: "active", UsedBytes: 1, DataLimitBytes: ptr(int64(1) << 40), ExpiresAt: at(2026, 12, 3, 6, 0)}, "1.0 B|1.0 TB|1024.0 GB|0.0|3|2d|2026-12-03|1405-09-12"},
+	}
+	for i, test := range tests {
+		got := RenderName("{DATA_USAGE}|{DATA_LIMIT}|{DATA_LEFT}|{USAGE_PERCENTAGE}|{DAYS_LEFT}|{TIME_LEFT}|{EXPIRE_DATE}|{JALALI_EXPIRE_DATE}", test.totals, Fingerprint{}, now)
+		if got != test.want {
+			t.Errorf("case %d:\n got  %s\n want %s", i, got, test.want)
+		}
+	}
+	if got := RenderName("{USERNAME} {STATUS_EMOJI} {PROTOCOL}/{TRANSPORT} {NOPE}", Totals{Username: "sk_a", Status: "limited"}, Fingerprint{Protocol: ptr("vless")}, now); got != "sk_a 🪫 vless/tcp {NOPE}" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestReadableSizeIsPasarGuards(t *testing.T) {
+	for bytes, want := range map[int64]string{0: "0 B", 1: "1.0 B", 1023: "1023.0 B", 1024: "1.0 KB", 1536: "1.5 KB", gb: "1.0 GB", 50 * gb: "50.0 GB", 1 << 40: "1.0 TB", 999999999999: "931.32 GB", -5: "0 B"} {
+		if got := ReadableSize(bytes); got != want {
+			t.Errorf("%d: %s; want %s", bytes, got, want)
+		}
 	}
 }
 
 func TestPersianDates(t *testing.T) {
 	tests := map[string]string{
-		"2026-03-20T22:00:00Z": "1405/01/01", // Nowruz, already in Tehran
-		"2026-03-21T12:00:00Z": "1405/01/01",
-		"2025-03-20T12:00:00Z": "1403/12/30", // a leap year's last day
-		"2024-12-31T12:00:00Z": "1403/10/11",
-		"2027-09-22T12:00:00Z": "1406/06/31",
+		"2026-03-21T12:00:00Z": "1405-01-01", // Nowruz
+		"2026-03-20T22:00:00Z": "1404-12-29", // PasarGuard takes the date in UTC
+		"2025-03-20T12:00:00Z": "1403-12-30", // a leap year's last day
+		"2024-12-31T12:00:00Z": "1403-10-11",
+		"2027-09-22T12:00:00Z": "1406-06-31",
 	}
 	for at, want := range tests {
 		expires, _ := time.Parse(time.RFC3339, at)
-		got := RenderName("{JALALI_EXPIRE_DATE}", Totals{ExpiresAt: &expires}, Fingerprint{}, now)
+		got := RenderName("{JALALI_EXPIRE_DATE}", Totals{ExpiresAt: &expires}, Fingerprint{}, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
 		if got != want {
 			t.Errorf("%s: %s; want %s", at, got, want)
-		}
-	}
-}
-
-func TestUnlimitedAndOnHold(t *testing.T) {
-	waiting := Totals{Status: "on_hold", OnHoldDurationSeconds: ptr(int64(7 * 86400))}
-	if got := RenderName("{DATA_LEFT} {DATA_LIMIT} {DAYS_LEFT} {EXPIRE_DATE} {STATUS_EMOJI}", waiting, Fingerprint{}, now); got != "∞ ∞ 7 ∞ 🔌" {
-		t.Fatalf("got %q", got)
-	}
-}
-
-func TestReadableSize(t *testing.T) {
-	for bytes, want := range map[int64]string{0: "0 B", 1536: "1.5 KB", gb + gb/4: "1.25 GB", -5: "0 B"} {
-		if got := ReadableSize(bytes); got != want {
-			t.Errorf("%d: %s; want %s", bytes, got, want)
 		}
 	}
 }
@@ -136,9 +170,19 @@ func TestMatching(t *testing.T) {
 			t.Fatalf("got %v %v", *got[0].Server, *got[1].Server)
 		}
 	})
-	t.Run("another port or transport is not that host", func(t *testing.T) {
+	t.Run("a port picked at random is the same host; another transport is not", func(t *testing.T) {
 		hosts := probe(l("DE"))
-		if got := MatchHosts([]Fingerprint{fp("DE", func(f *Fingerprint) { f.Port = ptr(int64(8443)) }), fp("DE", func(f *Fingerprint) { f.Network = ptr("grpc") })}, hosts, nil); got[0] != nil || got[1] != nil {
+		if got := MatchHosts([]Fingerprint{fp("DE", func(f *Fingerprint) { f.Port = ptr(int64(8443)) })}, hosts, nil); got[0] == nil {
+			t.Fatal("another port of the same host")
+		}
+		if got := MatchHosts([]Fingerprint{fp("DE", func(f *Fingerprint) { f.Network = ptr("grpc") })}, hosts, nil); got[0] != nil {
+			t.Fatalf("got %v", names(got))
+		}
+	})
+	t.Run("names made of variables are told apart by their fixed part", func(t *testing.T) {
+		hosts := probe(l("🇳🇱 NL ∞ | ∞ days"), l("🇩🇪 DE ∞ | ∞ days"))
+		got := MatchHosts([]Fingerprint{fp("🇩🇪 DE 40.0 GB | 29 days", nil), fp("🇳🇱 NL 40.0 GB | 29 days", nil), fp("🇹🇷 TR 40.0 GB", nil)}, hosts, nil)
+		if got[0] == nil || got[0].Name != "🇩🇪 DE ∞ | ∞ days" || got[1] == nil || got[1].Name != "🇳🇱 NL ∞ | ∞ days" || got[2] != nil {
 			t.Fatalf("got %v", names(got))
 		}
 	})
@@ -147,9 +191,9 @@ func TestMatching(t *testing.T) {
 			t.Fatalf("got %v", names(got))
 		}
 	})
-	t.Run("an address picked at random does not change a host's id", func(t *testing.T) {
+	t.Run("an address or port picked at random does not change a host's id", func(t *testing.T) {
 		first := probe(strings.Replace(l("DE"), "a.example", "x.example", 1))
-		again := probe(strings.Replace(l("DE"), "a.example", "y.example", 1))
+		again := probe(strings.Replace(strings.Replace(l("DE"), "a.example", "y.example", 1), ":443", ":8443", 1))
 		if first[0].ID != again[0].ID {
 			t.Fatal("ids differ")
 		}
@@ -197,7 +241,7 @@ func TestShapingLinks(t *testing.T) {
 	if !ok || format != Links {
 		t.Fatal("not shaped")
 	}
-	if strings.Join(linkNames(t, got), ",") != "NL,Germany 40 GB" {
+	if strings.Join(linkNames(t, got), ",") != "NL,Germany 40.0 GB" {
 		t.Fatalf("got %v", linkNames(t, got))
 	}
 	if _, err := base64.StdEncoding.DecodeString(got); err != nil {

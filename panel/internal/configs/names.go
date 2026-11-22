@@ -5,6 +5,7 @@ import (
 	"math"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -18,16 +19,57 @@ type Totals struct {
 	OnHoldDurationSeconds *int64
 }
 
-// ReadableSize writes a size as PasarGuard does: "40 GB", "1.5 KB".
-func ReadableSize(bytes int64) string {
-	units := []string{"B", "KB", "MB", "GB", "TB"}
-	value := math.Max(0, float64(bytes))
-	unit := 0
-	for value >= 1024 && unit < len(units)-1 {
-		value /= 1024
-		unit++
+// pyRound rounds as Python's round(x, 2) does and prints the result as
+// Python prints a float: "40.0", "1.5", "0.33".
+func pyRound(x float64) string {
+	rounded, _ := strconv.ParseFloat(strconv.FormatFloat(x, 'f', 2, 64), 64)
+	text := strconv.FormatFloat(rounded, 'f', -1, 64)
+	if !strings.ContainsAny(text, ".eE") {
+		text += ".0"
 	}
-	return strconv.FormatFloat(math.Round(value*100)/100, 'f', -1, 64) + " " + units[unit]
+	return text
+}
+
+// ReadableSize writes a size exactly as PasarGuard does (readable_size in
+// app/utils/system.py): "40.0 GB", "1.5 KB", "0 B".
+func ReadableSize(bytes int64) string {
+	if bytes <= 0 {
+		return "0 B"
+	}
+	units := []string{"B", "KB", "MB", "GB", "TB", "PB", "EB"}
+	i := int(math.Floor(math.Log(float64(bytes)) / math.Log(1024)))
+	i = min(max(i, 0), len(units)-1)
+	return pyRound(float64(bytes)/math.Pow(1024, float64(i))) + " " + units[i]
+}
+
+// timeLeft writes a duration as PasarGuard does (format_time_left in
+// app/subscription/share.py): months of 30 days, days, hours under a week,
+// minutes under a day.
+func timeLeft(seconds float64) string {
+	if seconds <= 0 {
+		return "∞"
+	}
+	minutes := math.Floor(seconds / 60)
+	hours := math.Floor(minutes / 60)
+	minutes -= hours * 60
+	days := math.Floor(hours / 24)
+	hours -= days * 24
+	months := math.Floor(days / 30)
+	days -= months * 30
+	var parts []string
+	if months > 0 {
+		parts = append(parts, fmt.Sprintf("%dm", int(months)))
+	}
+	if days > 0 {
+		parts = append(parts, fmt.Sprintf("%dd", int(days)))
+	}
+	if hours > 0 && days < 7 {
+		parts = append(parts, fmt.Sprintf("%dh", int(hours)))
+	}
+	if minutes > 0 && months == 0 && days == 0 {
+		parts = append(parts, fmt.Sprintf("%dm", int(minutes)))
+	}
+	return strings.Join(parts, " ")
 }
 
 var statusEmoji = map[string]string{
@@ -38,75 +80,57 @@ var statusEmoji = map[string]string{
 	"disabled": "❌",
 }
 
-var variable = regexp.MustCompile(`\{([A-Z_]+)\}`)
+var variable = regexp.MustCompile(`\{([A-Z_0-9]+)\}`)
 
-// tehran is Iran's time zone, for the Persian date; UTC+3:30 if the system
-// has no zone database.
-var tehran = func() *time.Location {
-	if location, err := time.LoadLocation("Asia/Tehran"); err == nil {
-		return location
-	}
-	return time.FixedZone("IRST", 3*3600+1800)
-}()
-
-// RenderName fills PasarGuard's remark variables ({DATA_LEFT}, {DAYS_LEFT}…)
-// in one of our names, from the subscription as a whole (all its panels
-// together). A variable it does not know is left as written.
+// RenderName fills PasarGuard's remark variables in one of our names,
+// written exactly as PasarGuard writes them (setup_format_variables in
+// app/subscription/share.py), from the subscription as a whole: all its
+// panels together. A variable it does not know is left as written.
 func RenderName(template string, totals Totals, config Fingerprint, now time.Time) string {
-	var left *int64
-	if totals.DataLimitBytes != nil {
-		v := max(0, *totals.DataLimitBytes-totals.UsedBytes)
-		left = &v
-	}
-	var seconds *float64
-	if totals.ExpiresAt != nil {
-		v := math.Max(0, totals.ExpiresAt.Sub(now).Seconds())
-		seconds = &v
-	} else if totals.OnHoldDurationSeconds != nil {
-		v := float64(*totals.OnHoldDurationSeconds)
-		seconds = &v
-	}
 	infinite := "∞"
 	values := map[string]string{
 		"USERNAME":           totals.Username,
 		"DATA_USAGE":         ReadableSize(totals.UsedBytes),
-		"DATA_LEFT":          infinite,
 		"DATA_LIMIT":         infinite,
+		"DATA_LEFT":          infinite,
+		"USAGE_PERCENTAGE":   infinite,
 		"DAYS_LEFT":          infinite,
 		"TIME_LEFT":          infinite,
 		"EXPIRE_DATE":        infinite,
+		"JALALI_EXPIRE_DATE": infinite,
 		"STATUS_EMOJI":       statusEmoji[totals.Status],
 		"STATUS_TEXT":        totals.Status,
 		"PROTOCOL":           deref(config.Protocol),
-		"TRANSPORT":          deref(config.Network),
+		"TRANSPORT":          "tcp",
 		"SERVER_IP":          deref(config.Server),
-		"USAGE_PERCENTAGE":   "0",
-		"JALALI_EXPIRE_DATE": infinite,
 	}
-	if left != nil {
-		values["DATA_LEFT"] = ReadableSize(*left)
+	if config.Network != nil {
+		values["TRANSPORT"] = *config.Network
 	}
-	if totals.DataLimitBytes != nil {
-		values["DATA_LIMIT"] = ReadableSize(*totals.DataLimitBytes)
-		if *totals.DataLimitBytes > 0 {
-			percent := math.Min(100, math.Round(float64(totals.UsedBytes)/float64(*totals.DataLimitBytes)*100))
-			values["USAGE_PERCENTAGE"] = strconv.Itoa(int(percent))
+	if limit := totals.DataLimitBytes; limit != nil && *limit > 0 {
+		values["DATA_LIMIT"] = ReadableSize(*limit)
+		values["DATA_LEFT"] = ReadableSize(max(*limit-totals.UsedBytes, 0))
+		values["USAGE_PERCENTAGE"] = pyRound(float64(totals.UsedBytes) / float64(*limit) * 100)
+	}
+	switch {
+	case totals.Status == "on_hold":
+		if hold := totals.OnHoldDurationSeconds; hold != nil && *hold > 0 {
+			values["DAYS_LEFT"] = strconv.FormatInt(*hold/86400, 10)
+			values["TIME_LEFT"] = timeLeft(float64(*hold))
+			values["EXPIRE_DATE"], values["JALALI_EXPIRE_DATE"] = "-", "-"
 		}
-	}
-	if seconds != nil {
-		days := int64(*seconds / 86400)
-		values["DAYS_LEFT"] = strconv.FormatInt(days, 10)
-		total := int64(*seconds)
-		if days > 0 {
-			values["TIME_LEFT"] = fmt.Sprintf("%dd %dh", days, total%86400/3600)
+	case totals.ExpiresAt != nil:
+		expires := totals.ExpiresAt.UTC()
+		values["EXPIRE_DATE"] = expires.Format("2006-01-02")
+		y, m, d := ToJalali(expires)
+		values["JALALI_EXPIRE_DATE"] = fmt.Sprintf("%04d-%02d-%02d", y, m, d)
+		if now.Before(expires) {
+			left := expires.Sub(now)
+			values["DAYS_LEFT"] = strconv.FormatInt(int64(left/(24*time.Hour))+1, 10)
+			values["TIME_LEFT"] = timeLeft(left.Seconds())
 		} else {
-			values["TIME_LEFT"] = fmt.Sprintf("%dh %dm", total/3600, total%3600/60)
+			values["DAYS_LEFT"], values["TIME_LEFT"] = "0", "0"
 		}
-	}
-	if totals.ExpiresAt != nil {
-		values["EXPIRE_DATE"] = totals.ExpiresAt.UTC().Format("2006-01-02")
-		y, m, d := ToJalali(totals.ExpiresAt.In(tehran))
-		values["JALALI_EXPIRE_DATE"] = fmt.Sprintf("%04d/%02d/%02d", y, m, d)
 	}
 	return variable.ReplaceAllStringFunc(template, func(whole string) string {
 		if value, ok := values[whole[1:len(whole)-1]]; ok {

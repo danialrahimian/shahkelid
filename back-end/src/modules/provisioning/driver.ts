@@ -70,6 +70,8 @@ export interface PanelDriver {
   listGroups(): Promise<PanelGroup[]>;
   /** A user's configs, as links (one per line), read from their subscription link. */
   readLinks(subscriptionUrl: string): Promise<string>;
+  /** A user's configs as fully as the panel gives them: its Xray JSON where it has one, else links. */
+  readConfigs(subscriptionUrl: string): Promise<string>;
   createUser(user: NewPanelUser): Promise<PanelUser>;
   /** null when there is no such user. */
   getUser(username: string): Promise<PanelUser | null>;

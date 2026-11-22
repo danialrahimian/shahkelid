@@ -78,6 +78,9 @@ type Panel struct {
 	Down bool
 	// XrayOff switches the "xray" subscription format off, as an admin may.
 	XrayOff bool
+	// HeaderLines writes the headers into the body of a list of links too,
+	// as PasarGuard's "header placement" may.
+	HeaderLines bool
 	// SubRequests holds the last request for each subscription link, by token.
 	SubRequests map[string]*http.Request
 	// Calls counts requests by "METHOD path" (without the query).
@@ -435,6 +438,11 @@ var singBoxApps = regexp.MustCompile(`^(SFA|SFI|SFM|SFT|[Kk]aring|[Hh]iddify[Nn]
 var clashApps = regexp.MustCompile(`^([Cc]lash|[Ss]tash|FlClash|mihomo)`)
 
 func (p *Panel) subscription(w http.ResponseWriter, r *http.Request, token, format string) {
+	if r.Method != http.MethodGet {
+		// PasarGuard's subscription routes are GET only.
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	if p.SubRequests == nil {
 		p.SubRequests = map[string]*http.Request{}
 	}
@@ -540,6 +548,13 @@ func (p *Panel) subscription(w http.ResponseWriter, r *http.Request, token, form
 			lines = append(lines, link(c, secret))
 		}
 		w.Header().Set("content-type", "text/plain; charset=utf-8")
+		if p.HeaderLines {
+			lines = append([]string{
+				"#profile-title: base64:" + base64.StdEncoding.EncodeToString([]byte("Fake")),
+				"#" + "subscription-userinfo: " + w.Header().Get("subscription-userinfo"),
+				"#profile-web-page-url: " + w.Header().Get("profile-web-page-url"),
+			}, lines...)
+		}
 		text := strings.Join(lines, "\n")
 		if format == "links" {
 			_, _ = w.Write([]byte(text))

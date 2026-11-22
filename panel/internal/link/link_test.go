@@ -218,13 +218,13 @@ func TestPickedRenamedAndOrdered(t *testing.T) {
 
 	_, body := w.get("/s/"+token, oldV2rayNG)
 
-	if got := strings.Join(names(t, body), ","); got != "🇩🇪 DE-2 [vmess],Germany 50 GB" {
+	if got := strings.Join(names(t, body), ","); got != "🇩🇪 DE-2 [vmess],Germany 50.0 GB" {
 		t.Fatalf("names %s", got)
 	}
 
 	w.setHost(de2, false, nil, ptr(0))
 	_, body = w.get("/s/"+token, oldV2rayNG)
-	if got := strings.Join(names(t, body), ","); got != "Germany 50 GB" {
+	if got := strings.Join(names(t, body), ","); got != "Germany 50.0 GB" {
 		t.Fatalf("a host left out is not given: %s", got)
 	}
 }
@@ -358,6 +358,16 @@ func TestTooManyRequests(t *testing.T) {
 	if last != http.StatusTooManyRequests {
 		t.Fatalf("third request: %d", last)
 	}
+	// Many customers share one address on mobile networks: another link from it is still served.
+	other, _ := w.customer()
+	response, err := http.Get(server.URL + "/s/" + other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != 200 {
+		t.Fatalf("another link from the same address: %d", response.StatusCode)
+	}
 }
 
 func TestHeadAsksOnlyForHeaders(t *testing.T) {
@@ -369,6 +379,84 @@ func TestHeadAsksOnlyForHeaders(t *testing.T) {
 	}
 	if response.StatusCode != 200 || response.Header.Get("subscription-userinfo") == "" {
 		t.Fatalf("status %d headers %v", response.StatusCode, response.Header)
+	}
+}
+
+func TestHeaderLinesInTheBody(t *testing.T) {
+	w := newWorld(t)
+	token, _ := w.customer()
+	w.panel.Mu.Lock()
+	w.panel.HeaderLines = true
+	w.panel.Mu.Unlock()
+	w.setHost(w.hostID(2, "🇩🇪 DE-2"), false, ptr("Fast"), nil)
+
+	_, body := w.get("/s/"+token, oldV2rayNG)
+
+	decoded, err := base64.StdEncoding.DecodeString(body)
+	if err != nil {
+		t.Fatalf("not base64: %s", body)
+	}
+	lines := strings.Split(string(decoded), "\n")
+	if len(lines) != 5 || lines[0] != "#profile-title: base64:RmFrZQ==" || lines[2] != "#profile-web-page-url: https://shop.test/s/"+token {
+		t.Fatalf("lines %q", lines)
+	}
+	if configs.FingerprintOfLink(lines[4]).Name != "Fast" {
+		t.Fatalf("the links are still shaped: %q", lines[3:])
+	}
+}
+
+// ---------------------------------------------- when the panel changes its hosts
+
+func TestRenamedHostKeepsItsPicks(t *testing.T) {
+	w := newWorld(t)
+	testdb.SetSources(t, w.s, w.group, testdb.Source{PanelID: w.panelID, PanelGroupID: 2, AllHosts: false})
+	token, _ := w.customer()
+	w.setHost(w.hostID(2, "🇩🇪 DE-2"), true, ptr("Fast"), ptr(0))
+	if _, body := w.get("/s/"+token, oldV2rayNG); strings.Join(names(t, body), ",") != "Fast" {
+		t.Fatalf("names %v", names(t, body))
+	}
+
+	w.panel.Mu.Lock()
+	w.panel.Hosts[1].Remark = "🇩🇪 DE-02 [{PROTOCOL}]"
+	w.panel.Mu.Unlock()
+	w.catalog.Forget()
+
+	if _, body := w.get("/s/"+token, oldV2rayNG); strings.Join(names(t, body), ",") != "Fast" {
+		t.Fatalf("after the rename: %v", names(t, body))
+	}
+	row := testdb.Row(t, w.s, `select host_id, fp_name from group_hosts where group_id = $1 and selected`, w.group)
+	if row["host_id"] != w.hostID(2, "🇩🇪 DE-02") || row["fp_name"] != "🇩🇪 DE-02 [vmess]" {
+		t.Fatalf("saved under its new id: %v", row)
+	}
+}
+
+func TestDeletedHostLeavesItsSiblingsAlone(t *testing.T) {
+	w := newWorld(t)
+	w.panel.Mu.Lock()
+	w.panel.Hosts = append(w.panel.Hosts, fakepanel.Host{ID: 4, Remark: "🇩🇪 DE-3", Inbound: "vless-ws", Address: "de3.example.com", Port: 443, Priority: 4})
+	w.panel.Mu.Unlock()
+	testdb.SetSources(t, w.s, w.group, testdb.Source{PanelID: w.panelID, PanelGroupID: 2, AllHosts: false})
+	token, _ := w.customer()
+	w.setHost(w.hostID(2, "🇩🇪 DE-3"), true, ptr("Three"), nil)
+	if _, body := w.get("/s/"+token, oldV2rayNG); strings.Join(names(t, body), ",") != "Three" {
+		t.Fatalf("names %v", names(t, body))
+	}
+
+	w.panel.Mu.Lock()
+	w.panel.Hosts = w.panel.Hosts[:3]
+	w.panel.Mu.Unlock()
+	w.catalog.Forget()
+
+	if _, body := w.get("/s/"+token, oldV2rayNG); len(names(t, body)) != 0 {
+		t.Fatalf("DE-1, a vless host like it, is not given in its place: %v", names(t, body))
+	}
+
+	w.panel.Mu.Lock()
+	w.panel.Hosts = append(w.panel.Hosts, fakepanel.Host{ID: 4, Remark: "🇩🇪 DE-3", Inbound: "vless-ws", Address: "de3.example.com", Port: 443, Priority: 4})
+	w.panel.Mu.Unlock()
+	w.catalog.Forget()
+	if _, body := w.get("/s/"+token, oldV2rayNG); strings.Join(names(t, body), ",") != "Three" {
+		t.Fatalf("back again, with its settings: %v", names(t, body))
 	}
 }
 

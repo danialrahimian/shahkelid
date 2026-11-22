@@ -19,7 +19,7 @@ import { planGroups, plans } from "../catalog/schema";
 import { panels } from "../infrastructure/schema";
 import { findPanel, panelFailure } from "../infrastructure/service";
 import { subscriptionGroups, subscriptions } from "../subscriptions/schema";
-import type { ProbeHost } from "../subscriptions/configs";
+import { settle, settled, type ProbeHost, type ProbeHostWithLegacy, type Saved } from "../subscriptions/configs";
 import { readGroups, readProbe } from "./catalog";
 import { groupHosts, groupSources, groups } from "./schema";
 
@@ -99,23 +99,84 @@ export const findGroup = async (executor: Executor, id: string) => {
 
 type HostRow = typeof groupHosts.$inferSelect;
 
+const fingerprintOf = (host: ProbeHost) => ({
+  fpName: host.name,
+  fpProtocol: host.protocol,
+  fpNetwork: host.network,
+  fpServer: host.server,
+  fpPort: host.port,
+  fpPath: host.path,
+  fpSni: host.sni,
+});
+
+const savedOf = (row: HostRow): Saved => ({
+  hostId: row.hostId,
+  name: row.fpName ?? undefined,
+  protocol: row.fpProtocol,
+  network: row.fpNetwork,
+  server: row.fpServer,
+  port: row.fpPort,
+  path: row.fpPath,
+  sni: row.fpSni,
+});
+
+/**
+ * Keeps a group's saved settings on their hosts as the panel changes them
+ * (configs.settle): records the hosts it has not seen, moves settings to a
+ * renamed host or off an id earlier releases gave, and keeps each host's
+ * fingerprint. Under a lock on the group, so the panel service, settling
+ * the same way when it serves a link, and a second staff page agree. Only
+ * when something changed: most reads write nothing.
+ */
+const settleRows = async (executor: Executor, groupId: string, rows: HostRow[], current: Map<string, ProbeHostWithLegacy[]>) => {
+  const changes = [...current].filter(([panelId, hosts]) => !settled(settle(rows.filter((row) => row.panelId === panelId).map(savedOf), hosts)));
+  if (changes.length === 0) return rows;
+  return executor.transaction(async (tx) => {
+    await tx.execute(sql`select 1 from ${groups} where ${groups.id} = ${groupId} for update`);
+    for (const [panelId, hosts] of changes) {
+      const here = await tx
+        .select()
+        .from(groupHosts)
+        .where(and(eq(groupHosts.groupId, groupId), eq(groupHosts.panelId, panelId)));
+      const { moves, fresh, fill } = settle(here.map(savedOf), hosts);
+      const byId = new Map(hosts.map((host) => [host.id, host]));
+      const where = (hostId: string) =>
+        and(eq(groupHosts.groupId, groupId), eq(groupHosts.panelId, panelId), eq(groupHosts.hostId, hostId));
+      for (const [from, to] of moves) {
+        await tx.update(groupHosts).set({ hostId: to, ...fingerprintOf(byId.get(to)!) }).where(where(from));
+      }
+      for (const hostId of fill) await tx.update(groupHosts).set(fingerprintOf(byId.get(hostId)!)).where(where(hostId));
+      if (fresh.length > 0) {
+        await tx
+          .insert(groupHosts)
+          .values(fresh.map((host) => ({ groupId, panelId, hostId: host.id, ...fingerprintOf(host) })))
+          .onConflictDoNothing();
+      }
+    }
+    return tx.select().from(groupHosts).where(eq(groupHosts.groupId, groupId));
+  });
+};
+
+type GroupHosts = GroupHostsView & { fingerprints: Map<string, ProbeHost> };
+
 /** A group's hosts: from each panel group it takes, with what the group says about each. */
-export const groupHostsOf = async (
+const readHosts = async (
   executor: Executor,
   id: string,
-  read: (panel: typeof panels.$inferSelect, panelGroupId: number) => Promise<ProbeHost[] | null> = readProbe,
-): Promise<GroupHostsView> => {
+  read: (panel: typeof panels.$inferSelect, panelGroupId: number) => Promise<ProbeHostWithLegacy[] | null>,
+): Promise<GroupHosts> => {
   const group = await findGroup(executor, id);
   const rows = await executor.select().from(groupHosts).where(eq(groupHosts.groupId, id));
-  const byKey = new Map<string, HostRow>(rows.map((row) => [`${row.panelId}:${row.hostId}`, row]));
 
-  const hosts: (GroupHostView & { place: number | null; panelOrder: number })[] = [];
+  // Each panel group read once; a panel that fails is not asked again.
   const unreachable: GroupHostsView["unreachable"] = [];
   const failed = new Set<string>();
-  for (const [sourceIndex, source] of group.sources.entries()) {
+  const read_: { source: (typeof group.sources)[number]; panel: typeof panels.$inferSelect; configs: ProbeHostWithLegacy[] }[] = [];
+  const current = new Map<string, ProbeHostWithLegacy[]>();
+  for (const source of group.sources) {
     if (failed.has(source.panelId)) continue;
     const panel = await findPanel(executor, source.panelId);
-    let configs: ProbeHost[] | null;
+    let configs: ProbeHostWithLegacy[] | null;
     try {
       configs = await read(panel, source.panelGroupId);
     } catch (error) {
@@ -124,7 +185,20 @@ export const groupHostsOf = async (
       unreachable.push({ panelId: panel.id, panelName: panel.name, error: (error as Error).message.slice(0, 300) });
     }
     if (!configs) continue;
+    read_.push({ source, panel, configs });
+    const list = current.get(panel.id) ?? [];
+    for (const config of configs) if (!list.some((known) => known.id === config.id)) list.push(config);
+    current.set(panel.id, list);
+  }
+  for (const panelId of failed) current.delete(panelId);
+  const settledRows = await settleRows(executor, id, rows, current);
+  const byKey = new Map<string, HostRow>(settledRows.map((row) => [`${row.panelId}:${row.hostId}`, row]));
+
+  const fingerprints = new Map<string, ProbeHost>();
+  const hosts: (GroupHostView & { place: number | null; panelOrder: number })[] = [];
+  for (const [sourceIndex, { source, panel, configs }] of read_.entries()) {
     for (const [hostIndex, config] of configs.entries()) {
+      fingerprints.set(`${panel.id}:${config.id}`, config);
       const seen = hosts.find((host) => host.panelId === panel.id && host.hostId === config.id);
       if (seen) {
         // In two of the group's panel groups: one host, "all" if either takes all.
@@ -162,7 +236,16 @@ export const groupHostsOf = async (
           ? 1
           : a.panelOrder - b.panelOrder,
   );
-  return { hosts: hosts.map(({ place: _place, panelOrder: _order, ...host }) => host), unreachable };
+  return { hosts: hosts.map(({ place: _place, panelOrder: _order, ...host }) => host), unreachable, fingerprints };
+};
+
+export const groupHostsOf = async (
+  executor: Executor,
+  id: string,
+  read: (panel: typeof panels.$inferSelect, panelGroupId: number) => Promise<ProbeHostWithLegacy[] | null> = readProbe,
+): Promise<GroupHostsView> => {
+  const { hosts, unreachable } = await readHosts(executor, id, read);
+  return { hosts, unreachable };
 };
 
 // ---------------------------------------------------------------- writing
@@ -278,7 +361,7 @@ export const updateHost = async (
   hostId: string,
   input: z.output<typeof groupHostInput>,
 ) => {
-  const { hosts } = await groupHostsOf(db, id);
+  const { hosts, fingerprints } = await readHosts(db, id, readProbe);
   const host = hosts.find((candidate) => candidate.panelId === panelId && candidate.hostId === hostId);
   if (!host) throw notFound("That host is not in this group's panel groups");
   if (input.selected === false && host.forced) {
@@ -286,15 +369,18 @@ export const updateHost = async (
   }
 
   const name = input.name === undefined ? undefined : input.name === null || input.name === "" ? null : input.name;
+  const known = fingerprints.get(`${panelId}:${hostId}`);
+  const fingerprint = known ? fingerprintOf(known) : {};
   await db.transaction(async (tx) => {
     await tx
       .insert(groupHosts)
-      .values({ groupId: id, panelId, hostId, selected: input.selected ?? host.selected, name: name ?? host.name })
+      .values({ groupId: id, panelId, hostId, selected: input.selected ?? host.selected, name: name ?? host.name, ...fingerprint })
       .onConflictDoUpdate({
         target: [groupHosts.groupId, groupHosts.panelId, groupHosts.hostId],
         set: {
           ...(input.selected !== undefined ? { selected: input.selected } : {}),
           ...(name !== undefined ? { name } : {}),
+          ...fingerprint,
         },
       });
     await audit(
@@ -311,20 +397,24 @@ export const updateHost = async (
 
 /** The hosts in the order they were dragged into; the ones not named go after them. */
 export const orderHosts = async (db: Db, actor: StaffActor, id: string, input: z.output<typeof hostOrderInput>) => {
-  await findGroup(db, id);
+  const { fingerprints } = await readHosts(db, id, readProbe);
   const keys = input.hosts.map((host) => `${host.panelId}:${host.hostId}`);
   if (new Set(keys).size !== keys.length) {
     throw new ApiError(400, "VALIDATION_FAILED", "A host is listed twice", { fields: [{ path: "hosts", code: "CONFLICT" }] });
   }
+  const fingerprintFor = (host: { panelId: string; hostId: string }) => {
+    const known = fingerprints.get(`${host.panelId}:${host.hostId}`);
+    return known ? fingerprintOf(known) : {};
+  };
   await db.transaction(async (tx) => {
     await tx.update(groupHosts).set({ sortOrder: null }).where(eq(groupHosts.groupId, id));
     for (const [index, host] of input.hosts.entries()) {
       await tx
         .insert(groupHosts)
-        .values({ groupId: id, panelId: host.panelId, hostId: host.hostId, sortOrder: index })
+        .values({ groupId: id, panelId: host.panelId, hostId: host.hostId, sortOrder: index, ...fingerprintFor(host) })
         .onConflictDoUpdate({
           target: [groupHosts.groupId, groupHosts.panelId, groupHosts.hostId],
-          set: { sortOrder: index },
+          set: { sortOrder: index, ...fingerprintFor(host) },
         });
     }
     await audit(tx, actor, "group.hosts_reordered", id, null, { hosts: input.hosts });

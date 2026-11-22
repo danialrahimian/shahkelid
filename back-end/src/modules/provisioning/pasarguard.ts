@@ -222,6 +222,22 @@ export class PasarGuardDriver implements PanelDriver {
     throw last!;
   }
 
+  /**
+   * A user's configs as PasarGuard's Xray JSON (every host, transports the
+   * link formats cannot carry too), else as links (readLinks).
+   */
+  async readConfigs(subscriptionUrl: string): Promise<string> {
+    const bare = subscriptionUrl.replace(/\/+$/, "");
+    try {
+      const response = await this.fetchImpl(`${bare}/xray`, { signal: AbortSignal.timeout(TIMEOUT_MS), redirect: "follow" });
+      const text = await response.text();
+      if (response.ok && text.trimStart().startsWith("[")) return text;
+    } catch {
+      // links, then
+    }
+    return this.readLinks(subscriptionUrl);
+  }
+
   async createUser(user: NewPanelUser): Promise<PanelUser> {
     const timing = user.startsOnFirstUse
       ? {

@@ -4,9 +4,11 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, before, beforeEach, describe, it } from "node:test";
 
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 
-import { forgetCatalog } from "../src/modules/groups/catalog";
+import { forgetCatalog, readProbe } from "../src/modules/groups/catalog";
+import { groupHosts } from "../src/modules/groups/schema";
+import { panels } from "../src/modules/infrastructure/schema";
 import { provisionSubscription } from "../src/modules/provisioning/provision";
 import { subscriptions } from "../src/modules/subscriptions/schema";
 import { aCustomerAccount, closeDatabase, database, signedInStaff } from "./helpers/accounts";
@@ -304,6 +306,67 @@ describe("Naming and ordering hosts and groups", () => {
 // ------------------------------------------------------- the customer's link
 
 // -------------------------------------------- panels a reseller signs in to
+
+describe("When the panel changes its hosts", () => {
+  it("When a host is renamed on the panel, then what staff chose for it stays with it", async () => {
+    const store = await aShapedStore();
+    await setSources(store, [{ panelGroupId: 2, allHosts: false }]);
+    await setHost(store, 4, { selected: true, name: "Fast" });
+    await orderHosts(store, [4, 2]);
+
+    store.fake.hosts[3]!.remark = "🇩🇪 DE-03";
+    const hosts = await hostsOf(store);
+
+    const renamed = hosts.find((host) => host.remark === "🇩🇪 DE-03")!;
+    assert.deepEqual([renamed.selected, renamed.name], [true, "Fast"]);
+    assert.deepEqual(hosts.map((host) => host.remark.split(" ")[1]), ["DE-03", "DE-2", "DE-1"], "and its place");
+    const rows = await database().select().from(groupHosts).where(eq(groupHosts.groupId, store.groupId));
+    const row = rows.find((candidate) => candidate.hostId === renamed.hostId)!;
+    assert.deepEqual([row.fpName, row.fpProtocol, row.fpServer], ["🇩🇪 DE-03", "vless", "de3.example.com"], "saved under its new id");
+  });
+
+  it("When a host goes and comes back, or a new one is added, then picks are kept and the new one waits to be picked", async () => {
+    const store = await aShapedStore();
+    await setSources(store, [{ panelGroupId: 2, allHosts: false }]);
+    await setHost(store, 4, { selected: true, name: "Fast" });
+
+    const gone = store.fake.hosts.splice(3, 1)[0]!;
+    assert.deepEqual((await hostsOf(store)).map((host) => host.n), [1, 2]);
+
+    store.fake.hosts.push(gone, { ...gone, id: 5, remark: "🇩🇪 DE-4", address: "de4.example.com", priority: 5 });
+    const hosts = await hostsOf(store);
+    assert.deepEqual(
+      hosts.map((host) => [host.remark, host.selected, host.name]),
+      [
+        ["🇩🇪 DE-1 skprobe_g2", false, null],
+        ["🇩🇪 DE-2 [vmess]", false, null],
+        ["🇩🇪 DE-3", true, "Fast"],
+        ["🇩🇪 DE-4", false, null],
+      ],
+    );
+  });
+
+  it("When settings were saved under the id earlier releases gave, then they are found and moved to the new id", async () => {
+    const store = await aShapedStore();
+    await setSources(store, [{ panelGroupId: 2, allHosts: false }]);
+    await setHost(store, 4, { selected: true, name: "Fast" });
+    const [panel] = await database().select().from(panels).where(eq(panels.id, store.panelId));
+    const de3 = (await readProbe(panel!, 2)).find((host) => host.name === "🇩🇪 DE-3")!;
+    // As an earlier release left it: a row only for the host staff chose, under the old id.
+    await database().delete(groupHosts).where(and(eq(groupHosts.groupId, store.groupId), ne(groupHosts.hostId, de3.id)));
+    await database()
+      .update(groupHosts)
+      .set({ hostId: de3.legacyId, fpName: null, fpProtocol: null, fpNetwork: null, fpServer: null, fpPort: null, fpPath: null, fpSni: null })
+      .where(eq(groupHosts.hostId, de3.id));
+
+    const host = (await hostsOf(store)).find((candidate) => candidate.n === 4)!;
+
+    assert.deepEqual([host.hostId, host.selected, host.name], [de3.id, true, "Fast"]);
+    const rows = await database().select().from(groupHosts).where(eq(groupHosts.groupId, store.groupId));
+    const row = rows.find((candidate) => candidate.selected)!;
+    assert.deepEqual([row.hostId, row.fpProtocol, rows.length], [de3.id, "vless", 3], "moved, and the other hosts recorded");
+  });
+});
 
 describe("A panel signed in to with a reseller's account (no hosts, no inbounds)", () => {
   it("When a group takes its panel groups, then the hosts are read through the shop's own subscription", async () => {

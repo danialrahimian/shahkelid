@@ -58,6 +58,15 @@ export const groupHosts = pgTable(
       .notNull()
       .references(() => panels.id, { onDelete: "restrict" }),
     hostId: text("host_id").notNull(),
+    // What the host was when this was saved, to find it again when the
+    // panel renames it (its id is made from its name): see configs.rekey.
+    fpName: text("fp_name"),
+    fpProtocol: text("fp_protocol"),
+    fpNetwork: text("fp_network"),
+    fpServer: text("fp_server"),
+    fpPort: integer("fp_port"),
+    fpPath: text("fp_path"),
+    fpSni: text("fp_sni"),
     selected: boolean("selected").notNull().default(false),
     // null: the panel's remark
     name: text("name"),

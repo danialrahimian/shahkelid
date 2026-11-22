@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/danialrahimian/shahkelid/panel/internal/configs"
 )
 
 // LinkSubscription is what the customer's link needs of a subscription.
@@ -75,14 +77,37 @@ type GroupSource struct {
 	AllHosts     bool
 }
 
-// GroupHost is what a group says about one host: picked, named, placed.
+// GroupHost is what a group says about one host: picked, named, placed,
+// and what the host was when last seen (to find it again when the panel
+// renames it). A group keeps a row for every host it has seen.
 type GroupHost struct {
-	GroupID   string
-	PanelID   string
-	HostID    string
-	Selected  bool
-	Name      *string
-	SortOrder *int64
+	GroupID     string
+	PanelID     string
+	HostID      string
+	Selected    bool
+	Name        *string
+	SortOrder   *int64
+	Fingerprint configs.Fingerprint
+}
+
+// Saved is the row as configs.Settle reads it.
+func (h GroupHost) Saved() configs.Saved {
+	return configs.Saved{HostID: h.HostID, Fingerprint: h.Fingerprint}
+}
+
+const groupHostColumns = `group_id::text, panel_id::text, host_id, selected, name, sort_order::bigint,
+	fp_name, fp_protocol, fp_network, fp_server, fp_port::bigint, fp_path, fp_sni`
+
+func scanGroupHost(row pgx.CollectableRow) (GroupHost, error) {
+	var x GroupHost
+	var name *string
+	f := &x.Fingerprint
+	err := row.Scan(&x.GroupID, &x.PanelID, &x.HostID, &x.Selected, &x.Name, &x.SortOrder,
+		&name, &f.Protocol, &f.Network, &f.Server, &f.Port, &f.Path, &f.SNI)
+	if name != nil {
+		f.Name = *name
+	}
+	return x, err
 }
 
 // LinkGroups is a subscription's groups, in their order, with their
@@ -124,15 +149,10 @@ func (s *Store) GroupsOfSubscription(ctx context.Context, subscriptionID string)
 	if err != nil {
 		return out, err
 	}
-	rows, err = s.Pool.Query(ctx, `
-		select group_id::text, panel_id::text, host_id, selected, name, sort_order::bigint
-		from group_hosts where group_id = any($1::uuid[])`, out.GroupIDs)
+	rows, err = s.Pool.Query(ctx, `select `+groupHostColumns+` from group_hosts where group_id = any($1::uuid[])`, out.GroupIDs)
 	if err != nil {
 		return out, err
 	}
-	out.Hosts, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (GroupHost, error) {
-		var x GroupHost
-		return x, row.Scan(&x.GroupID, &x.PanelID, &x.HostID, &x.Selected, &x.Name, &x.SortOrder)
-	})
+	out.Hosts, err = pgx.CollectRows(rows, scanGroupHost)
 	return out, err
 }
