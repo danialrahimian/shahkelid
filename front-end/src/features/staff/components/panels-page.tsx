@@ -17,6 +17,7 @@ import { formatDateTime } from "@/lib/format";
 import { showSaveError } from "../form-errors";
 import { CheckField, FormActions, SelectField, TextField } from "./fields";
 import { Button, FormDialog, PageHeader, Placeholder, TableFrame } from "./staff-ui";
+import { SubscriptionDomains } from "./subscription-domains";
 
 type PanelForm = PanelInput & { credentials?: PanelInput["credentials"] };
 
@@ -246,6 +247,10 @@ export const PanelsPage = () => {
           </tbody>
         </TableFrame>
       )}
+
+      <div className="mt-10">
+        <SubscriptionDomains />
+      </div>
 
       {editing ? (
         <PanelFormDialog

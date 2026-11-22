@@ -20,6 +20,10 @@ export const API_ERROR_CODES = [
   "LOCATION_CODE_INVALID",
   "NUMBER_OUT_OF_RANGE",
   "GROUPS_REQUIRED",
+  /** Not a domain name (sub.example.com). */
+  "DOMAIN_INVALID",
+  /** The domain is the site's own, or added already. */
+  "DOMAIN_TAKEN",
 
   // panels and provisioning (M3)
   /** The panel did not answer, or answered with a server error. Worth retrying. */

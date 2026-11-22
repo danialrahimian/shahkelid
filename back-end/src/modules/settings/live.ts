@@ -7,6 +7,7 @@ import logger from "../../libraries/logger";
 import { open, seal } from "../../platform/crypto/secret-box";
 import type { Db, Executor } from "../../platform/db/client";
 import { siteSettings } from "../../platform/db/platform-schema";
+import { loadSubscriptionDomains } from "../infrastructure/domains";
 
 /**
  * The settings staff set in the panel (mail, Telegram, payment accounts,
@@ -139,6 +140,8 @@ export const loadSettings = async (db: Executor) => {
     }
   }
   saved = next;
+  // The shop's subscription domain, which every link is made on, rides along.
+  await loadSubscriptionDomains(db);
 };
 
 let timer: NodeJS.Timeout | undefined;

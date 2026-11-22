@@ -23,10 +23,12 @@ const (
 	SingBox
 	// Clash is a Clash or Clash Meta profile.
 	Clash
+	// Outline is one Shadowsocks config as JSON (PasarGuard's "outline").
+	Outline
 )
 
 func (f Format) String() string {
-	return [...]string{"unknown", "links", "xray", "sing-box", "clash"}[f]
+	return [...]string{"unknown", "links", "xray", "sing-box", "clash", "outline"}[f]
 }
 
 func linesOf(text string) []string {
@@ -78,14 +80,22 @@ var proxyTypes = map[string]bool{
 type parsed struct {
 	format  Format
 	configs []Fingerprint
-	// Links: the lines, and whether the answer was base64.
+	// Links: the lines, whether the answer was base64, and the lines that
+	// are not links: PasarGuard can write its headers into the body
+	// ("#profile-title: …"), before or after the links.
 	lines  []string
 	base64 bool
+	head   []string
+	tail   []string
 	// XrayJSON: the configs.
 	xray []map[string]any
-	// SingBox: the profile, and its proxy outbounds.
-	singBox map[string]any
-	proxies []map[string]any
+	// SingBox: the profile, and its configs: proxy outbounds, and endpoints
+	// (WireGuard, from sing-box 1.11), marked by inEndpoints.
+	singBox     map[string]any
+	proxies     []map[string]any
+	inEndpoints []bool
+	// Outline: the one config.
+	outline map[string]any
 	// Clash: the document, and its proxies.
 	clash        *yaml.Node
 	clashProxies []*yaml.Node
@@ -106,18 +116,23 @@ func decodeJSON(body string) (any, bool) {
 
 func parse(body string) parsed {
 	if decoded, ok := decodeBase64(body); ok {
-		if lines := linesOf(decoded); allLinks(lines) {
-			return linksAnswer(lines, true)
+		if answer, ok := linksAnswer(decoded, true); ok {
+			return answer
 		}
 	}
-	if lines := linesOf(body); allLinks(lines) {
-		return linksAnswer(lines, false)
+	if answer, ok := linksAnswer(body, false); ok {
+		return answer
 	}
 	if value, ok := decodeJSON(body); ok {
 		switch json := value.(type) {
 		case map[string]any:
-			if outbounds, ok := json["outbounds"].([]any); ok {
-				return singBoxAnswer(json, outbounds)
+			if _, ok := json["outbounds"].([]any); ok {
+				return singBoxAnswer(json)
+			}
+			_, server := json["server"]
+			_, method := json["method"]
+			if server && method {
+				return outlineAnswer(json)
 			}
 		case []any:
 			return xrayAnswer(json)
@@ -127,53 +142,82 @@ func parse(body string) parsed {
 	return clashAnswer(body)
 }
 
-func allLinks(lines []string) bool {
-	if len(lines) == 0 {
-		return false
-	}
-	for _, line := range lines {
-		if !isLink(line) {
-			return false
+// linksAnswer reads a list of links. Comment lines ("#key: value", where
+// PasarGuard may put its headers) are kept apart, to go back where they
+// were; any other line that is not a link means it is not a list of links.
+func linksAnswer(text string, encoded bool) (parsed, bool) {
+	p := parsed{format: Links, base64: encoded}
+	for _, line := range linesOf(text) {
+		switch {
+		case isLink(line):
+			p.lines = append(p.lines, line)
+			p.configs = append(p.configs, FingerprintOfLink(line))
+		case strings.HasPrefix(line, "#") && len(p.lines) == 0:
+			p.head = append(p.head, line)
+		case strings.HasPrefix(line, "#"):
+			p.tail = append(p.tail, line)
+		default:
+			return parsed{}, false
 		}
 	}
-	return true
-}
-
-func linksAnswer(lines []string, encoded bool) parsed {
-	p := parsed{format: Links, lines: lines, base64: encoded}
-	for _, line := range lines {
-		p.configs = append(p.configs, FingerprintOfLink(line))
+	if len(p.lines) == 0 {
+		return parsed{}, false
 	}
-	return p
+	return p, true
 }
 
-func singBoxAnswer(profile map[string]any, outbounds []any) parsed {
+func singBoxAnswer(profile map[string]any) parsed {
 	p := parsed{format: SingBox, singBox: profile}
-	for _, item := range outbounds {
-		outbound, ok := item.(map[string]any)
-		if !ok {
-			continue
+	read := func(list []any, endpoints bool) {
+		for _, item := range list {
+			outbound, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			kind, _ := outbound["type"].(string)
+			tag, isTag := outbound["tag"].(string)
+			if !proxyTypes[kind] || !isTag {
+				continue
+			}
+			transport, _ := outbound["transport"].(map[string]any)
+			tls, _ := outbound["tls"].(map[string]any)
+			headers, _ := transport["headers"].(map[string]any)
+			protocol := ProtocolName(kind)
+			path := transport["path"]
+			if path == nil {
+				path = transport["service_name"]
+			}
+			server := text(outbound["server"])
+			port := portOf(outbound["server_port"])
+			if endpoints {
+				// A WireGuard endpoint names its server among its peers.
+				if peers, ok := outbound["peers"].([]any); ok && len(peers) > 0 {
+					if peer, ok := peers[0].(map[string]any); ok {
+						server, port = text(peer["address"]), portOf(peer["port"])
+					}
+				}
+			}
+			p.proxies = append(p.proxies, outbound)
+			p.inEndpoints = append(p.inEndpoints, endpoints)
+			p.configs = append(p.configs, Fingerprint{
+				Name: tag, Protocol: &protocol, Server: server, Port: port,
+				Network: networkName(transport["type"]), Path: pathName(path), SNI: first(text(tls["server_name"]), text(headers["Host"])),
+			})
 		}
-		kind, _ := outbound["type"].(string)
-		tag, isTag := outbound["tag"].(string)
-		if !proxyTypes[kind] || !isTag {
-			continue
-		}
-		transport, _ := outbound["transport"].(map[string]any)
-		tls, _ := outbound["tls"].(map[string]any)
-		headers, _ := transport["headers"].(map[string]any)
-		protocol := ProtocolName(kind)
-		path := transport["path"]
-		if path == nil {
-			path = transport["service_name"]
-		}
-		p.proxies = append(p.proxies, outbound)
-		p.configs = append(p.configs, Fingerprint{
-			Name: tag, Protocol: &protocol, Server: text(outbound["server"]), Port: portOf(outbound["server_port"]),
-			Network: networkName(transport["type"]), Path: pathName(path), SNI: first(text(tls["server_name"]), text(headers["Host"])),
-		})
 	}
+	outbounds, _ := profile["outbounds"].([]any)
+	endpoints, _ := profile["endpoints"].([]any)
+	read(outbounds, false)
+	read(endpoints, true)
 	return p
+}
+
+// outlineAnswer reads PasarGuard's Outline answer: one Shadowsocks config.
+func outlineAnswer(config map[string]any) parsed {
+	protocol := "shadowsocks"
+	return parsed{format: Outline, outline: config, configs: []Fingerprint{{
+		Name: stringOf(config["tag"]), Protocol: &protocol, Server: text(config["server"]), Port: portOf(config["server_port"]),
+	}}}
 }
 
 func xrayAnswer(items []any) parsed {

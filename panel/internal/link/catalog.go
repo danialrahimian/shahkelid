@@ -18,7 +18,7 @@ type ProbePanel interface {
 	CreateUser(ctx context.Context, user pasarguard.NewUser) (pasarguard.User, error)
 	UpdateLimits(ctx context.Context, username string, change pasarguard.Change) (pasarguard.User, error)
 	SetEnabled(ctx context.Context, username string, enabled bool) (pasarguard.User, error)
-	ReadLinks(ctx context.Context, subscriptionURL string) (string, error)
+	ReadConfigs(ctx context.Context, subscriptionURL string) (string, error)
 }
 
 // Catalog reads which hosts each panel group gives (the Node app's
@@ -114,11 +114,11 @@ func (c *Catalog) Read(ctx context.Context, p store.Panel, panelGroupID int64) (
 	if err != nil {
 		return nil, err
 	}
-	links, err := panel.ReadLinks(ctx, user.SubscriptionURL)
+	body, err := panel.ReadConfigs(ctx, user.SubscriptionURL)
 	if err != nil {
 		return nil, err
 	}
-	hosts := configs.ProbeHosts(links)
+	hosts := configs.ProbeHosts(body)
 	if hosts == nil {
 		hosts = []configs.Host{}
 	}

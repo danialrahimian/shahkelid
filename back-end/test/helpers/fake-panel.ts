@@ -110,6 +110,11 @@ export class FakePanel implements PanelDriver {
     return Buffer.from(this.render(user.username).body, "base64").toString("utf8");
   }
 
+  async readConfigs(subscriptionUrl: string) {
+    this.gate("readConfigs");
+    return this.readLinks(subscriptionUrl);
+  }
+
   // ------------------------------------------------- the user's subscription
 
   /** The hosts a user is given, in the panel's order, as PasarGuard picks them. */

@@ -51,7 +51,9 @@ type Handler struct {
 	PublicURL string
 	// HTTP asks the panels' links; nil: a client with a ten-second timeout.
 	HTTP *http.Client
-	// Limit is how many requests one address may make a minute (0: 120).
+	// Limit is how many requests one address may make a minute for one
+	// link (0: 120). An address may ask for ten times that across links:
+	// mobile carriers put many customers behind one address.
 	Limit int
 	Now   func() time.Time
 	Log   *slog.Logger
@@ -59,7 +61,16 @@ type Handler struct {
 	once    sync.Once
 	proxy   *httputil.ReverseProxy
 	limiter *limiter
+	shared  *limiter
+
+	domainMu sync.Mutex
+	domain   string
+	domainAt time.Time
 }
+
+// CheckAnswer is what /s/_check answers: the staff page's check that a
+// subscription domain reaches this server (the Node app's domains.ts).
+const CheckAnswer = "shah-kelid subscription link"
 
 var token = regexp.MustCompile(`^[A-Za-z0-9_-]{20,64}$`)
 
@@ -89,6 +100,7 @@ func (h *Handler) setup() {
 			h.Limit = 120
 		}
 		h.limiter = newLimiter(h.Limit, time.Minute, h.Now)
+		h.shared = newLimiter(10*h.Limit, time.Minute, h.Now)
 		if target, err := url.Parse(h.AppURL); err == nil {
 			h.proxy = httputil.NewSingleHostReverseProxy(target)
 		}
@@ -108,13 +120,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+	segments := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/s/"), "/"), "/")
+	if len(segments) == 1 && segments[0] == "_check" {
+		w.Header().Set("cache-control", "no-store")
+		_, _ = io.WriteString(w, CheckAnswer)
+		return
+	}
 	// Apps read status codes, not JSON: answered in plain text.
-	if !h.limiter.allow(clientAddress(r)) {
+	address := clientAddress(r)
+	if !h.shared.allow(address) || !h.limiter.allow(address+" "+segments[0]) {
 		w.Header().Set("retry-after", "60")
 		http.Error(w, "Too many requests", http.StatusTooManyRequests)
 		return
 	}
-	segments := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/s/"), "/"), "/")
 	if len(segments) > 2 || !token.MatchString(segments[0]) || (len(segments) == 2 && !parts[segments[1]]) {
 		notFound(w)
 		return
@@ -149,14 +167,58 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.serveConfigs(ctx, w, r, sub, segments[0], part)
 }
 
-// ours is the customer's link: on the shop's domain, or the panel's own
-// subscription domain when it names one.
-func (h *Handler) ours(token string, sub store.LinkSubscription) string {
+// ours is the customer's link: on the panel's own subscription domain when
+// it names one, else on the shop's subscription domain, else on the site.
+func (h *Handler) ours(ctx context.Context, token string, sub store.LinkSubscription) string {
 	base := h.PublicURL
+	if domain := h.subscriptionDomain(ctx); domain != "" {
+		base = "https://" + domain
+	}
 	if sub.SubscriptionBaseURL != nil && *sub.SubscriptionBaseURL != "" {
 		base = strings.TrimRight(*sub.SubscriptionBaseURL, "/")
 	}
 	return base + "/s/" + token
+}
+
+// subscriptionDomain is the shop's primary subscription domain, read at
+// most every half minute; when it cannot be read, the last one known.
+func (h *Handler) subscriptionDomain(ctx context.Context) string {
+	h.domainMu.Lock()
+	defer h.domainMu.Unlock()
+	if !h.domainAt.IsZero() && h.Now().Sub(h.domainAt) < 30*time.Second {
+		return h.domain
+	}
+	domain, err := h.Store.PrimarySubscriptionDomain(ctx)
+	if err != nil {
+		h.Log.Warn("reading the subscription domain", "err", err)
+		return h.domain
+	}
+	h.domain, h.domainAt = domain, h.Now()
+	return domain
+}
+
+// ServeTLSAsk answers the web server's question before it takes a
+// certificate for a name it was asked for (Caddy's on-demand TLS "ask"):
+// yes, 200, only for a subscription domain. It is reached from inside only:
+// the web server passes on /s/… alone.
+func (h *Handler) ServeTLSAsk(w http.ResponseWriter, r *http.Request) {
+	h.setup()
+	host := strings.TrimSuffix(strings.ToLower(r.URL.Query().Get("domain")), ".")
+	if host == "" {
+		http.Error(w, "no domain", http.StatusBadRequest)
+		return
+	}
+	ok, err := h.Store.ServesLinksOn(r.Context(), host)
+	if err != nil {
+		h.Log.Error("asking whether a domain serves links", "err", err)
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if !ok {
+		http.Error(w, "not a subscription domain", http.StatusNotFound)
+		return
+	}
+	_, _ = io.WriteString(w, "ok")
 }
 
 type answer struct {
@@ -178,7 +240,8 @@ func (h *Handler) ask(ctx context.Context, r *http.Request, panels []store.LinkP
 			if r.URL.RawQuery != "" {
 				target += "?" + r.URL.RawQuery
 			}
-			request, err := http.NewRequestWithContext(ctx, r.Method, target, nil)
+			// GET for a HEAD too: PasarGuard answers GET only.
+			request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 			if err != nil {
 				return
 			}
@@ -246,7 +309,7 @@ func (h *Handler) serveConfigs(ctx context.Context, w http.ResponseWriter, r *ht
 		return
 	}
 
-	ours := h.ours(token, sub)
+	ours := h.ours(ctx, token, sub)
 	header := w.Header()
 	for _, name := range returned {
 		if value := upstream.response.Header.Get(name); value != "" {
@@ -254,6 +317,7 @@ func (h *Handler) serveConfigs(ctx context.Context, w http.ResponseWriter, r *ht
 		}
 	}
 	// One volume across the panels: the app is told the whole, not one panel's share.
+	userinfo := ""
 	if len(sub.Panels) > 1 {
 		total, expire := int64(0), int64(0)
 		if sub.DataLimitBytes != nil {
@@ -262,7 +326,8 @@ func (h *Handler) serveConfigs(ctx context.Context, w http.ResponseWriter, r *ht
 		if sub.ExpiresAt != nil {
 			expire = sub.ExpiresAt.Unix()
 		}
-		header.Set("subscription-userinfo", fmt.Sprintf("upload=0; download=%d; total=%d; expire=%d", sub.UsedBytes, total, expire))
+		userinfo = fmt.Sprintf("upload=0; download=%d; total=%d; expire=%d", sub.UsedBytes, total, expire)
+		header.Set("subscription-userinfo", userinfo)
 	}
 	// The panel names its own address here; the customer's page is the shop's link.
 	header.Set("profile-web-page-url", ours)
@@ -295,6 +360,10 @@ func (h *Handler) serveConfigs(ctx context.Context, w http.ResponseWriter, r *ht
 	switch part {
 	case "", "links":
 		out = h.shape(ctx, sub, bodies, panelIDs)
+		if userinfo != "" {
+			// Where the panel writes its headers into the body too ("header placement").
+			out = configs.SetHeaderLine(out, "subscription-userinfo", userinfo)
+		}
 	case "usage":
 		out = bodies[0]
 		if len(bodies) > 1 {
@@ -344,7 +413,8 @@ func (h *Handler) shape(ctx context.Context, sub store.LinkSubscription, bodies,
 }
 
 // swapLink puts the shop's link in place of the panel's, plain and
-// URL-encoded, with or without a trailing slash.
+// URL-encoded, with or without a trailing slash; in a base64 list of
+// links too, where the panel may write its headers.
 func swapLink(body, panelURL, ours string) []byte {
 	bare := strings.TrimRight(panelURL, "/")
 	replacer := strings.NewReplacer(
@@ -353,7 +423,7 @@ func swapLink(body, panelURL, ours string) []byte {
 		url.QueryEscape(bare+"/"), url.QueryEscape(ours+"/"),
 		url.QueryEscape(bare), url.QueryEscape(ours),
 	)
-	return []byte(replacer.Replace(body))
+	return []byte(configs.Rewrite(body, replacer.Replace))
 }
 
 // mergeUsage gives several panels' usage history as one list of points;

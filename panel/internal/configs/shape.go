@@ -70,6 +70,10 @@ func Shape(bodies []string, plans []Plan, totals Totals, now time.Time, username
 	}
 	format := answers[0].format
 
+	// A subscription that has stopped is shown the panel's notices: configs
+	// of hosts given to stopped users only ("⚠️ expired"), which no host the
+	// shop's own (active) subscription sees matches.
+	notices := totals.Status == "expired" || totals.Status == "limited" || totals.Status == "disabled"
 	var list []kept
 	for i, answer := range answers {
 		plan := plans[i]
@@ -83,7 +87,7 @@ func Shape(bodies []string, plans []Plan, totals Totals, now time.Time, username
 			case !plan.Known:
 				list = append(list, kept{i, j, config.Name, fallback, false})
 			case matched[j] == nil:
-				if plan.KeepUnknown {
+				if plan.KeepUnknown || notices {
 					list = append(list, kept{i, j, config.Name, fallback, false})
 				}
 			default:
@@ -124,6 +128,14 @@ func Shape(bodies []string, plans []Plan, totals Totals, now time.Time, username
 		return writeJSON(out, true), XrayJSON, true
 	case SingBox:
 		return shapeSingBox(answers, list), SingBox, true
+	case Outline:
+		// One config: the first kept, or none.
+		if len(list) == 0 {
+			return "{}", Outline, true
+		}
+		config := copyMap(answers[list[0].index].outline)
+		config["tag"] = list[0].name
+		return writeJSON(config, false), Outline, true
 	default:
 		return shapeClash(answers, list), Clash, true
 	}
@@ -166,8 +178,50 @@ func shapeLinks(answers []parsed, list []kept) string {
 			lines = append(lines, line)
 		}
 	}
-	text := strings.Join(lines, "\n")
+	// The header lines PasarGuard put in the body go back where they were.
+	all := append(append(append([]string{}, answers[0].head...), lines...), answers[0].tail...)
+	text := strings.Join(all, "\n")
 	if answers[0].base64 {
+		return base64.StdEncoding.EncodeToString([]byte(text))
+	}
+	return text
+}
+
+// Rewrite changes the text of an answer, inside the base64 of a base64
+// list of links too (where PasarGuard may write its headers, the panel's
+// address among them).
+func Rewrite(body string, change func(string) string) string {
+	if decoded, ok := decodeBase64(body); ok {
+		if changed := change(decoded); changed != decoded {
+			return base64.StdEncoding.EncodeToString([]byte(changed))
+		}
+		return body
+	}
+	return change(body)
+}
+
+// SetHeaderLine sets the value of a header PasarGuard wrote into the body
+// ("#subscription-userinfo: …"), in a list of links (plain or base64) or a
+// Clash profile. A body without that line is returned as it is.
+func SetHeaderLine(body, key, value string) string {
+	text, encoded := body, false
+	if decoded, ok := decodeBase64(body); ok {
+		text, encoded = decoded, true
+	}
+	prefix := "#" + strings.ToLower(key) + ":"
+	lines := strings.Split(text, "\n")
+	changed := false
+	for i, line := range lines {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), prefix) {
+			lines[i] = "#" + key + ": " + value
+			changed = true
+		}
+	}
+	if !changed {
+		return body
+	}
+	text = strings.Join(lines, "\n")
+	if encoded {
 		return base64.StdEncoding.EncodeToString([]byte(text))
 	}
 	return text
@@ -221,11 +275,15 @@ func configNames(answers []parsed) map[string]bool {
 func shapeSingBox(answers []parsed, list []kept) string {
 	names := uniqueNames(list)
 	wasConfig := configNames(answers)
-	proxies := make([]any, len(list))
+	var proxies, endpoints []any
 	for i, k := range list {
-		outbound := copyMap(answers[k.index].proxies[k.item])
-		outbound["tag"] = names[i]
-		proxies[i] = outbound
+		item := copyMap(answers[k.index].proxies[k.item])
+		item["tag"] = names[i]
+		if answers[k.index].inEndpoints[k.item] {
+			endpoints = append(endpoints, item)
+		} else {
+			proxies = append(proxies, item)
+		}
 	}
 	base := copyMap(answers[0].singBox)
 	outbounds, _ := base["outbounds"].([]any)
@@ -261,6 +319,12 @@ func shapeSingBox(answers []parsed, list []kept) string {
 		out = append(out, proxies...)
 	}
 	base["outbounds"] = out
+	if _, had := base["endpoints"]; had || len(endpoints) > 0 {
+		if endpoints == nil {
+			endpoints = []any{}
+		}
+		base["endpoints"] = endpoints
+	}
 	return writeJSON(base, true)
 }
 
@@ -361,7 +425,8 @@ func Merge(bodies []string) string {
 				}
 			}
 		}
-		text := strings.Join(lines, "\n")
+		all := append(append(append([]string{}, answers[0].head...), lines...), answers[0].tail...)
+		text := strings.Join(all, "\n")
 		if answers[0].base64 {
 			return base64.StdEncoding.EncodeToString([]byte(text))
 		}

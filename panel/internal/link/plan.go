@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/danialrahimian/shahkelid/panel/internal/configs"
 	"github.com/danialrahimian/shahkelid/panel/internal/store"
@@ -50,6 +51,9 @@ func (h *Handler) plans(ctx context.Context, subscriptionID string, panelIDs []s
 	rows := map[string]store.GroupHost{}
 	for _, row := range groups.Hosts {
 		rows[row.GroupID+"|"+row.PanelID+"|"+row.HostID] = row
+	}
+	for _, groupID := range groups.GroupIDs {
+		h.settle(ctx, groupID, groups.Sources, hostsOf, rows)
 	}
 
 	type listed struct {
@@ -172,4 +176,75 @@ func (h *Handler) plans(ctx context.Context, subscriptionID string, panelIDs []s
 		out[i] = configs.Plan{Hosts: hosts, Known: true, Wanted: wanted[panelID], KeepUnknown: everyHost[panelID]}
 	}
 	return out, usernames, nil
+}
+
+// settle keeps a group's saved settings on their hosts as the panels
+// change them (configs.Settle; the Node app does the same on the staff
+// pages): for each panel the group takes from and that could be read, the
+// hosts it gives now against the group's rows. Most links find nothing to
+// change and write nothing; a change is saved (store.SettleHosts), or,
+// when it cannot be, used for this link only.
+func (h *Handler) settle(ctx context.Context, groupID string, sources []store.GroupSource,
+	hostsOf func(string, int64) ([]configs.Host, bool), rows map[string]store.GroupHost) {
+	current := map[string][]configs.Host{}
+	seen := map[string]bool{}
+	unread := map[string]bool{}
+	var order []string
+	for _, source := range sources {
+		if source.GroupID != groupID || unread[source.PanelID] {
+			continue
+		}
+		hosts, ok := hostsOf(source.PanelID, source.PanelGroupID)
+		if !ok {
+			unread[source.PanelID] = true
+			continue
+		}
+		if _, known := current[source.PanelID]; !known {
+			order = append(order, source.PanelID)
+			current[source.PanelID] = []configs.Host{}
+		}
+		for _, host := range hosts {
+			if key := source.PanelID + "|" + host.ID; !seen[key] {
+				seen[key] = true
+				current[source.PanelID] = append(current[source.PanelID], host)
+			}
+		}
+	}
+	for _, panelID := range order {
+		if unread[panelID] {
+			continue // part of what it gives is not known: nothing is moved
+		}
+		prefix := groupID + "|" + panelID + "|"
+		var saved []configs.Saved
+		for key, row := range rows {
+			if strings.HasPrefix(key, prefix) {
+				saved = append(saved, row.Saved())
+			}
+		}
+		settlement := configs.Settle(saved, current[panelID])
+		if settlement.Settled() {
+			continue
+		}
+		now, err := h.Store.SettleHosts(ctx, groupID, panelID, current[panelID])
+		if err != nil {
+			if h.Log != nil {
+				h.Log.Warn("a group's hosts could not be settled", "group", groupID, "panel", panelID, "err", err)
+			}
+			for from, to := range settlement.Moves {
+				row := rows[prefix+from]
+				delete(rows, prefix+from)
+				row.HostID = to
+				rows[prefix+to] = row
+			}
+			continue
+		}
+		for key := range rows {
+			if strings.HasPrefix(key, prefix) {
+				delete(rows, key)
+			}
+		}
+		for _, row := range now {
+			rows[prefix+row.HostID] = row
+		}
+	}
 }

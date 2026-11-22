@@ -80,4 +80,17 @@ describe("PasarGuard with a reseller's account", () => {
 
     await assert.rejects(driver.readLinks(`${BASE}/sub/abc`));
   });
+
+  it("When the shop reads a group's hosts, then the Xray JSON is read (it carries every host), else the links", async () => {
+    const xray = JSON.stringify([{ remarks: "XH", outbounds: [{ protocol: "vless", streamSettings: { network: "xhttp" } }] }]);
+    const withXray = panel({ "/sub/abc/xray": () => new Response(xray, { headers: { "content-type": "application/json" } }) });
+    assert.equal(await withXray.driver.readConfigs(`${BASE}/sub/abc`), xray);
+
+    const off = panel({
+      "/sub/abc/xray": () => json({ detail: "Client not supported" }, 406),
+      "/sub/abc/links": () => new Response("vless://u@a:443#DE"),
+    });
+    assert.equal(await off.driver.readConfigs(`${BASE}/sub/abc/`), "vless://u@a:443#DE");
+    assert.deepEqual(off.asked, ["/sub/abc/xray", "/sub/abc/links"]);
+  });
 });

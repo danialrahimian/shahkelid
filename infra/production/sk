@@ -172,14 +172,23 @@ case "${1:-help}" in
   update)
     need_env
     git pull --ff-only
+    # The rest is done by the script just pulled, not this one: bash has
+    # already read this one, and a release may add a service to recreate
+    # (one that did, the panel service, was left unstarted by the old list).
+    exec "$0" update-after-pull
+    ;;
+  update-after-pull)
+    need_env
     compose build
     # A rebuilt image does not always get its containers recreated (seen with
     # Compose 5 on Docker's containerd image store: the new web app was built
     # but the old one kept serving). So: the migrations first, then every
-    # container built from this code is recreated outright.
+    # long-running container built from this code is recreated outright,
+    # read from compose.yaml so a new one is never left out.
     compose up -d --wait postgres redis
     compose run --rm migrate
-    compose up -d --wait --no-deps --force-recreate app worker panel web backup
+    mapfile -t built < <(compose config --services | grep -vxE 'postgres|redis|migrate')
+    compose up -d --wait --no-deps --force-recreate "${built[@]}"
     docker image prune -f > /dev/null
     compose ps
     ;;

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -26,9 +28,14 @@ type Fingerprint struct {
 type Host struct {
 	Fingerprint
 	ID string
+	// LegacyID is the id earlier releases gave it (with its port and path):
+	// picks saved under it are found again.
+	LegacyID string
 }
 
-var protocolAliases = map[string]string{"ss": "shadowsocks", "hy2": "hysteria2", "wg": "wireguard"}
+// protocolAliases: one name per protocol, whatever the format calls it.
+// PasarGuard's "hysteria" is Hysteria 2 (it makes no other).
+var protocolAliases = map[string]string{"ss": "shadowsocks", "hy2": "hysteria2", "hysteria": "hysteria2", "wg": "wireguard"}
 
 // ProtocolName is a protocol's one name: ss is shadowsocks, and so on.
 func ProtocolName(name string) string {
@@ -183,39 +190,62 @@ func vmessJSON(line string) map[string]any {
 	return nil
 }
 
-func hostID(f Fingerprint) string {
-	parts := []string{deref(f.Protocol), "", deref(f.Network), deref(f.Path), f.Name}
-	if f.Port != nil {
-		parts[1] = strconv.FormatInt(*f.Port, 10)
-	}
-	// The same input the Node app hashed, so ids saved by either agree.
+func digest(parts ...string) string {
 	sum := sha1.Sum([]byte(strings.Join(parts, "\x00")))
 	return base64.RawURLEncoding.EncodeToString(sum[:])[:12]
 }
 
-// ProbeHosts reads the hosts a subscription's links stand for, each with an
-// id that stays the same as long as the host does (its name, protocol,
-// port, transport and path). Two configs alike in all of those are told
-// apart by their place.
-func ProbeHosts(links string) []Host {
+// hostID is what a host is known by: its protocol, transport and name.
+// Not its address, port, server name or path: PasarGuard picks those at
+// random from a host's lists on every request, and fills variables in a
+// path, so they are not the host's. A renamed host is found again from what
+// was saved about it (Rekey).
+func hostID(f Fingerprint) string {
+	return digest(deref(f.Protocol), deref(f.Network), f.Name)
+}
+
+// legacyHostID is the id earlier releases gave a host (with its port and path).
+func legacyHostID(f Fingerprint) string {
+	port := ""
+	if f.Port != nil {
+		port = strconv.FormatInt(*f.Port, 10)
+	}
+	return digest(deref(f.Protocol), port, deref(f.Network), deref(f.Path), f.Name)
+}
+
+// ProbeHosts reads the hosts the shop's own subscription gives: from
+// PasarGuard's Xray JSON (which carries every host, whatever its
+// transport), or from a list of links. Each gets an id that stays the same
+// as long as the host does; two alike in protocol, transport and name are
+// told apart by their place.
+func ProbeHosts(body string) []Host {
+	var configs []Fingerprint
+	if answer := parse(body); answer.format == XrayJSON || answer.format == Links {
+		configs = answer.configs
+	}
 	seen := map[string]int{}
 	var hosts []Host
-	for _, line := range linesOf(links) {
-		if !isLink(line) {
-			continue
-		}
-		f := FingerprintOfLink(line)
+	for _, f := range configs {
 		base := hostID(f)
 		seen[base]++
-		id := base
+		id, legacy := base, legacyHostID(f)
 		if seen[base] > 1 {
 			id = fmt.Sprintf("%s-%d", base, seen[base])
+			legacy = fmt.Sprintf("%s-%d", legacy, seen[base])
 		}
-		hosts = append(hosts, Host{Fingerprint: f, ID: id})
+		hosts = append(hosts, Host{Fingerprint: f, ID: id, LegacyID: legacy})
 	}
 	return hosts
 }
 
+// variablePart matches what PasarGuard's variables write in a name: sizes
+// ("40.0 GB"), counts and percentages, dates, time left ("1m 15d"), "∞" and
+// "-". In a name they differ between the customer and the shop's own
+// subscription, so they are set aside when names are compared.
+var variablePart = regexp.MustCompile(`(?i)\d+(?:[.,]\d+)?(?:\s*(?:[kmgtp]?b|bytes|%|[mdh]\b))?|∞`)
+
+// loose is a name as compared: lower case, without the usernames, its
+// variable parts each one "#".
 func loose(name string, usernames []string) string {
 	out := strings.ToLower(name)
 	for _, username := range usernames {
@@ -223,7 +253,7 @@ func loose(name string, usernames []string) string {
 			out = strings.ReplaceAll(out, strings.ToLower(username), "")
 		}
 	}
-	return out
+	return variablePart.ReplaceAllString(out, "#")
 }
 
 // likeness is how alike two names are, 0 to 1: their common start and end
@@ -256,12 +286,15 @@ func sameOrUnsaid[T comparable](a, b *T) bool { return a == nil || b == nil || *
 func equal(a, b *string) bool { return a != nil && b != nil && *a == *b }
 
 // MatchHosts says which host each config is. Only a host of the same
-// protocol, port, transport and path can be it (a part one side does not
-// say is not held against it); of those, the one with the closest name,
-// then the same address and server name, then the first not taken; and
-// only if the name is at least half alike (or the same address and server
-// name back it). A config like no host is nil: one the panel added since is
-// not given someone else's place.
+// protocol and transport can be it (a part one side does not say is not
+// held against it); of those, the one whose name is at least half alike,
+// compared without the usernames and the parts PasarGuard's variables
+// write (sizes, days, dates); the closest first, then the one whose
+// address, server name, port and path also agree. A config like no host
+// is nil: one the panel added since is not given someone else's place.
+//
+// Address, port and path only help to choose: PasarGuard picks them at
+// random from a host's lists on every request.
 func MatchHosts(configs []Fingerprint, hosts []Host, usernames []string) []*Host {
 	used := make([]bool, len(hosts))
 	out := make([]*Host, len(configs))
@@ -274,12 +307,15 @@ func MatchHosts(configs []Fingerprint, hosts []Host, usernames []string) []*Host
 			if config.Protocol != nil && host.Protocol != nil && *config.Protocol != *host.Protocol {
 				continue
 			}
-			if !sameOrUnsaid(config.Port, host.Port) || !sameOrUnsaid(config.Network, host.Network) || !sameOrUnsaid(config.Path, host.Path) {
+			if !sameOrUnsaid(config.Network, host.Network) {
 				continue
 			}
 			score := 3 * likeness(loose(config.Name, usernames), loose(host.Name, usernames))
 			if config.Name == host.Name {
 				score = 4
+			}
+			if score < enough {
+				continue
 			}
 			if equal(config.Server, host.Server) {
 				score++
@@ -287,13 +323,163 @@ func MatchHosts(configs []Fingerprint, hosts []Host, usernames []string) []*Host
 			if equal(config.SNI, host.SNI) {
 				score += 0.5
 			}
-			if score >= enough && score > bestScore {
+			if config.Port != nil && host.Port != nil && *config.Port == *host.Port {
+				score += 0.5
+			}
+			if equal(config.Path, host.Path) {
+				score += 0.5
+			}
+			if score > bestScore {
 				best, bestScore = j, score
 			}
 		}
 		if best >= 0 {
 			used[best] = true
 			out[i] = &hosts[best]
+		}
+	}
+	return out
+}
+
+// Saved is what was saved about a host along with a group's settings for
+// it, to find it again when the panel renames it.
+type Saved struct {
+	HostID string
+	Fingerprint
+}
+
+// Rekey finds which new hosts (free) the settings of hosts that are gone
+// (orphans) now belong to: a host the panel renamed gets a new id, and
+// what was saved about the old one finds it again. A setting goes only to
+// a host of the same protocol and transport whose name is much like the
+// saved one or whose address or server name is the saved one, and only
+// when plainly the one: the only such host, or clearly the most alike. It
+// returns orphan host id → new host id. The Node app does the same
+// (configs.rekey).
+func Rekey(orphans []Saved, free []Host) map[string]string {
+	out := map[string]string{}
+	taken := make([]bool, len(free))
+	for _, orphan := range orphans {
+		if orphan.Protocol == nil {
+			continue // saved before fingerprints were kept
+		}
+		type candidate struct {
+			index int
+			score float64
+		}
+		var candidates []candidate
+		for j, host := range free {
+			if taken[j] || host.Protocol == nil || *host.Protocol != *orphan.Protocol || !sameOrUnsaid(orphan.Network, host.Network) {
+				continue
+			}
+			if (orphan.Network == nil) != (host.Network == nil) {
+				continue
+			}
+			alike := likeness(strings.ToLower(orphan.Name), strings.ToLower(host.Name))
+			sameServer, sameSNI := equal(orphan.Server, host.Server), equal(orphan.SNI, host.SNI)
+			if alike < 0.5 && !sameServer && !sameSNI {
+				continue
+			}
+			score := 3 * alike
+			if sameServer {
+				score++
+			}
+			if orphan.Port != nil && host.Port != nil && *orphan.Port == *host.Port {
+				score += 0.5
+			}
+			if equal(orphan.Path, host.Path) {
+				score += 0.5
+			}
+			if sameSNI {
+				score += 0.5
+			}
+			candidates = append(candidates, candidate{j, score})
+		}
+		if len(candidates) == 0 {
+			continue
+		}
+		sort.SliceStable(candidates, func(a, b int) bool { return candidates[a].score > candidates[b].score })
+		best := candidates[0]
+		clear := len(candidates) == 1 && best.score >= 1
+		if len(candidates) > 1 {
+			clear = best.score >= 1.5 && best.score-candidates[1].score >= 1
+		}
+		if !clear {
+			continue
+		}
+		taken[best.index] = true
+		out[orphan.HostID] = free[best.index].ID
+	}
+	return out
+}
+
+// Settlement is what settling a group's saved hosts against what a panel
+// gives now changes.
+type Settlement struct {
+	// Moves: a saved host's id → the id its host has now (the id earlier
+	// releases gave it, or renamed on the panel).
+	Moves map[string]string
+	// Fresh: hosts the group has not seen before, to be recorded.
+	Fresh []Host
+	// Fill: saved hosts given now whose fingerprint was not kept yet.
+	Fill []string
+}
+
+// Settled reports whether there is nothing to change.
+func (s Settlement) Settled() bool { return len(s.Moves) == 0 && len(s.Fresh) == 0 && len(s.Fill) == 0 }
+
+// Settle settles what a group has saved about one panel's hosts (rows)
+// against what that panel gives now. The group keeps a row for every host
+// it has seen, so a host that is gone is told apart from one that is new:
+// a row whose host is gone is moved only to a host never seen before
+// (renamed on the panel, or under the id earlier releases gave), never to
+// one the group already knows, so a host deleted on the panel leaves its
+// siblings' settings alone. A row whose host is gone and not found again
+// stays, for if it comes back. The Node app does the same (configs.settle).
+func Settle(rows []Saved, hosts []Host) Settlement {
+	ids := map[string]bool{}
+	for _, host := range hosts {
+		ids[host.ID] = true
+	}
+	saved := map[string]bool{}
+	for _, row := range rows {
+		saved[row.HostID] = true
+	}
+	out := Settlement{Moves: map[string]string{}}
+	claimed := map[string]bool{}
+	for _, host := range hosts {
+		if saved[host.ID] || claimed[host.ID] {
+			continue
+		}
+		if _, moved := out.Moves[host.LegacyID]; saved[host.LegacyID] && !ids[host.LegacyID] && !moved {
+			out.Moves[host.LegacyID] = host.ID
+			claimed[host.ID] = true
+		}
+	}
+	var orphans []Saved
+	for _, row := range rows {
+		if _, moved := out.Moves[row.HostID]; !ids[row.HostID] && !moved {
+			orphans = append(orphans, row)
+		}
+	}
+	var unseen []Host
+	for _, host := range hosts {
+		if !saved[host.ID] && !claimed[host.ID] {
+			unseen = append(unseen, host)
+		}
+	}
+	for from, to := range Rekey(orphans, unseen) {
+		out.Moves[from] = to
+		claimed[to] = true
+	}
+	for _, host := range unseen {
+		if !claimed[host.ID] {
+			out.Fresh = append(out.Fresh, host)
+		}
+	}
+	for _, row := range rows {
+		if ids[row.HostID] && row.Protocol == nil {
+			out.Fill = append(out.Fill, row.HostID)
 		}
 	}
 	return out

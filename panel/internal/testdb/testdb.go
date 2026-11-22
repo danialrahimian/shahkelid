@@ -49,7 +49,7 @@ func Open(t testing.TB) *store.Store {
 		t.Skip("the test database has no schema; run the back-end's migrations (npm test in back-end)")
 	}
 	_, err = s.Pool.Exec(ctx, `truncate subscription_events, subscription_groups, subscription_panels, subscriptions,
-		plan_groups, group_hosts, group_sources, groups, plans, panels cascade`)
+		plan_groups, group_hosts, group_sources, groups, plans, panels, subscription_domains cascade`)
 	if err != nil {
 		t.Fatal(err)
 	}

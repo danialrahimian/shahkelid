@@ -13,6 +13,7 @@ import { auditBy, type StaffActor } from "../../platform/http/actor";
 import { ApiError, notFound } from "../../platform/http/api-error";
 import { recordEvent } from "../../platform/outbox/outbox";
 import { writeAudit } from "../access/audit";
+import { subscriptionBase } from "../infrastructure/domains";
 import { plans } from "../catalog/schema";
 import { groupIdsOfPlan, panelsOfGroups } from "../groups/service";
 import { groups } from "../groups/schema";
@@ -44,8 +45,9 @@ export const panelUsernameFor = (subscriptionId: string) =>
   `sk_${base32Encode(Buffer.from(subscriptionId.replaceAll("-", ""), "hex")).toLowerCase()}`;
 
 /** The customer's link: on our domain, so the panel can move without the link changing. */
+/** A customer's link: on its panel's subscription domain, else the shop's, else the site's address. */
 export const linkFor = (accessToken: string, subscriptionBaseUrl: string | null) =>
-  `${subscriptionBaseUrl ?? config.provisioning.publicUrl}/s/${accessToken}`;
+  `${subscriptionBaseUrl ?? subscriptionBase() ?? config.provisioning.publicUrl}/s/${accessToken}`;
 
 const newAccessToken = () => randomBytes(24).toString("base64url");
 
