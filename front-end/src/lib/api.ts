@@ -24,6 +24,7 @@ export const api = createApi({
     "AccountSession",
     "StaffSettings",
     "StaffPanel",
+    "StaffSubscriptionDomain",
     "StaffGroup",
     "StaffGroupHosts",
     "StaffPlan",

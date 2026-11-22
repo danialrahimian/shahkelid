@@ -38,6 +38,14 @@ leaves its settings in place for if it comes back and never hands them to
 a sibling. Settings saved under the id earlier releases gave are moved.
 Changes are written under a lock on the group, only when there are any.
 
+**Subscription domains.** Staff add the shop's own domains for links in
+the Node app (Panels page; `subscription_domains`). Links are made on the
+primary one (a panel's own subscription domain still wins for its
+customers). Caddy takes a certificate for such a name on its first visit,
+after asking `GET /internal/tls-ask?domain=` here (200 only for a
+subscription domain or a panel's own), and serves only `/s/…` on it.
+`/s/_check` answers a fixed text, for the staff page's check.
+
 Every app is served what it reads: base64 or plain links (with the header
 lines PasarGuard may write into the body kept, and the panel's address in
 them swapped for the shop's), Xray JSON, sing-box (outbounds and

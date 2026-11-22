@@ -599,3 +599,42 @@ func TestTwoPanelsOneListAndTheWholeVolume(t *testing.T) {
 		t.Fatalf("one panel not answering: status %d, %v", response.StatusCode, names(t, body))
 	}
 }
+
+// ------------------------------------------------- subscription domains
+
+func TestLinksOnTheShopsSubscriptionDomain(t *testing.T) {
+	w := newWorld(t)
+	token, _ := w.customer()
+	if _, err := w.s.Pool.Exec(context.Background(), `insert into subscription_domains (domain, is_primary) values ('sub.shop.test', true), ('old.shop.test', false)`); err != nil {
+		t.Fatal(err)
+	}
+
+	response, _ := w.get("/s/"+token, oldV2rayNG)
+	if got := response.Header.Get("profile-web-page-url"); got != "https://sub.shop.test/s/"+token {
+		t.Fatalf("the customer's page is on the subscription domain: %q", got)
+	}
+
+	ask := func(domain string) int {
+		recorder := httptest.NewRecorder()
+		handler := &Handler{Store: w.s, Catalog: w.catalog}
+		handler.ServeTLSAsk(recorder, httptest.NewRequest(http.MethodGet, "/internal/tls-ask?domain="+domain, nil))
+		return recorder.Code
+	}
+	if ask("sub.shop.test") != 200 || ask("OLD.shop.test.") != 200 {
+		t.Fatal("a certificate may be taken for each subscription domain")
+	}
+	if ask("evil.test") != 404 || ask("") != 400 {
+		t.Fatal("and for no other name")
+	}
+	if _, err := w.s.Pool.Exec(context.Background(), `update panels set subscription_base_url = 'https://panel-sub.test/' where id = $1`, w.panelID); err != nil {
+		t.Fatal(err)
+	}
+	if ask("panel-sub.test") != 200 {
+		t.Fatal("a panel's own subscription domain is one too")
+	}
+
+	_, body := w.get("/s/_check", "curl/8")
+	if body != CheckAnswer {
+		t.Fatalf("the staff page's check: %q", body)
+	}
+}

@@ -22,6 +22,9 @@ import type {
   PanelInput,
   PanelUpdateInput,
   PanelView,
+  SubscriptionDomainCheck,
+  SubscriptionDomainInput,
+  SubscriptionDomainsView,
   PlanInput,
   PlanView,
   SubscriptionAction,
@@ -77,6 +80,26 @@ export const staffApi = api.injectEndpoints({
     staffCheckPanel: builder.mutation<PanelView, string>({
       query: (id) => ({ url: `${STAFF}/panels/${id}/check`, method: "POST" }),
       invalidatesTags: ["StaffPanel"],
+    }),
+    // ------------------------------------------------ subscription domains
+    staffSubscriptionDomains: builder.query<SubscriptionDomainsView, void>({
+      query: () => `${STAFF}/subscription-domains`,
+      providesTags: ["StaffSubscriptionDomain"],
+    }),
+    staffAddSubscriptionDomain: builder.mutation<SubscriptionDomainsView, SubscriptionDomainInput>({
+      query: (body) => ({ url: `${STAFF}/subscription-domains`, method: "POST", body }),
+      invalidatesTags: ["StaffSubscriptionDomain", "StaffSubscription"],
+    }),
+    staffMakePrimarySubscriptionDomain: builder.mutation<SubscriptionDomainsView, string>({
+      query: (domain) => ({ url: `${STAFF}/subscription-domains/${encodeURIComponent(domain)}/primary`, method: "PUT" }),
+      invalidatesTags: ["StaffSubscriptionDomain", "StaffSubscription"],
+    }),
+    staffRemoveSubscriptionDomain: builder.mutation<SubscriptionDomainsView, string>({
+      query: (domain) => ({ url: `${STAFF}/subscription-domains/${encodeURIComponent(domain)}`, method: "DELETE" }),
+      invalidatesTags: ["StaffSubscriptionDomain", "StaffSubscription"],
+    }),
+    staffCheckSubscriptionDomain: builder.mutation<SubscriptionDomainCheck, string>({
+      query: (domain) => ({ url: `${STAFF}/subscription-domains/${encodeURIComponent(domain)}/check`, method: "POST" }),
     }),
     staffPanelGroups: builder.query<PanelGroup[], string>({
       query: (id) => `${STAFF}/panels/${id}/groups`,
@@ -338,6 +361,11 @@ export const {
   useStaffUpdatePanelMutation,
   useStaffCheckPanelMutation,
   useStaffPanelGroupsQuery,
+  useStaffSubscriptionDomainsQuery,
+  useStaffAddSubscriptionDomainMutation,
+  useStaffMakePrimarySubscriptionDomainMutation,
+  useStaffRemoveSubscriptionDomainMutation,
+  useStaffCheckSubscriptionDomainMutation,
   useStaffGroupsQuery,
   useStaffSaveGroupMutation,
   useStaffDeleteGroupMutation,

@@ -1,4 +1,5 @@
-import { boolean, pgEnum, pgTable, text } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, pgEnum, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 
 import { at, bytea, createdAt, id, updatedAt } from "../../platform/db/columns";
 
@@ -21,3 +22,20 @@ export const panels = pgTable("panels", {
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
+
+/**
+ * The shop's own domains for customers' subscription links, apart from the
+ * site: on these only /s/… is answered (Caddy gets their certificates when
+ * first asked, after the panel service says yes). Links are made on the
+ * primary one; the others keep working for links already given out.
+ */
+export const subscriptionDomains = pgTable(
+  "subscription_domains",
+  {
+    // the host alone, lower case: sub.example.com
+    domain: text("domain").primaryKey(),
+    isPrimary: boolean("is_primary").notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("subscription_domains_one_primary").on(t.isPrimary).where(sql`${t.isPrimary}`)],
+);

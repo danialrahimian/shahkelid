@@ -62,7 +62,15 @@ type Handler struct {
 	proxy   *httputil.ReverseProxy
 	limiter *limiter
 	shared  *limiter
+
+	domainMu sync.Mutex
+	domain   string
+	domainAt time.Time
 }
+
+// CheckAnswer is what /s/_check answers: the staff page's check that a
+// subscription domain reaches this server (the Node app's domains.ts).
+const CheckAnswer = "shah-kelid subscription link"
 
 var token = regexp.MustCompile(`^[A-Za-z0-9_-]{20,64}$`)
 
@@ -113,6 +121,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	segments := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/s/"), "/"), "/")
+	if len(segments) == 1 && segments[0] == "_check" {
+		w.Header().Set("cache-control", "no-store")
+		_, _ = io.WriteString(w, CheckAnswer)
+		return
+	}
 	// Apps read status codes, not JSON: answered in plain text.
 	address := clientAddress(r)
 	if !h.shared.allow(address) || !h.limiter.allow(address+" "+segments[0]) {
@@ -154,14 +167,58 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.serveConfigs(ctx, w, r, sub, segments[0], part)
 }
 
-// ours is the customer's link: on the shop's domain, or the panel's own
-// subscription domain when it names one.
-func (h *Handler) ours(token string, sub store.LinkSubscription) string {
+// ours is the customer's link: on the panel's own subscription domain when
+// it names one, else on the shop's subscription domain, else on the site.
+func (h *Handler) ours(ctx context.Context, token string, sub store.LinkSubscription) string {
 	base := h.PublicURL
+	if domain := h.subscriptionDomain(ctx); domain != "" {
+		base = "https://" + domain
+	}
 	if sub.SubscriptionBaseURL != nil && *sub.SubscriptionBaseURL != "" {
 		base = strings.TrimRight(*sub.SubscriptionBaseURL, "/")
 	}
 	return base + "/s/" + token
+}
+
+// subscriptionDomain is the shop's primary subscription domain, read at
+// most every half minute; when it cannot be read, the last one known.
+func (h *Handler) subscriptionDomain(ctx context.Context) string {
+	h.domainMu.Lock()
+	defer h.domainMu.Unlock()
+	if !h.domainAt.IsZero() && h.Now().Sub(h.domainAt) < 30*time.Second {
+		return h.domain
+	}
+	domain, err := h.Store.PrimarySubscriptionDomain(ctx)
+	if err != nil {
+		h.Log.Warn("reading the subscription domain", "err", err)
+		return h.domain
+	}
+	h.domain, h.domainAt = domain, h.Now()
+	return domain
+}
+
+// ServeTLSAsk answers the web server's question before it takes a
+// certificate for a name it was asked for (Caddy's on-demand TLS "ask"):
+// yes, 200, only for a subscription domain. It is reached from inside only:
+// the web server passes on /s/… alone.
+func (h *Handler) ServeTLSAsk(w http.ResponseWriter, r *http.Request) {
+	h.setup()
+	host := strings.TrimSuffix(strings.ToLower(r.URL.Query().Get("domain")), ".")
+	if host == "" {
+		http.Error(w, "no domain", http.StatusBadRequest)
+		return
+	}
+	ok, err := h.Store.ServesLinksOn(r.Context(), host)
+	if err != nil {
+		h.Log.Error("asking whether a domain serves links", "err", err)
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if !ok {
+		http.Error(w, "not a subscription domain", http.StatusNotFound)
+		return
+	}
+	_, _ = io.WriteString(w, "ok")
 }
 
 type answer struct {
@@ -252,7 +309,7 @@ func (h *Handler) serveConfigs(ctx context.Context, w http.ResponseWriter, r *ht
 		return
 	}
 
-	ours := h.ours(token, sub)
+	ours := h.ours(ctx, token, sub)
 	header := w.Header()
 	for _, name := range returned {
 		if value := upstream.response.Header.Get(name); value != "" {

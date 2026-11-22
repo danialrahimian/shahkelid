@@ -99,6 +99,13 @@
       "when": 1795372446248,
       "tag": "0013_host_fingerprints",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1795373852017,
+      "tag": "0014_subscription_domains",
+      "breakpoints": true
     }
   ]
 }

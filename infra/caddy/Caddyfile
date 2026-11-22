@@ -26,6 +26,12 @@
 		trusted_proxies static {$TRUSTED_PROXIES:127.0.0.1/32}
 		client_ip_headers CF-Connecting-IP X-Forwarded-For
 	}
+	# Subscription domains (added in the staff area, under Panels): a
+	# certificate is taken the first time one is visited, and only for a name
+	# the panel service says is one.
+	on_demand_tls {
+		ask http://panel:7000/internal/tls-ask
+	}
 }
 
 {$SITE_ADDRESSES} {
@@ -80,4 +86,42 @@
 		output stdout
 		format json
 	}
+}
+
+# Subscription domains: any other name this server is reached on, with a
+# certificate only where the panel service says it is a subscription domain
+# (see on_demand_tls above). Only customers' links are answered here: not
+# the site, not the API, so the shop's address is not in its customers'
+# apps.
+https:// {
+	tls {
+		on_demand
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	@links path /s/*
+	handle @links {
+		encode zstd gzip
+		reverse_proxy panel:7000 {
+			header_up X-Forwarded-For {client_ip}
+		}
+	}
+	handle {
+		respond "Not found" 404
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
+
+# Plain HTTP on a subscription domain goes to HTTPS (the site's own names
+# get this from Caddy by itself).
+http:// {
+	redir https://{host}{uri} 308
 }

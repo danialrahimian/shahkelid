@@ -76,6 +76,8 @@ func run(log *slog.Logger) error {
 
 	mux := http.NewServeMux()
 	mux.Handle("/s/", links)
+	// Caddy asks before it takes a certificate for a subscription domain.
+	mux.HandleFunc("GET /internal/tls-ask", links.ServeTLSAsk)
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		if err := db.Pool.Ping(r.Context()); err != nil {
 			http.Error(w, "database unreachable", http.StatusServiceUnavailable)

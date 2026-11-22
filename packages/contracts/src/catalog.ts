@@ -89,6 +89,37 @@ export type PanelView = {
   lastError: string | null;
 };
 
+// ------------------------------------------------------ subscription domains
+
+/** A domain name (not an address, not a pattern): what is typed, a link pasted too. */
+const HOSTNAME = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
+
+export const subscriptionDomainInput = z.object({
+  domain: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .transform((value) => value.replace(/^[a-z]+:\/\//, "").replace(/[/?#].*$/, "").replace(/\.$/, ""))
+    .pipe(z.string().min(1, "REQUIRED").regex(HOSTNAME, "DOMAIN_INVALID")),
+});
+export type SubscriptionDomainInput = z.input<typeof subscriptionDomainInput>;
+
+export type SubscriptionDomainView = {
+  domain: string;
+  /** Customers' links are made on it. */
+  isPrimary: boolean;
+  createdAt: string;
+};
+
+export type SubscriptionDomainsView = {
+  domains: SubscriptionDomainView[];
+  /** Where links are made now: the primary domain, else the site's own address. */
+  linkBase: string;
+};
+
+/** Whether a subscription domain reaches this server, and has its certificate. */
+export type SubscriptionDomainCheck = { ok: boolean; error: string | null };
+
 /** A group on a panel (PasarGuard: a set of inbounds), as our groups pick them. */
 /**
  * A group on a panel. Its inbounds are known only where the panel account
