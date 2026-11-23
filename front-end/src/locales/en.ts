@@ -801,7 +801,7 @@ export const en: SameShape<typeof fa> = {
       remove: "Remove",
       hosts: "Hosts (configs)",
       hostsHint:
-        "This list's order is the order of the configs in the customer's link. An empty name keeps the panel's. Names may use PasarGuard's variables:",
+        "This list's order is the order of the configs in the customer's link. Hosts of every panel this group takes from are in one list: drag them into any order, a host of one panel next to one of another. An empty name keeps the panel's. Names may use PasarGuard's variables:",
       noHosts: "This group has no host yet. Add a panel group above.",
       hostName: "Name for customers",
       forced: "Given by “All hosts”",

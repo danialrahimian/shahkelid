@@ -62,6 +62,7 @@ type Handler struct {
 	proxy   *httputil.ReverseProxy
 	limiter *limiter
 	shared  *limiter
+	recall  *recall
 
 	domainMu sync.Mutex
 	domain   string
@@ -91,7 +92,7 @@ var notPassed = map[string]bool{
 func (h *Handler) setup() {
 	h.once.Do(func() {
 		if h.HTTP == nil {
-			h.HTTP = &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+			h.HTTP = &http.Client{Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 		}
 		if h.Now == nil {
 			h.Now = time.Now
@@ -104,6 +105,7 @@ func (h *Handler) setup() {
 		}
 		h.limiter = newLimiter(h.Limit, time.Minute, h.Now)
 		h.shared = newLimiter(10*h.Limit, time.Minute, h.Now)
+		h.recall = newRecall(64<<20, time.Hour, h.Now)
 		if target, err := url.Parse(h.AppURL); err == nil {
 			h.proxy = httputil.NewSingleHostReverseProxy(target)
 		}
@@ -280,17 +282,40 @@ func (h *Handler) fetch(ctx context.Context, r *http.Request, p store.LinkPanel,
 		request.Header.Set("user-agent", userAgent)
 		request.Header.Del("accept")
 	}
+	key := method + " " + target + " " + request.Header.Get("user-agent")
+	a, err := h.do(request, p)
+	switch {
+	case err == nil && a.response.StatusCode < 500:
+		if a.response.StatusCode >= 200 && a.response.StatusCode < 300 && method == http.MethodGet {
+			h.recall.put(key, a)
+		}
+		return a
+	case err != nil:
+		h.Log.Warn("subscription link: a panel did not answer", "panel", p.PanelID, "err", err)
+	default:
+		h.Log.Warn("subscription link: a panel failed", "panel", p.PanelID, "status", a.response.StatusCode)
+	}
+	// The panel slow or down: the answer it gave a moment ago, if any.
+	if m, ok := h.recall.get(key); ok {
+		return &answer{panel: p, response: &http.Response{StatusCode: m.status, Header: m.header.Clone()}, body: m.body}
+	}
+	if err != nil {
+		return nil
+	}
+	return a
+}
+
+func (h *Handler) do(request *http.Request, p store.LinkPanel) (*answer, error) {
 	response, err := h.HTTP.Do(request)
 	if err != nil {
-		h.Log.Warn("subscription link: a panel did not answer", "err", err)
-		return nil
+		return nil, err
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, 32<<20))
 	response.Body.Close()
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return &answer{panel: p, response: response, body: body}
+	return &answer{panel: p, response: response, body: body}, nil
 }
 
 // linksOf gives a panel's configs as a plain list of links, for the shop's
@@ -300,12 +325,26 @@ func (h *Handler) fetch(ctx context.Context, r *http.Request, p store.LinkPanel,
 // a list of links (another format, or the page a proxy in front of the
 // panel shows browsers) is never taken for one.
 func (h *Handler) linksOf(ctx context.Context, r *http.Request, p store.LinkPanel) answer {
-	var last *answer
-	for _, try := range []struct{ suffix, userAgent string }{
+	tries := []struct{ suffix, userAgent string }{
 		{"/links", ""}, {"/links_base64", ""}, {"", "v2rayNG/1.8.0"}, {"", "ShahKelid/1"},
-	} {
-		a := h.fetch(ctx, r, p, try.suffix, try.userAgent)
+	}
+	// All at once: the first in this order that gives links is taken, and
+	// the slowest way to the panel is one answer, not four.
+	got := make([]*answer, len(tries))
+	var wg sync.WaitGroup
+	for i, try := range tries {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			got[i] = h.fetch(ctx, r, p, try.suffix, try.userAgent)
+		}()
+	}
+	wg.Wait()
+	var last *answer
+	var why []string
+	for i, a := range got {
 		if a == nil {
+			why = append(why, tries[i].suffix+tries[i].userAgent+": no answer")
 			continue
 		}
 		if a.response.StatusCode >= 200 && a.response.StatusCode < 300 {
@@ -314,9 +353,15 @@ func (h *Handler) linksOf(ctx context.Context, r *http.Request, p store.LinkPane
 				a.response.Header.Set("content-type", "text/plain; charset=utf-8")
 				return *a
 			}
+			why = append(why, fmt.Sprintf("%s%s: not a list of links (%s)", tries[i].suffix, tries[i].userAgent, a.response.Header.Get("content-type")))
+		} else {
+			why = append(why, fmt.Sprintf("%s%s: HTTP %d", tries[i].suffix, tries[i].userAgent, a.response.StatusCode))
 		}
-		last = a
+		if last == nil {
+			last = a
+		}
 	}
+	h.Log.Warn("subscription link: no list of links from a panel for the page", "panel", p.PanelID, "tries", strings.Join(why, "; "))
 	if last == nil {
 		return answer{}
 	}

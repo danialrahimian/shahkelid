@@ -652,7 +652,8 @@ func TestTwoPanelsOneListAndTheWholeVolume(t *testing.T) {
 	other.Mu.Unlock()
 	other.Close()
 	response, body = w.get("/s/"+token, oldV2rayNG)
-	if response.StatusCode != 200 || len(names(t, body)) != 2 {
+	// One panel not answering: its configs as it gave them a moment ago.
+	if response.StatusCode != 200 || len(names(t, body)) != 3 {
 		t.Fatalf("one panel not answering: status %d, %v", response.StatusCode, names(t, body))
 	}
 }
@@ -754,5 +755,71 @@ func TestKeepKnowsEveryPanelGroupInUse(t *testing.T) {
 	w.panel.Mu.Unlock()
 	if hosts, ok := w.catalog.Cached(context.Background(), used[0].Panel, 2); !ok || len(hosts) != 2 {
 		t.Fatalf("known before any link asks: %v %v", ok, hosts)
+	}
+}
+
+// TestHostsOfTwoPanelsMixed: in one group, a host of one panel between two
+// of another: the link gives them in exactly that order.
+func TestHostsOfTwoPanelsMixed(t *testing.T) {
+	w := newWorld(t)
+	other := fakepanel.New()
+	t.Cleanup(other.Close)
+	otherID := testdb.Panel(t, w.s, "Other", other.URL())
+	testdb.SetSources(t, w.s, w.group, testdb.Source{PanelID: w.panelID, PanelGroupID: 2, AllHosts: true}, testdb.Source{PanelID: otherID, PanelGroupID: 7, AllHosts: true})
+	token, username := w.customer()
+	ctx := context.Background()
+	other.Mu.Lock()
+	other.Users[username] = &fakepanel.User{ID: 5, Username: username, Status: "active", DataLimit: 40 * gb, GroupIDs: []int64{7}, Token: "b" + username}
+	other.Mu.Unlock()
+	if _, err := w.s.Pool.Exec(ctx, `insert into subscription_panels (subscription_id, panel_id, panel_user_id, panel_subscription_url)
+		select id, $2, 5, $3 from subscriptions where access_token = $1`, token, otherID, other.URL()+"/sub/b"+username); err != nil {
+		t.Fatal(err)
+	}
+	p, err := w.s.FindPanel(ctx, otherID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nlHosts, err := w.catalog.Read(ctx, p, 7)
+	if err != nil || len(nlHosts) != 1 {
+		t.Fatalf("NL: %v %v", nlHosts, err)
+	}
+	place := func(panelID, hostID string, at int) {
+		if _, err := w.s.Pool.Exec(ctx, `insert into group_hosts (group_id, panel_id, host_id, sort_order) values ($1, $2, $3, $4)
+			on conflict (group_id, panel_id, host_id) do update set sort_order = excluded.sort_order`, w.group, panelID, hostID, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	place(w.panelID, w.hostID(2, "🇩🇪 DE-2"), 0)
+	place(otherID, nlHosts[0].ID, 1)
+	place(w.panelID, w.hostID(2, "🇩🇪 DE-1"), 2)
+	w.catalog.Forget()
+
+	_, body := w.get("/s/"+token, oldV2rayNG)
+	if got := names(t, body); len(got) != 3 || !strings.Contains(got[0], "DE-2") || !strings.Contains(got[1], "NL") || !strings.Contains(got[2], "DE-1") {
+		t.Fatalf("in the order placed: %v", got)
+	}
+}
+
+// TestAPanelDownGivesItsLastAnswer: the panel's link fails for a moment;
+// the customer gets the configs it gave a moment ago, not nothing.
+func TestAPanelDownGivesItsLastAnswer(t *testing.T) {
+	w := newWorld(t)
+	token, username := w.customer()
+	if _, body := w.get("/s/"+token, oldV2rayNG); len(names(t, body)) != 2 {
+		t.Fatalf("first: %v", names(t, body))
+	}
+	if _, body := w.get("/s/"+token+"/links", "Mozilla/5.0"); len(names(t, body)) != 2 {
+		t.Fatalf("the page's: %v", names(t, body))
+	}
+	w.panel.Mu.Lock()
+	w.panel.SubDown = true
+	w.panel.Mu.Unlock()
+
+	response, body := w.get("/s/"+token, oldV2rayNG)
+	if response.StatusCode != 200 || strings.Join(names(t, body), ",") != "🇩🇪 DE-1 "+username+",🇩🇪 DE-2 [vmess]" {
+		t.Fatalf("the app: %d %v", response.StatusCode, names(t, body))
+	}
+	if _, body := w.get("/s/"+token+"/links", "Mozilla/5.0"); len(names(t, body)) != 2 {
+		t.Fatalf("the page: %v", names(t, body))
 	}
 }
