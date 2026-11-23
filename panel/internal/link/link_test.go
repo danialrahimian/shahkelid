@@ -695,3 +695,64 @@ func TestLinksOnTheShopsSubscriptionDomain(t *testing.T) {
 		t.Fatalf("the staff page's check: %q", body)
 	}
 }
+
+// ------------------------------------------------------------ the catalog
+
+func TestTheCatalogNeverMakesALinkWait(t *testing.T) {
+	w := newWorld(t)
+	at := time.Now()
+	w.catalog.Now = func() time.Time { return at }
+	p, err := w.s.FindPanel(context.Background(), w.panelID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, ok := w.catalog.Cached(context.Background(), p, 2)
+	if !ok || len(first) != 2 {
+		t.Fatalf("read when nothing is known: %v %v", ok, first)
+	}
+
+	// Two minutes on, the panel down: what is known is given at once.
+	at = at.Add(2 * time.Minute)
+	w.panel.Mu.Lock()
+	w.panel.Down = true
+	w.panel.Mu.Unlock()
+	started := time.Now()
+	again, ok := w.catalog.Cached(context.Background(), p, 2)
+	if !ok || len(again) != 2 || time.Since(started) > time.Second {
+		t.Fatalf("an older answer is given without waiting: %v %v %v", ok, len(again), time.Since(started))
+	}
+}
+
+func TestKeepKnowsEveryPanelGroupInUse(t *testing.T) {
+	w := newWorld(t)
+	used, err := w.s.UsedPanelGroups(context.Background())
+	if err != nil || len(used) != 1 || used[0].Panel.ID != w.panelID || used[0].PanelGroupID != 2 {
+		t.Fatalf("in use: %v %v", used, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		w.catalog.Keep(ctx, w.s.UsedPanelGroups, time.Hour)
+		close(done)
+	}()
+	// One round: the shop's own user's subscription read.
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		w.panel.Mu.Lock()
+		probe := w.panel.Users["skprobe_g2"]
+		read := probe != nil && w.panel.SubRequests[probe.Token] != nil
+		w.panel.Mu.Unlock()
+		if read {
+			break
+		}
+	}
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	<-done
+
+	w.panel.Mu.Lock()
+	w.panel.Down = true
+	w.panel.Mu.Unlock()
+	if hosts, ok := w.catalog.Cached(context.Background(), used[0].Panel, 2); !ok || len(hosts) != 2 {
+		t.Fatalf("known before any link asks: %v %v", ok, hosts)
+	}
+}

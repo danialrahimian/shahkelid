@@ -2534,7 +2534,8 @@
   var CONFIG_LINK = /^[a-z][a-z0-9+.-]*:\/\/\S+$/i;
 
   function fetchLinksFrom(url) {
-    return request(url, { credentials: "same-origin", headers: { Accept: "application/json, text/plain, */*" } }, 10000).then(function (res) {
+    // The panels may be far away and slow to answer: time enough for them.
+    return request(url, { credentials: "same-origin", headers: { Accept: "application/json, text/plain, */*" } }, 25000).then(function (res) {
       if (!res.ok) return [];
       var type = res.headers.get("content-type") || "";
       if (type.indexOf("json") > -1) return res.json().then(parseLinks);
@@ -2544,13 +2545,22 @@
     }).catch(function () { return []; });
   }
 
-  function fetchLinks() {
+  function fetchLinksOnce() {
     return fetchLinksFrom(state.ctx.linksUrl).then(function (links) {
       if (links.length) return links;
       return fetchLinksFrom(state.ctx.rawUrl);
     }).then(function (links) {
       if (links.length) return links;
       return fetchLinksFrom(state.ctx.subUrl);
+    });
+  }
+
+  // Asked once more, a moment later, when nothing came: a first visit may
+  // find the panels slow.
+  function fetchLinks() {
+    return fetchLinksOnce().then(function (links) {
+      if (links.length) return links;
+      return new Promise(function (resolve) { setTimeout(resolve, 1500); }).then(fetchLinksOnce);
     });
   }
 

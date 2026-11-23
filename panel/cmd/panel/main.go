@@ -66,9 +66,10 @@ func run(log *slog.Logger) error {
 		FirstUseDeadline: cfg.FirstUseDeadline,
 		Log:              log,
 	}
+	catalog := &link.Catalog{Panels: func(p store.Panel) (link.ProbePanel, error) { return clients.For(p) }, Log: log}
 	links := &link.Handler{
 		Store:     db,
-		Catalog:   &link.Catalog{Panels: func(p store.Panel) (link.ProbePanel, error) { return clients.For(p) }, Log: log},
+		Catalog:   catalog,
 		AppURL:    cfg.AppURL,
 		PublicURL: cfg.PublicURL,
 		Log:       log,
@@ -89,11 +90,14 @@ func run(log *slog.Logger) error {
 		Addr:              cfg.Listen,
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
-		// Room for every panel's ten seconds, and the shaping.
-		WriteTimeout: 30 * time.Second,
+		// Room for a panel group read for the first time and a panel's
+		// fallbacks (the shop's page asking for its links), and the shaping.
+		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  2 * time.Minute,
 	}
 
+	// The hosts of every panel group in use, kept known: links never wait on a panel.
+	go catalog.Keep(ctx, db.UsedPanelGroups, 45*time.Second)
 	if cfg.SyncEvery > 0 {
 		go usageSync.Every(ctx, cfg.SyncEvery)
 		go housekeeping(ctx, db, log)

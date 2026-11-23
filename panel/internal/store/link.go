@@ -156,3 +156,32 @@ func (s *Store) GroupsOfSubscription(ctx context.Context, subscriptionID string)
 	out.Hosts, err = pgx.CollectRows(rows, scanGroupHost)
 	return out, err
 }
+
+// UsedPanelGroup is a panel group one of the shop's groups takes from.
+type UsedPanelGroup struct {
+	Panel        Panel
+	PanelGroupID int64
+}
+
+// UsedPanelGroups lists the panel groups the shop's groups take from, on
+// panels switched on: the ones whose hosts customers' links need.
+func (s *Store) UsedPanelGroups(ctx context.Context) ([]UsedPanelGroup, error) {
+	rows, err := s.Pool.Query(ctx, `
+		select distinct on (p.id, gs.panel_group_id) `+panelColumnsOf("p")+`, gs.panel_group_id::bigint
+		from group_sources gs join panels p on p.id = gs.panel_id
+		where p.is_active
+		order by p.id, gs.panel_group_id`)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (UsedPanelGroup, error) {
+		var x UsedPanelGroup
+		p := &x.Panel
+		return x, row.Scan(&p.ID, &p.Name, &p.Driver, &p.BaseURL, &p.CredentialsSealed, &p.SubscriptionBaseURL, &x.PanelGroupID)
+	})
+}
+
+func panelColumnsOf(alias string) string {
+	return alias + ".id::text, " + alias + ".name, " + alias + ".driver::text, " + alias + ".base_url, " +
+		alias + ".credentials_enc, " + alias + ".subscription_base_url"
+}
