@@ -2555,13 +2555,17 @@
     });
   }
 
-  // Asked once more, a moment later, when nothing came: a first visit may
-  // find the panels slow.
+  // Asked again, a little later each time, when nothing came: the panels
+  // may be slow for a moment.
   function fetchLinks() {
-    return fetchLinksOnce().then(function (links) {
-      if (links.length) return links;
-      return new Promise(function (resolve) { setTimeout(resolve, 1500); }).then(fetchLinksOnce);
-    });
+    var waits = [1500, 4000];
+    function attempt(i) {
+      return fetchLinksOnce().then(function (links) {
+        if (links.length || i >= waits.length) return links;
+        return new Promise(function (resolve) { setTimeout(resolve, waits[i]); }).then(function () { return attempt(i + 1); });
+      });
+    }
+    return attempt(0);
   }
 
   function fetchApps() {

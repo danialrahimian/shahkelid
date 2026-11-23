@@ -78,6 +78,9 @@ type Panel struct {
 	Down bool
 	// XrayOff switches the "xray" subscription format off, as an admin may.
 	XrayOff bool
+	// SubDown answers every subscription link with 502, as a panel behind
+	// a proxy that lost it does.
+	SubDown bool
 	// LinksOff switches the "links" and "links_base64" formats asked for by
 	// name off, as an admin may.
 	LinksOff bool
@@ -450,6 +453,10 @@ var singBoxApps = regexp.MustCompile(`^(SFA|SFI|SFM|SFT|[Kk]aring|[Hh]iddify[Nn]
 var clashApps = regexp.MustCompile(`^([Cc]lash|[Ss]tash|FlClash|mihomo)`)
 
 func (p *Panel) subscription(w http.ResponseWriter, r *http.Request, token, format string) {
+	if p.SubDown {
+		http.Error(w, "Bad Gateway", http.StatusBadGateway)
+		return
+	}
 	if r.Method != http.MethodGet && !(r.Method == http.MethodHead && format == "") {
 		// PasarGuard answers HEAD on the link itself only.
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)

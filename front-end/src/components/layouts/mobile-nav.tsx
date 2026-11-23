@@ -30,7 +30,7 @@ export const MobileNav = ({ links }: { links: NavLink[] }) => {
           </Button>
         </motion.div>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="absolute z-1000" align="start">
+      <DropdownMenuContent className="z-1000 max-w-[calc(100vw-2rem)]" align="start" collisionPadding={16}>
         <DropdownMenuGroup>
           {links.map((link) => (
             <DropdownMenuItem key={link.path} asChild className="cursor-pointer">

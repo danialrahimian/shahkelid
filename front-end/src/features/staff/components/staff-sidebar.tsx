@@ -15,6 +15,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { paths } from "@/config/paths";
 import { directionOf } from "@/lib/i18n";
@@ -30,6 +31,11 @@ import { STAFF_GROUPS } from "../staff-links";
 export const StaffSidebar = ({ account }: { account: AccountView }) => {
   const { t, i18n } = useTranslation();
   const { pathname } = useLocation();
+  const { isMobile, setOpenMobile } = useSidebar();
+  // On a phone the sidebar covers the page: a link followed closes it.
+  const close = () => {
+    if (isMobile) setOpenMobile(false);
+  };
 
   return (
     <Sidebar side={directionOf(i18n.language) === "rtl" ? "right" : "left"} collapsible="icon">
@@ -37,7 +43,7 @@ export const StaffSidebar = ({ account }: { account: AccountView }) => {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
-              <Link to={paths.staff.getHref()}>
+              <Link to={paths.staff.getHref()} onClick={close}>
                 <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                   <KeyRound className="size-4" aria-hidden />
                 </span>
@@ -63,7 +69,7 @@ export const StaffSidebar = ({ account }: { account: AccountView }) => {
                     return (
                       <SidebarMenuItem key={link.to}>
                         <SidebarMenuButton asChild isActive={pathname.startsWith(link.to)} tooltip={label}>
-                          <Link to={link.to}>
+                          <Link to={link.to} onClick={close}>
                             <Icon aria-hidden />
                             <span>{label}</span>
                           </Link>
@@ -82,7 +88,7 @@ export const StaffSidebar = ({ account }: { account: AccountView }) => {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip={t("staff.nav.account")}>
-              <Link to={paths.account.getHref()}>
+              <Link to={paths.account.getHref()} onClick={close}>
                 <UserRound aria-hidden />
                 <span className="truncate" dir="ltr">
                   {account.email ?? account.username}
@@ -92,7 +98,7 @@ export const StaffSidebar = ({ account }: { account: AccountView }) => {
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip={t("staff.nav.store")}>
-              <Link to={paths.home.getHref()}>
+              <Link to={paths.home.getHref()} onClick={close}>
                 <House aria-hidden />
                 <span>{t("staff.nav.store")}</span>
               </Link>
