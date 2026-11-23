@@ -274,6 +274,31 @@ func TestXrayAppsGetWhatThePanelGivesThem(t *testing.T) {
 	}
 }
 
+// TestThePageAlwaysGetsLinks: the shop's page asks for the list of links
+// from a browser. Where the panel's admin switched the links formats off and
+// a proxy in front of the panel shows browsers an HTML page, it still gets
+// the links (shaped), never that page.
+func TestThePageAlwaysGetsLinks(t *testing.T) {
+	w := newWorld(t)
+	token, username := w.customer()
+	w.setHost(w.hostID(2, "🇩🇪 DE-2"), false, ptr("Fast"), nil)
+	w.panel.Mu.Lock()
+	w.panel.LinksOff, w.panel.Decoy = true, true
+	w.panel.Mu.Unlock()
+
+	response, body := w.get("/s/"+token+"/links", "Mozilla/5.0 (iPhone)", "accept", "application/json, text/plain, */*")
+
+	if response.StatusCode != 200 || strings.Contains(body, "<html") {
+		t.Fatalf("status %d: %.200s", response.StatusCode, body)
+	}
+	if got := strings.Join(names(t, body), ","); got != "🇩🇪 DE-1 "+username+",Fast" {
+		t.Fatalf("names %s", got)
+	}
+	if !strings.HasPrefix(response.Header.Get("content-type"), "text/plain") {
+		t.Fatalf("content type %q", response.Header.Get("content-type"))
+	}
+}
+
 // TestEveryFormatByName: a format asked for by name, as PasarGuard serves it.
 func TestEveryFormatByName(t *testing.T) {
 	w := newWorld(t)
@@ -398,13 +423,19 @@ func TestTooManyRequests(t *testing.T) {
 
 func TestHeadAsksOnlyForHeaders(t *testing.T) {
 	w := newWorld(t)
-	token, _ := w.customer()
+	token, username := w.customer()
 	response, err := http.Head(w.server.URL + "/s/" + token)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if response.StatusCode != 200 || response.Header.Get("subscription-userinfo") == "" {
 		t.Fatalf("status %d headers %v", response.StatusCode, response.Header)
+	}
+	w.panel.Mu.Lock()
+	head, get := w.panel.Calls["HEAD /sub/cust"+username], w.panel.Calls["GET /sub/cust"+username]
+	w.panel.Mu.Unlock()
+	if head != 1 || get != 0 {
+		t.Fatalf("the panel is asked with HEAD, as PasarGuard answers it: HEAD %d, GET %d", head, get)
 	}
 }
 

@@ -78,6 +78,12 @@ type Panel struct {
 	Down bool
 	// XrayOff switches the "xray" subscription format off, as an admin may.
 	XrayOff bool
+	// LinksOff switches the "links" and "links_base64" formats asked for by
+	// name off, as an admin may.
+	LinksOff bool
+	// Decoy shows browsers (a Mozilla user agent) an HTML page in place of
+	// the subscription, as a proxy in front of a panel may.
+	Decoy bool
 	// CustomJSON gives Xray apps (v2rayNG, v2rayN, Streisand, Happ…) the
 	// "xray" format on the link itself, as PasarGuard does when its admin
 	// switches on custom JSON for them; otherwise they get base64 links.
@@ -470,6 +476,15 @@ func (p *Panel) subscription(w http.ResponseWriter, r *http.Request, token, form
 	w.Header().Set("profile-web-page-url", p.URL()+"/sub/"+token)
 	w.Header().Set("x-powered-by-panel", "pasarguard")
 	if r.Method == http.MethodHead {
+		return
+	}
+	if p.Decoy && strings.HasPrefix(userAgent, "Mozilla/") {
+		w.Header().Set("content-type", "text/html")
+		_, _ = w.Write([]byte("<!doctype html>\n<html lang=\"en\">\n<head><script>var a=1;</script></head>\n<body><div id=\"root\"></div></body>\n</html>"))
+		return
+	}
+	if p.LinksOff && (format == "links" || format == "links_base64") {
+		writeJSON(w, http.StatusNotAcceptable, map[string]string{"detail": "Client not supported"})
 		return
 	}
 	if format == "usage" {

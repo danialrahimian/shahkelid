@@ -2516,12 +2516,22 @@
     });
   }
 
+  // A list of links: plain or base64 text, a JSON array, or an object that
+  // holds one (PasarGuard's /raw gives {body: {links: [...]}, headers}).
   function parseLinks(payload) {
     if (!payload) return [];
     if (Array.isArray(payload)) return payload;
-    if (typeof payload === "object") return parseLinks(payload.links || payload.configs || payload.proxies || payload.raw || payload.data || []);
-    return String(payload).split(/\r?\n/);
+    if (typeof payload === "object") return parseLinks(payload.links || payload.configs || payload.proxies || payload.raw || payload.data || payload.body || []);
+    var text = String(payload).trim();
+    if (/^[A-Za-z0-9+/_=\s-]+$/.test(text) && text.indexOf("://") === -1) {
+      try { text = decodeURIComponent(escape(atob(text.replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/")))); } catch (e) {}
+    }
+    return text.split(/\r?\n/);
   }
+
+  // Only config links (vless://, vmess://, ss://…): never a line of a page a
+  // proxy answered with, nor a header line ("#profile-title: …").
+  var CONFIG_LINK = /^[a-z][a-z0-9+.-]*:\/\/\S+$/i;
 
   function fetchLinksFrom(url) {
     return request(url, { credentials: "same-origin", headers: { Accept: "application/json, text/plain, */*" } }, 10000).then(function (res) {
@@ -2530,7 +2540,7 @@
       if (type.indexOf("json") > -1) return res.json().then(parseLinks);
       return res.text().then(parseLinks);
     }).then(function (list) {
-      return list.map(function (x) { return String(x || "").trim(); }).filter(Boolean);
+      return list.map(function (x) { return String(x || "").trim(); }).filter(function (x) { return CONFIG_LINK.test(x); });
     }).catch(function () { return []; });
   }
 

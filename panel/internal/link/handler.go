@@ -231,9 +231,10 @@ type answer struct {
 }
 
 // ask asks every panel's link at once. A panel that does not answer is left
-// out: the customer still gets the others' configs.
-// Each is asked as the app asked: the same part, method and headers, so the
-// panel answers exactly as it would answer the app on its own link.
+// out: the customer still gets the others' configs. Each is asked as the
+// app asked: the same part, method and headers, so the panel answers
+// exactly as it would answer the app on its own link; but for the shop's
+// page asking for the list of links (linksOf).
 func (h *Handler) ask(ctx context.Context, r *http.Request, panels []store.LinkPanel, suffix string) []answer {
 	answers := make([]answer, len(panels))
 	var wg sync.WaitGroup
@@ -241,35 +242,90 @@ func (h *Handler) ask(ctx context.Context, r *http.Request, panels []store.LinkP
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			target := strings.TrimRight(p.URL, "/") + suffix
-			if r.URL.RawQuery != "" {
-				target += "?" + r.URL.RawQuery
-			}
-			// GET for a HEAD too: PasarGuard answers GET only.
-			request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
-			if err != nil {
+			if suffix == "/links" {
+				answers[i] = h.linksOf(ctx, r, p)
 				return
 			}
-			for _, name := range forwarded {
-				if value := r.Header.Get(name); value != "" {
-					request.Header.Set(name, value)
-				}
+			if a := h.fetch(ctx, r, p, suffix, ""); a != nil {
+				answers[i] = *a
 			}
-			response, err := h.HTTP.Do(request)
-			if err != nil {
-				h.Log.Warn("subscription link: a panel did not answer", "err", err)
-				return
-			}
-			body, err := io.ReadAll(io.LimitReader(response.Body, 32<<20))
-			response.Body.Close()
-			if err != nil {
-				return
-			}
-			answers[i] = answer{panel: p, response: response, body: body}
 		}()
 	}
 	wg.Wait()
 	return answers
+}
+
+// fetch asks one panel's link once, with the app's headers; userAgent, if
+// given, in place of the app's.
+func (h *Handler) fetch(ctx context.Context, r *http.Request, p store.LinkPanel, suffix, userAgent string) *answer {
+	target := strings.TrimRight(p.URL, "/") + suffix
+	if r.URL.RawQuery != "" {
+		target += "?" + r.URL.RawQuery
+	}
+	// PasarGuard answers HEAD on the link itself only; a part is asked with GET.
+	method := http.MethodGet
+	if r.Method == http.MethodHead && suffix == "" && userAgent == "" {
+		method = http.MethodHead
+	}
+	request, err := http.NewRequestWithContext(ctx, method, target, nil)
+	if err != nil {
+		return nil
+	}
+	for _, name := range forwarded {
+		if value := r.Header.Get(name); value != "" {
+			request.Header.Set(name, value)
+		}
+	}
+	if userAgent != "" {
+		request.Header.Set("user-agent", userAgent)
+		request.Header.Del("accept")
+	}
+	response, err := h.HTTP.Do(request)
+	if err != nil {
+		h.Log.Warn("subscription link: a panel did not answer", "err", err)
+		return nil
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, 32<<20))
+	response.Body.Close()
+	if err != nil {
+		return nil
+	}
+	return &answer{panel: p, response: response, body: body}
+}
+
+// linksOf gives a panel's configs as a plain list of links, for the shop's
+// page (its Configs tab and "copy all"): the panel's "links" format; where
+// its admin switched that off, "links_base64"; else the link itself as a
+// links app is given it (PasarGuard's catch-all rule). An answer that is not
+// a list of links (another format, or the page a proxy in front of the
+// panel shows browsers) is never taken for one.
+func (h *Handler) linksOf(ctx context.Context, r *http.Request, p store.LinkPanel) answer {
+	var last *answer
+	for _, try := range []struct{ suffix, userAgent string }{
+		{"/links", ""}, {"/links_base64", ""}, {"", "v2rayNG/1.8.0"}, {"", "ShahKelid/1"},
+	} {
+		a := h.fetch(ctx, r, p, try.suffix, try.userAgent)
+		if a == nil {
+			continue
+		}
+		if a.response.StatusCode >= 200 && a.response.StatusCode < 300 {
+			if text, ok := configs.PlainLinks(string(a.body)); ok {
+				a.body = []byte(text)
+				a.response.Header.Set("content-type", "text/plain; charset=utf-8")
+				return *a
+			}
+		}
+		last = a
+	}
+	if last == nil {
+		return answer{}
+	}
+	if last.response.StatusCode >= 200 && last.response.StatusCode < 300 {
+		// Something answered, but with no links: none, rather than its page.
+		last.body = nil
+		last.response.Header.Set("content-type", "text/plain; charset=utf-8")
+	}
+	return *last
 }
 
 func (h *Handler) serveConfigs(ctx context.Context, w http.ResponseWriter, r *http.Request, sub store.LinkSubscription, token, part string) {
