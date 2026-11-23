@@ -752,8 +752,10 @@ export const en: SameShape<typeof fa> = {
     domains: {
       title: "Subscription domains",
       description:
-        "Domains of the shop's own for customers' subscription links, apart from the site (as in PasarGuard). Only links are answered on them: not the site, the sign-in or the API, so the site's address is not in customers' apps. Links are made on the primary one; links given out on another keep working while it is here.",
-      dns: "Point the domain at this server (an A record to the server's address, as for the site's own domain; behind Cloudflare too). Its certificate is taken by itself on the first visit; Check makes that visit.",
+        "Your own domains for customers' subscription links, apart from the site, as in PasarGuard. Only links are answered on them, not the site, the sign-in or the API, so the site's address never reaches customers' apps.",
+      step1: "Point the domain at this server: an A record to the server's IP, as for the site's own domain (Cloudflare works too).",
+      step2: "Add it below. Links are made on the primary domain; the first one added is primary.",
+      step3: "Press Check: the SSL certificate is taken on that first visit. Links given out on another domain keep working while it is listed.",
       domain: "Domain",
       add: "Add",
       added: "Added. Check it once its DNS points here.",

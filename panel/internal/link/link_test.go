@@ -22,26 +22,20 @@ func ptr[T any](v T) *T { return &v }
 
 // ------------------------------------------------------------------ apps
 
-func TestWhichAppsGetXrayJSON(t *testing.T) {
+// TestThePagePasarGuardsWay: a browser (it accepts text/html) gets the
+// page; anything else gets configs, in whatever format the panel's rules
+// choose for it.
+func TestThePagePasarGuardsWay(t *testing.T) {
 	tests := map[string]bool{
-		"v2rayNG/1.9.45":                  true,
-		"v2rayNG/1.8.29":                  true,
-		"v2rayNG/1.8.28":                  false,
-		"v2rayN/7.4.2":                    true,
-		"v2rayN/6.39":                     false,
-		"Streisand/1.6.12":                true,
-		"Happ/1.63.1":                     true,
-		"Happ/1.50":                       false,
-		"v2RayTun/2.1 (Android)":          true,
-		"ktor-client":                     true,
-		"HiddifyNext/2.5.7":               false,
-		"ClashMetaForAndroid/2.11.0":      false,
-		"Mozilla/5.0 (X11; Linux x86_64)": false,
-		"":                                false,
+		"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8": true,
+		"text/html":        true,
+		"*/*":              false,
+		"":                 false,
+		"application/json": false,
 	}
-	for userAgent, want := range tests {
-		if got := readsXrayJSON(userAgent); got != want {
-			t.Errorf("%q: %v; want %v", userAgent, got, want)
+	for accept, want := range tests {
+		if got := wantsPage(accept); got != want {
+			t.Errorf("%q: %v; want %v", accept, got, want)
 		}
 	}
 }
@@ -229,9 +223,14 @@ func TestPickedRenamedAndOrdered(t *testing.T) {
 	}
 }
 
+// TestXrayAppsGetFullXrayConfigs: where the panel's admin gives Xray apps
+// custom JSON, they get it, shaped.
 func TestXrayAppsGetFullXrayConfigs(t *testing.T) {
 	w := newWorld(t)
 	token, _ := w.customer()
+	w.panel.Mu.Lock()
+	w.panel.CustomJSON = true
+	w.panel.Mu.Unlock()
 	w.setHost(w.hostID(2, "🇩🇪 DE-2"), false, ptr("Fast"), nil)
 
 	response, body := w.get("/s/"+token, "v2rayNG/1.9.45")
@@ -251,20 +250,47 @@ func TestXrayAppsGetFullXrayConfigs(t *testing.T) {
 	}
 }
 
-func TestXrayFormatOffFallsBackToLinks(t *testing.T) {
+// TestXrayAppsGetWhatThePanelGivesThem: without custom JSON on the panel,
+// Happ, v2rayN and the rest get links, as on the panel's own link: the
+// shop never asks for a format the app did not ask for.
+func TestXrayAppsGetWhatThePanelGivesThem(t *testing.T) {
 	w := newWorld(t)
 	token, username := w.customer()
-	w.panel.Mu.Lock()
-	w.panel.XrayOff = true
-	w.panel.Mu.Unlock()
 
-	response, body := w.get("/s/"+token, "v2rayNG/1.9.45")
-
-	if response.StatusCode != 200 || strings.HasPrefix(response.Header.Get("content-type"), "application/json") {
-		t.Fatalf("status %d type %q", response.StatusCode, response.Header.Get("content-type"))
+	for _, app := range []string{"Happ/1.70.0", "v2rayN/7.4.2", "v2rayNG/1.9.45", "Streisand/1.6.20"} {
+		response, body := w.get("/s/"+token, app)
+		if response.StatusCode != 200 || strings.HasPrefix(response.Header.Get("content-type"), "application/json") {
+			t.Fatalf("%s: status %d type %q", app, response.StatusCode, response.Header.Get("content-type"))
+		}
+		if got := strings.Join(names(t, body), ","); got != "🇩🇪 DE-1 "+username+",🇩🇪 DE-2 [vmess]" {
+			t.Fatalf("%s: names %s", app, got)
+		}
 	}
-	if got := strings.Join(names(t, body), ","); got != "🇩🇪 DE-1 "+username+",🇩🇪 DE-2 [vmess]" {
-		t.Fatalf("names %s", got)
+	w.panel.Mu.Lock()
+	xray := w.panel.Calls["GET /sub/cust"+username+"/xray"]
+	w.panel.Mu.Unlock()
+	if xray != 0 {
+		t.Fatal("the shop asked for a format the app did not ask for")
+	}
+}
+
+// TestEveryFormatByName: a format asked for by name, as PasarGuard serves it.
+func TestEveryFormatByName(t *testing.T) {
+	w := newWorld(t)
+	token, _ := w.customer()
+	w.setHost(w.hostID(2, "🇩🇪 DE-2"), false, ptr("Fast"), nil)
+	for _, part := range []string{"links", "links_base64", "xray"} {
+		response, body := w.get("/s/"+token+"/"+part, "curl/8")
+		shown := body
+		if part != "xray" {
+			shown = strings.Join(names(t, body), ",")
+		}
+		if response.StatusCode != 200 || !strings.Contains(shown, "Fast") {
+			t.Fatalf("%s: %d %.200s", part, response.StatusCode, shown)
+		}
+	}
+	if response, _ := w.get("/s/"+token+"/nonsense", "curl/8"); response.StatusCode != 404 {
+		t.Fatal("a part PasarGuard has not is not found")
 	}
 }
 
@@ -477,8 +503,8 @@ func TestHeadersReachingAndLeavingThePanel(t *testing.T) {
 	if asked.Header.Get("cookie") != "" {
 		t.Fatal("cookies do not")
 	}
-	if response.Header.Get("x-powered-by-panel") != "" {
-		t.Fatal("nothing else from the panel comes back")
+	if response.Header.Get("x-powered-by-panel") != "pasarguard" {
+		t.Fatal("the panel's own headers (its admin's for apps among them) come back, as PasarGuard sent them")
 	}
 	if response.Header.Get("profile-web-page-url") != "https://shop.test/s/"+token {
 		t.Fatalf("the shop's link, not the panel's: %q", response.Header.Get("profile-web-page-url"))
