@@ -502,3 +502,16 @@ func Count(body string) int {
 	}
 	return len(answer.configs)
 }
+
+// PlainLinks gives an answer that is a list of links (plain or base64) as
+// plain text, and false for anything else (another format, an HTML page).
+func PlainLinks(body string) (string, bool) {
+	answer := parse(body)
+	if answer.format != Links || len(answer.configs) == 0 {
+		return "", false
+	}
+	if decoded, ok := decodeBase64(body); ok {
+		return decoded, true
+	}
+	return body, true
+}
