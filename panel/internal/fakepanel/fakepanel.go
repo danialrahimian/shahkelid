@@ -78,6 +78,10 @@ type Panel struct {
 	Down bool
 	// XrayOff switches the "xray" subscription format off, as an admin may.
 	XrayOff bool
+	// CustomJSON gives Xray apps (v2rayNG, v2rayN, Streisand, Happ…) the
+	// "xray" format on the link itself, as PasarGuard does when its admin
+	// switches on custom JSON for them; otherwise they get base64 links.
+	CustomJSON bool
 	// HeaderLines writes the headers into the body of a list of links too,
 	// as PasarGuard's "header placement" may.
 	HeaderLines bool
@@ -434,12 +438,14 @@ func link(c config, secret string) string {
 	}
 }
 
+var xrayApps = regexp.MustCompile(`^([Vv]2ray[Nn][Gg]|[Vv]2ray[Nn]|[Ss]treisand|[Hh]app|[Kk]tor-client)`)
+
 var singBoxApps = regexp.MustCompile(`^(SFA|SFI|SFM|SFT|[Kk]aring|[Hh]iddify[Nn]ext)|.*[Ss]ing[-b]?ox.*`)
 var clashApps = regexp.MustCompile(`^([Cc]lash|[Ss]tash|FlClash|mihomo)`)
 
 func (p *Panel) subscription(w http.ResponseWriter, r *http.Request, token, format string) {
-	if r.Method != http.MethodGet {
-		// PasarGuard's subscription routes are GET only.
+	if r.Method != http.MethodGet && !(r.Method == http.MethodHead && format == "") {
+		// PasarGuard answers HEAD on the link itself only.
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -463,13 +469,16 @@ func (p *Panel) subscription(w http.ResponseWriter, r *http.Request, token, form
 	w.Header().Set("subscription-userinfo", fmt.Sprintf("upload=0; download=%d; total=%d; expire=0", user.Used, user.DataLimit))
 	w.Header().Set("profile-web-page-url", p.URL()+"/sub/"+token)
 	w.Header().Set("x-powered-by-panel", "pasarguard")
+	if r.Method == http.MethodHead {
+		return
+	}
 	if format == "usage" {
 		writeJSON(w, http.StatusOK, map[string]any{"query": r.URL.RawQuery, "stats": []any{map[string]any{"at": "t", "used": user.Used}}})
 		return
 	}
 
 	switch {
-	case format == "xray":
+	case format == "xray" || (format == "" && p.CustomJSON && xrayApps.MatchString(userAgent)):
 		if p.XrayOff {
 			writeJSON(w, http.StatusNotAcceptable, map[string]string{"detail": "Client not supported"})
 			return

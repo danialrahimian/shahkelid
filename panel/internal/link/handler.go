@@ -74,16 +74,19 @@ const CheckAnswer = "shah-kelid subscription link"
 
 var token = regexp.MustCompile(`^[A-Za-z0-9_-]{20,64}$`)
 
-// parts are what the subscription page asks for beside the link (PasarGuard's).
-var parts = map[string]bool{"info": true, "apps": true, "links": true, "raw": true, "usage": true}
-
 // forwarded are the request headers a panel reads: to recognise a device
 // (for the device limit) and to choose a format.
 var forwarded = []string{"user-agent", "accept", "x-hwid", "x-device-os", "x-ver-os", "x-device-model"}
 
-// returned are the answer's headers apps read; nothing else of a panel's.
-var returned = []string{"content-type", "content-disposition", "subscription-userinfo", "profile-title",
-	"profile-update-interval", "support-url", "announce", "announce-url", "routing"}
+// notPassed are a panel's answer headers that are its connection's, not the
+// subscription's: every other header (the panel's own and the ones its
+// admin adds for apps, such as routing or Happ's) reaches the app as
+// PasarGuard sent it.
+var notPassed = map[string]bool{
+	"connection": true, "keep-alive": true, "transfer-encoding": true, "te": true, "trailer": true, "upgrade": true,
+	"proxy-authenticate": true, "proxy-connection": true, "content-length": true, "content-encoding": true,
+	"date": true, "server": true, "set-cookie": true, "alt-svc": true, "strict-transport-security": true, "via": true,
+}
 
 func (h *Handler) setup() {
 	h.once.Do(func() {
@@ -133,7 +136,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Too many requests", http.StatusTooManyRequests)
 		return
 	}
-	if len(segments) > 2 || !token.MatchString(segments[0]) || (len(segments) == 2 && !parts[segments[1]]) {
+	if len(segments) > 2 || !token.MatchString(segments[0]) || (len(segments) == 2 && !routes[segments[1]]) {
 		notFound(w)
 		return
 	}
@@ -155,7 +158,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The page and what it reads about the account: the shop's, from the Node app.
-	if part == "info" || part == "apps" || (part == "" && r.Method == http.MethodGet && wantsPage(r.Header.Get("accept"), r.Header.Get("user-agent"))) {
+	if part == "info" || part == "apps" || (part == "" && r.Method == http.MethodGet && wantsPage(r.Header.Get("accept"))) {
 		if h.proxy == nil {
 			http.Error(w, "The service is temporarily unavailable", http.StatusServiceUnavailable)
 			return
@@ -229,6 +232,8 @@ type answer struct {
 
 // ask asks every panel's link at once. A panel that does not answer is left
 // out: the customer still gets the others' configs.
+// Each is asked as the app asked: the same part, method and headers, so the
+// panel answers exactly as it would answer the app on its own link.
 func (h *Handler) ask(ctx context.Context, r *http.Request, panels []store.LinkPanel, suffix string) []answer {
 	answers := make([]answer, len(panels))
 	var wg sync.WaitGroup
@@ -272,19 +277,7 @@ func (h *Handler) serveConfigs(ctx context.Context, w http.ResponseWriter, r *ht
 	if part != "" {
 		suffix = "/" + part
 	}
-	// Apps on Xray-core get full Xray configs where they read them; a panel
-	// with the format switched off answers as it would anyway.
-	xray := part == "" && r.Method == http.MethodGet && readsXrayJSON(r.Header.Get("user-agent"))
-	var answers []answer
-	if xray {
-		answers = h.ask(ctx, r, sub.Panels, "/xray")
-		if !allGood(answers) {
-			xray = false
-		}
-	}
-	if !xray {
-		answers = h.ask(ctx, r, sub.Panels, suffix)
-	}
+	answers := h.ask(ctx, r, sub.Panels, suffix)
 
 	var reached, good []answer
 	for _, a := range answers {
@@ -311,9 +304,12 @@ func (h *Handler) serveConfigs(ctx context.Context, w http.ResponseWriter, r *ht
 
 	ours := h.ours(ctx, token, sub)
 	header := w.Header()
-	for _, name := range returned {
-		if value := upstream.response.Header.Get(name); value != "" {
-			header.Set(name, value)
+	for name, values := range upstream.response.Header {
+		if notPassed[strings.ToLower(name)] {
+			continue
+		}
+		for _, value := range values {
+			header.Add(name, string(swapLink(value, upstream.panel.URL, ours)))
 		}
 	}
 	// One volume across the panels: the app is told the whole, not one panel's share.
@@ -332,9 +328,6 @@ func (h *Handler) serveConfigs(ctx context.Context, w http.ResponseWriter, r *ht
 	// The panel names its own address here; the customer's page is the shop's link.
 	header.Set("profile-web-page-url", ours)
 	header.Set("cache-control", "no-store")
-	if xray {
-		header.Set("content-type", "application/json; charset=utf-8")
-	}
 	if len(good) > 1 {
 		header.Del("content-disposition")
 	}
@@ -357,14 +350,14 @@ func (h *Handler) serveConfigs(ctx context.Context, w http.ResponseWriter, r *ht
 	}
 
 	var out string
-	switch part {
-	case "", "links":
+	switch {
+	case shaped[part]:
 		out = h.shape(ctx, sub, bodies, panelIDs)
 		if userinfo != "" {
 			// Where the panel writes its headers into the body too ("header placement").
 			out = configs.SetHeaderLine(out, "subscription-userinfo", userinfo)
 		}
-	case "usage":
+	case part == "usage":
 		out = bodies[0]
 		if len(bodies) > 1 {
 			out = mergeUsage(bodies)
@@ -374,21 +367,6 @@ func (h *Handler) serveConfigs(ctx context.Context, w http.ResponseWriter, r *ht
 	}
 	w.WriteHeader(upstream.response.StatusCode)
 	_, _ = io.WriteString(w, out)
-}
-
-// allGood reports that every panel that answered said yes, and one did.
-func allGood(answers []answer) bool {
-	found := false
-	for _, a := range answers {
-		if a.response == nil {
-			continue
-		}
-		if a.response.StatusCode < 200 || a.response.StatusCode >= 300 {
-			return false
-		}
-		found = true
-	}
-	return found
 }
 
 // shape gives the configs as the customer's groups say: picked, named, in
@@ -410,9 +388,16 @@ func (h *Handler) shape(ctx context.Context, sub store.LinkSubscription, bodies,
 			}
 			return shaped
 		}
-		// Given as the panels gave them; said why, for whoever reads the log.
-		h.Log.Warn("subscription link: the configs could not be shaped by the groups; given as the panels gave them",
-			"subscription", sub.ID, "explain", configs.Explain(bodies, plans, names))
+		// Given as the panels gave them; said why, for whoever reads the log
+		// (not for an answer in a format not read here, such as WireGuard's).
+		readable := true
+		for _, body := range bodies {
+			readable = readable && configs.Count(body) >= 0
+		}
+		if readable {
+			h.Log.Warn("subscription link: the configs could not be shaped by the groups; given as the panels gave them",
+				"subscription", sub.ID, "explain", configs.Explain(bodies, plans, names))
+		}
 	}
 	if len(bodies) == 1 {
 		return bodies[0]
