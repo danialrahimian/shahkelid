@@ -27,9 +27,10 @@ type ProbePanel interface {
 // uses, named skprobe_g<id>, and reads that user's subscription: what it
 // gives is what the group gives.
 //
-// The customer's link reads a group at most once a minute; a panel that
-// cannot be read keeps its last answer for up to an hour, so a blip does
-// not change what customers get.
+// Every panel group in use is read in the background (Keep), so a link
+// finds its hosts known; one read more than a minute ago is given and read
+// again meanwhile; a panel that cannot be read keeps its last answer for up
+// to an hour, so a blip does not change what customers get.
 type Catalog struct {
 	Panels func(store.Panel) (ProbePanel, error)
 	Fresh  time.Duration
@@ -37,8 +38,13 @@ type Catalog struct {
 	Now    func() time.Time
 	Log    *slog.Logger
 
-	mu    sync.Mutex
-	cache map[string]probe
+	// Wait bounds how long a link waits for a panel group nothing is known
+	// of yet (0: eight seconds); past it, the link is given unshaped.
+	Wait time.Duration
+
+	mu         sync.Mutex
+	cache      map[string]probe
+	refreshing map[string]bool
 }
 
 type probe struct {
@@ -131,34 +137,105 @@ func (c *Catalog) Read(ctx context.Context, p store.Panel, panelGroupID int64) (
 	return hosts, nil
 }
 
-// Cached gives a panel group's hosts at most Fresh old, or up to Stale old
-// when the panel cannot be read. ok is false when there is nothing to give.
+// Cached gives a panel group's hosts: what is known when it is at most
+// Fresh old; when older (up to Stale), still what is known, and it is read
+// again meanwhile, so no link waits on a panel; when nothing is known yet,
+// it is read now, waiting at most Wait. ok is false when there is nothing
+// to give.
 func (c *Catalog) Cached(ctx context.Context, p store.Panel, panelGroupID int64) (hosts []configs.Host, ok bool) {
-	fresh, stale := c.Fresh, c.Stale
+	fresh, stale, wait := c.Fresh, c.Stale, c.Wait
 	if fresh == 0 {
 		fresh = time.Minute
 	}
 	if stale == 0 {
 		stale = time.Hour
 	}
+	if wait == 0 {
+		wait = 8 * time.Second
+	}
 	key := fmt.Sprintf("%s:%d", p.ID, panelGroupID)
 	c.mu.Lock()
 	known, cached := c.cache[key]
 	c.mu.Unlock()
-	if cached && c.now().Sub(known.at) < fresh {
+	age := c.now().Sub(known.at)
+	if cached && age < fresh {
 		return known.hosts, true
 	}
-	hosts, err := c.Read(ctx, p, panelGroupID)
+	if cached && age < stale {
+		c.refresh(p, panelGroupID, key)
+		return known.hosts, true
+	}
+	readCtx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	hosts, err := c.Read(readCtx, p, panelGroupID)
 	if err == nil {
 		return hosts, true
 	}
 	if c.Log != nil {
 		c.Log.Warn("a panel group's configs could not be read", "panel", p.Name, "group", panelGroupID, "err", err)
 	}
-	if cached && c.now().Sub(known.at) < stale {
-		return known.hosts, true
-	}
 	return nil, false
+}
+
+// refresh reads a panel group again in the background, once at a time.
+func (c *Catalog) refresh(p store.Panel, panelGroupID int64, key string) {
+	c.mu.Lock()
+	if c.refreshing == nil {
+		c.refreshing = map[string]bool{}
+	}
+	if c.refreshing[key] {
+		c.mu.Unlock()
+		return
+	}
+	c.refreshing[key] = true
+	c.mu.Unlock()
+	go func() {
+		defer func() {
+			c.mu.Lock()
+			delete(c.refreshing, key)
+			c.mu.Unlock()
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if _, err := c.Read(ctx, p, panelGroupID); err != nil && c.Log != nil {
+			c.Log.Warn("a panel group's configs could not be read", "panel", p.Name, "group", panelGroupID, "err", err)
+		}
+	}()
+}
+
+// Keep reads every panel group in use now and then (every, or half of
+// Fresh), so customers' links find their hosts known and never wait on a
+// panel. It returns when ctx ends.
+func (c *Catalog) Keep(ctx context.Context, used func(context.Context) ([]store.UsedPanelGroup, error), every time.Duration) {
+	if every <= 0 {
+		every = 45 * time.Second
+	}
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	for {
+		groups, err := used(ctx)
+		if err != nil && c.Log != nil {
+			c.Log.Warn("listing the panel groups in use", "err", err)
+		}
+		var wg sync.WaitGroup
+		for _, g := range groups {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				readCtx, cancel := context.WithTimeout(ctx, time.Minute)
+				defer cancel()
+				if _, err := c.Read(readCtx, g.Panel, g.PanelGroupID); err != nil && c.Log != nil && ctx.Err() == nil {
+					c.Log.Warn("a panel group's configs could not be read", "panel", g.Panel.Name, "group", g.PanelGroupID, "err", err)
+				}
+			}()
+		}
+		wg.Wait()
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }
 
 // Forget drops what is known (in tests).
